@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lotosimsimulador - Inteligência para Loteria</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ==================== VIEW: AUTH ==================== -->
+<div class="auth-container" id="authScreen">
+    <div class="auth-card">
+        <div class="auth-logo">
+            <div class="auth-logo-icon">🎱</div>
+            <h2>Lotosimsimulador</h2>
+            <p>Agente Inteligente · Automação Completa</p>
+        </div>
+        <div class="db-status" id="dbStatus">
+            <div class="db-status-dot loading"></div>
+            <span id="dbStatusText">Conectando ao banco de dados...</span>
+        </div>
+        <div class="auth-tabs">
+            <button class="auth-tab active" data-view="login">Entrar</button>
+            <button class="auth-tab" data-view="register">Criar Conta</button>
+        </div>
+        
+        <!-- Login Form -->
+        <form class="auth-form active" id="loginForm">
+            <div class="form-group">
+                <label class="form-label">E-mail</label>
+                <input type="email" class="form-input" id="loginEmail" placeholder="seu@email.com" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Senha</label>
+                <div class="password-wrapper">
+                    <input type="password" class="form-input" id="loginPassword" placeholder="••••••••" required>
+                    <button type="button" class="password-toggle" data-target="loginPassword">👁️</button>
+                </div>
+                <div class="form-error" id="loginEmailError"></div>
+            </div>
+            <div class="form-checkbox">
+                <input type="checkbox" id="rememberMe">
+                <label for="rememberMe">Lembrar-me por 30 dias</label>
+            </div>
+            <button type="submit" class="auth-btn" id="loginBtn">Entrar</button>
+            <div class="auth-footer">Não tem conta? <a href="#" data-action="switch-register">Criar conta</a></div>
+        </form>
+
+        <!-- Register Form -->
+        <form class="auth-form" id="registerForm">
+            <div class="form-group">
+                <label class="form-label">Nome Completo</label>
+                <input type="text" class="form-input" id="regName" placeholder="Seu nome" required>
+                <div class="form-error" id="regNameError"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">E-mail</label>
+                <input type="email" class="form-input" id="regEmail" placeholder="seu@email.com" required>
+                <div class="form-error" id="regEmailError"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Senha</label>
+                <div class="password-wrapper">
+                    <input type="password" class="form-input" id="regPassword" placeholder="Mínimo 6 caracteres" required>
+                    <button type="button" class="password-toggle" data-target="regPassword">👁️</button>
+                </div>
+                <div class="password-strength"><div class="password-strength-fill" id="strengthFill"></div></div>
+                <div class="password-strength-text" id="strengthText"></div>
+                <div class="form-error" id="regPasswordError"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Confirmar Senha</label>
+                <div class="password-wrapper">
+                    <input type="password" class="form-input" id="regPasswordConfirm" placeholder="Repita a senha" required>
+                    <button type="button" class="password-toggle" data-target="regPasswordConfirm">👁️</button>
+                </div>
+                <div class="form-error" id="regPasswordConfirmError"></div>
+            </div>
+            <div class="form-checkbox">
+                <input type="checkbox" id="agreeTerms" required>
+                <label for="agreeTerms">Concordo com os termos de uso</label>
+            </div>
+            <button type="submit" class="auth-btn" id="regBtn">Criar Conta</button>
+            <div class="auth-footer">Já tem conta? <a href="#" data-action="switch-login">Entrar</a></div>
+        </form>
+    </div>
+</div>
+
+<!-- LOADING OVERLAY -->
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">🤖 Agente IA em operação...</div>
+    <div class="loading-steps" id="loadingSteps"></div>
+</div>
+
+<!-- ==================== VIEW: APP ==================== -->
+<div class="app-wrapper" id="appWrapper">
+    <header class="app-header">
+        <div class="logo-section">
+            <div class="logo-icon">🎱</div>
+            <div class="logo-text"><h1>Lotosimsimulador</h1><p>Agente Inteligente · Ativo</p></div>
+        </div>
+        <div class="header-right">
+            <div class="header-stats">
+                <div class="header-stat">
+                    <div class="header-stat-value" id="totalGamesGenerated">0</div>
+                    <div class="header-stat-label">Jogos</div>
+                </div>
+                <div class="header-stat">
+                    <div class="header-stat-value" id="totalSimulations">0</div>
+                    <div class="header-stat-label">Simulações</div>
+                </div>
+                <div class="header-stat">
+                    <div class="header-stat-value" id="resultsAnalyzed">0</div>
+                    <div class="header-stat-label">Análises</div>
+                </div>
+            </div>
+            <div class="automation-indicator" id="autoIndicator" style="display:none;">
+                <div class="pulse-dot"></div>
+                <span>Auto ON</span>
+            </div>
+            <div class="user-menu" id="userMenu">
+                <div class="user-avatar" id="userAvatarHeader">U</div>
+                <div class="user-info">
+                    <div class="user-name" id="userNameHeader">Usuário</div>
+                    <div class="user-role">Acesso Premium</div>
+                </div>
+                <span style="color:var(--text-muted); font-size: 0.7rem;">▼</span>
+                <div class="user-dropdown" id="userDropdown">
+                    <div class="dropdown-header">
+                        <div class="dropdown-header-name" id="dropdownName"></div>
+                        <div class="dropdown-header-email" id="dropdownEmail"></div>
+                    </div>
+                    <button class="dropdown-item" data-action="open-profile">👤 Meu Perfil</button>
+                    <button class="dropdown-item" data-action="open-auto">🤖 Automação</button>
+                    <button class="dropdown-item" data-action="open-db-info">🗄️ Banco de Dados</button>
+                    <button class="dropdown-item" data-action="export-data">📥 Exportar Dados</button>
+                    <button class="dropdown-item danger" data-action="logout">🚪 Sair</button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <nav class="nav-tabs">
+        <div class="nav-tab active" data-screen="simulation">🎲 Simulação</div>
+        <div class="nav-tab" data-screen="conference">🔍 Conferência</div>
+        <div class="nav-tab" data-screen="statistics">📊 Estatísticas</div>
+    </nav>
+
+    <main class="main-content">
+        <!-- VIEW: SIMULATION -->
+        <div class="screen active" id="screen-simulation">
+            <div class="section-title"><span>🎯</span> Escolha a Loteria</div>
+            <div class="lottery-selector">
+                <div class="lottery-card selected" data-type="lotofacil">
+                    <div class="lottery-card-icon">🟣</div>
+                    <div class="lottery-card-name">Lotofácil</div>
+                    <div class="lottery-card-desc">25 números · 15 dezenas</div>
+                    <div class="lottery-card-status" id="status-lotofacil">Aguardando dados...</div>
+                </div>
+                <div class="lottery-card" data-type="mega">
+                    <div class="lottery-card-icon">🟢</div>
+                    <div class="lottery-card-name">Mega Sena</div>
+                    <div class="lottery-card-desc">60 números · 6 dezenas</div>
+                    <div class="lottery-card-status" id="status-mega">Aguardando dados...</div>
+                </div>
+                <div class="lottery-card" data-type="lotomania">
+                    <div class="lottery-card-icon">🔴</div>
+                    <div class="lottery-card-name">Lotomania</div>
+                    <div class="lottery-card-desc">100 números · 50 dezenas</div>
+                    <div class="lottery-card-status" id="status-lotomania">Aguardando dados...</div>
+                </div>
+                <div class="lottery-card" data-type="quina">
+                    <div class="lottery-card-icon">🔵</div>
+                    <div class="lottery-card-name">Quina</div>
+                    <div class="lottery-card-desc">80 números · 5 dezenas</div>
+                    <div class="lottery-card-status" id="status-quina">Aguardando dados...</div>
+                </div>
+            </div>
+
+            <div class="agent-panel">
+                <div class="agent-header">
+                    <div class="agent-title">
+                        <div class="agent-avatar">🤖</div>
+                        <div>
+                            <div class="agent-name">Agente IA de Análise</div>
+                            <div class="agent-status" id="agentStatus">Sincronizando dados...</div>
+                        </div>
+                    </div>
+                    <div class="agent-controls">
+                        <button class="btn btn-secondary btn-sm" id="fetchBtn">🔄 Atualizar Dados</button>
+                        <button class="btn btn-primary" id="generateBtn" disabled>⚡ Gerar Jogos Inteligentes</button>
+                    </div>
+                </div>
+                <div class="data-status-bar">
+                    <div class="data-status-item">
+                        <div class="data-status-dot" id="dataDot"></div>
+                        <span id="dataStatusText">Sem conexão com API</span>
+                    </div>
+                    <div class="data-status-item"><span id="dataCount">0 concursos</span></div>
+                    <div class="data-status-item"><span id="lastFetchTime">-</span></div>
+                </div>
+                <div class="section-title" style="font-size:0.85rem; margin-top:1.5rem;"><span>🧠</span> Estratégia de Geração</div>
+                <div class="strategy-options">
+                    <div class="strategy-option selected" data-strategy="weighted">
+                        <div class="strategy-option-name">⚖️ Ponderado</div>
+                        <div class="strategy-option-desc">Frequência histórica</div>
+                    </div>
+                    <div class="strategy-option" data-strategy="hot">
+                        <div class="strategy-option-name">🔥 Quentes</div>
+                        <div class="strategy-option-desc">Maior saída recente</div>
+                    </div>
+                    <div class="strategy-option" data-strategy="cold">
+                        <div class="strategy-option-name">🧊 Frios</div>
+                        <div class="strategy-option-desc">Menor saída recente</div>
+                    </div>
+                    <div class="strategy-option" data-strategy="ai">
+                        <div class="strategy-option-name">🧬 Redes Neurais</div>
+                        <div class="strategy-option-desc">Probabilidade IA</div>
+                    </div>
+                </div>
+
+                <div class="advanced-filters">
+                    <div class="filter-group">
+                        <div class="section-title" style="font-size:0.8rem; margin-top:1rem;"><span>📌</span> Fixar Dezenas (Obrigatórias)</div>
+                        <div class="number-selector" id="fixedNumbers"></div>
+                    </div>
+                    <div class="filter-group">
+                        <div class="section-title" style="font-size:0.8rem; margin-top:1rem;"><span>🚫</span> Excluir Dezenas (Bloqueadas)</div>
+                        <div class="number-selector" id="excludedNumbers"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="insightsContainer" style="display:none;">
+                <div class="section-title"><span>📊</span> Insights Recentes (Top 100)</div>
+                <div class="insights-grid" id="insightsGrid"></div>
+            </div>
+
+            <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+                <span>🎲 Jogos Sugeridos</span>
+                <div class="export-actions" id="exportActions" style="display:none;">
+                    <button class="btn btn-secondary btn-sm" id="exportPdfBtn">📄 Exportar PDF</button>
+                    <button class="btn btn-secondary btn-sm" id="exportTxtBtn">📝 TXT</button>
+                </div>
+            </div>
+            <div class="games-grid" id="gamesGrid">
+                <div class="empty-state" style="grid-column:1/-1;">
+                    <div class="empty-state-icon">🤖</div>
+                    <div class="empty-state-text">Clique em "Atualizar Dados" para começar a análise</div>
+                </div>
+            </div>
+
+            <div class="disclaimer">
+                <div class="disclaimer-icon">⚠️</div>
+                <div>Este é um simulador baseado em estatísticas reais. Loterias são jogos de azar. Jogue com moderação e responsabilidade.</div>
+            </div>
+        </div>
+
+        <!-- VIEW: CONFERENCE -->
+        <div class="screen" id="screen-conference">
+            <div class="section-title"><span>🏆</span> Resultado do Último Concurso</div>
+            <div id="lastResultContainer">
+                <div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-text">Sincronize os dados na aba Simulação</div></div>
+            </div>
+
+            <div class="section-title" style="margin-top:2rem;"><span>🔍</span> Conferidor de Jogos</div>
+            <div class="drawn-numbers-input">
+                <h3>🎯 Analisar Performance</h3>
+                <div style="margin-bottom:0.75rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                    <select class="number-input" id="confLotteryType" style="width:auto;height:auto;padding:0.5rem 1rem;">
+                        <option value="lotofacil">Lotofácil</option>
+                        <option value="mega">Mega Sena</option>
+                        <option value="lotomania">Lotomania</option>
+                        <option value="quina">Quina</option>
+                    </select>
+                    <span style="font-size:0.8rem; color:var(--text-muted);" id="confHint"></span>
+                    <button class="btn btn-secondary btn-sm" id="useLastBtn">📋 Copiar Último Sorteio</button>
+                </div>
+                <div class="input-row" id="confInputs"></div>
+                <div style="margin-top:1rem;"><button class="btn btn-primary" id="confBtn">🔍 Iniciar Conferência</button></div>
+            </div>
+            <div id="confResults" class="conference-section"></div>
+        </div>
+
+        <!-- VIEW: STATISTICS -->
+        <div class="screen" id="screen-statistics">
+            <div class="section-title"><span>📊</span> Dashboard Estatístico</div>
+            <div class="tab-sub">
+                <button class="tab-sub-btn active" data-tab="frequency">📈 Frequência</button>
+                <button class="tab-sub-btn" data-tab="patterns">🧩 Padrões</button>
+                <button class="tab-sub-btn" data-tab="history">📋 Histórico</button>
+            </div>
+
+            <div id="stat-frequency">
+                <div id="statsNoData" class="empty-state">
+                    <div class="empty-state-icon">📊</div><div class="empty-state-text">Dados necessários para gerar o relatório</div>
+                </div>
+                <div id="statsContent" style="display:none;">
+                    <div class="stats-section">
+                        <div class="stat-card">
+                            <div class="stat-card-title"><span>🔥</span> Ranking de Saídas</div>
+                            <div class="chart-container"><canvas id="freqChart"></canvas></div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title"><span>⚖️</span> Distribuição Par/Ímpar</div>
+                            <div class="chart-container"><canvas id="parityChart"></canvas></div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title"><span>🗺️</span> Heatmap Global</div>
+                            <div class="frequency-grid" id="freqGrid"></div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title"><span>📈</span> Por Faixa Numérica</div>
+                            <div class="chart-container"><canvas id="rangeChart"></canvas></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="stat-patterns" style="display:none;">
+                <div id="patternsNoData" class="empty-state">
+                    <div class="empty-state-icon">🧩</div><div class="empty-state-text">Gere simulações para ver análises de probabilidade</div>
+                </div>
+                <div id="patternsContent" style="display:none;">
+                    <div class="stats-section">
+                        <div class="stat-card">
+                            <div class="stat-card-title"><span>🎲</span> Nível de Probabilidade</div>
+                            <div class="chart-container"><canvas id="probChart"></canvas></div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title"><span>📉</span> Radar de Eficiência</div>
+                            <div class="chart-container"><canvas id="comparisonChart"></canvas></div>
+                        </div>
+                        <div class="stat-card" style="grid-column:1/-1;">
+                            <div class="stat-card-title"><span>🏆</span> Ranking de Jogos Gerados</div>
+                            <table class="history-table">
+                                <thead><tr><th>#</th><th>Jogo</th><th>Dezenas</th><th>Confiança</th><th>Score</th></tr></thead>
+                                <tbody id="rankingBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="stat-history" style="display:none;">
+                <div class="stat-card">
+                    <div class="stat-card-title"><span>📋</span> Log de Atividades</div>
+                    <table class="history-table">
+                        <thead><tr><th>Data/Hora</th><th>Loteria</th><th>Estratégia</th><th>Jogos</th><th>Status</th></tr></thead>
+                        <tbody id="historyBody">
+                            <tr><td colspan="5" style="text-align:center;color:var(--text-muted);">Nenhum registro encontrado</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- MODALS -->
+<div class="modal-overlay" id="profileModal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <div class="modal-title">Configurações de Perfil</div>
+            <button class="modal-close" data-action="close-modal">✕</button>
+        </div>
+        <div class="profile-avatar-large" id="profileAvatar">U</div>
+        <div style="text-align:center;margin-bottom:1rem;">
+            <div style="font-size:1.1rem;font-weight:700;" id="profileName"></div>
+            <div style="font-size:0.8rem;color:var(--text-muted);" id="profileEmail"></div>
+            <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.25rem;" id="profileJoined"></div>
+        </div>
+        <div class="profile-stats">
+            <div class="profile-stat"><div class="profile-stat-value" id="profileGames">0</div><div class="profile-stat-label">Jogos</div></div>
+            <div class="profile-stat"><div class="profile-stat-value" id="profileSims">0</div><div class="profile-stat-label">Sims</div></div>
+            <div class="profile-stat"><div class="profile-stat-value" id="profileResults">0</div><div class="profile-stat-label">Análises</div></div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Alterar Senha</label>
+            <input type="password" class="form-input" id="currentPassword" placeholder="Senha atual">
+            <input type="password" class="form-input" id="newPassword" placeholder="Nova senha" style="margin-top:0.5rem;">
+            <input type="password" class="form-input" id="newPasswordConfirm" placeholder="Confirmar nova senha" style="margin-top:0.5rem;">
+            <button class="btn btn-secondary btn-sm" style="margin-top:0.5rem; width: 100%;" id="changePassBtn">🔒 Salvar Nova Senha</button>
+        </div>
+        <div style="margin-top:1.5rem;">
+            <button class="btn btn-secondary" style="width:100%;" data-action="logout">🚪 Encerrar Sessão</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="autoModal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <div class="modal-title">🤖 Painel de Automação IA</div>
+            <button class="modal-close" data-action="close-modal">✕</button>
+        </div>
+        <div class="auto-status-bar">
+            <div class="status-item"><div class="data-status-dot green"></div><span>Sistema: <strong id="autoMasterStatus">Offline</strong></span></div>
+            <div class="status-item"><span>Próximo Ciclo: <span class="next-run" id="nextRunTime">--</span></span></div>
+            <div class="status-item"><span>Tasks Hoje: <strong id="execCountToday">0</strong></span></div>
+        </div>
+        <div class="auto-toggle-row">
+            <div class="auto-toggle-info"><h4>🔄 Auto-Sync</h4><p>Sincroniza com a Caixa automaticamente</p></div>
+            <label class="toggle-switch"><input type="checkbox" id="autoFetchToggle"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="auto-toggle-row">
+            <div class="auto-toggle-info"><h4>⚡ Auto-Gen</h4><p>Gera novos jogos a cada sorteio</p></div>
+            <label class="toggle-switch"><input type="checkbox" id="autoGenerateToggle"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="auto-toggle-row">
+            <div class="auto-toggle-info"><h4>🔍 Auto-Review</h4><p>Notifica acertos automaticamente</p></div>
+            <label class="toggle-switch"><input type="checkbox" id="autoConferenceToggle"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="auto-toggle-row">
+            <div class="auto-toggle-info"><h4>📊 Multi-Lottery</h4><p>Processa todas as loterias em paralelo</p></div>
+            <label class="toggle-switch"><input type="checkbox" id="autoAllLotteriesToggle"><span class="toggle-slider"></span></label>
+        </div>
+        
+        <div style="margin-top:1rem;">
+            <div class="section-title" style="font-size:0.85rem;"><span>⏱️</span> Intervalo de Verificação</div>
+            <div class="interval-selector">
+                <button class="interval-btn" data-minutes="5">5min</button>
+                <button class="interval-btn" data-minutes="15">15min</button>
+                <button class="interval-btn active" data-minutes="30">30min</button>
+                <button class="interval-btn" data-minutes="60">1h</button>
+            </div>
+        </div>
+        
+        <div style="margin-top:1.5rem;">
+            <div class="section-title" style="font-size:0.85rem;"><span>📝</span> Log de Operações</div>
+            <div class="auto-log" id="autoLog"></div>
+        </div>
+        <div style="margin-top:1rem; display:flex; gap:0.5rem;">
+            <button class="btn btn-success btn-sm" id="runManualBtn" style="flex:1;">▶ Executar Task Agora</button>
+            <button class="btn btn-secondary btn-sm" id="clearLogBtn">🗑️ Limpar</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="dbInfoModal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <div class="modal-title">🗄️ Gerenciamento de Dados Local</div>
+            <button class="modal-close" data-action="close-modal">✕</button>
+        </div>
+        <div class="db-info-panel">
+            <h4>Estrutura Interna (IndexedDB)</h4>
+            <ul>
+                <li><strong>users</strong>: Perfil e segurança</li>
+                <li><strong>games</strong>: Repositório de jogos gerados</li>
+                <li><strong>lottery_results</strong>: Cache de resultados oficiais</li>
+                <li><strong>auto_settings</strong>: Configurações do Agente</li>
+            </ul>
+        </div>
+        <div class="db-info-panel" style="margin-top:1rem; background:rgba(16,185,129,0.05); border-color:rgba(16,185,129,0.1);">
+            <h4 style="color:var(--accent-green);">Métricas de Armazenamento</h4>
+            <div id="dbStatsContent" style="font-size:0.8rem; padding:0.5rem 0;">Calculando...</div>
+        </div>
+    </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
