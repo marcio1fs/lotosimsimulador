@@ -483,11 +483,11 @@ class AppController {
     }
 
     static toggleAutomation(id) {
-        const key = id.replace('autoToggle','').replace('Toggle','').toLowerCase();
-        if (key === 'fetch') AutomationModel.state.autoFetch = document.getElementById(id).checked;
-        else if (key === 'generate') AutomationModel.state.autoGenerate = document.getElementById(id).checked;
-        else if (key === 'conference') AutomationModel.state.autoConference = document.getElementById(id).checked;
-        else if (key === 'alllotteries') AutomationModel.state.autoAllLotteries = document.getElementById(id).checked;
+        const key = id.replace('Toggle','').toLowerCase(); // 'autofetch'
+        if (key === 'autofetch') AutomationModel.state.autoFetch = document.getElementById(id).checked;
+        else if (key === 'autogenerate') AutomationModel.state.autoGenerate = document.getElementById(id).checked;
+        else if (key === 'autoconference') AutomationModel.state.autoConference = document.getElementById(id).checked;
+        else if (key === 'autoalllotteries') AutomationModel.state.autoAllLotteries = document.getElementById(id).checked;
         
         AutomationModel.state.active = AutomationModel.state.autoFetch || AutomationModel.state.autoGenerate || AutomationModel.state.autoConference;
         
