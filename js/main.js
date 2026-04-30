@@ -181,6 +181,18 @@ class AppController {
             }
         }));
 
+
+
+        // Sub tabs (Estatísticas)
+        document.querySelectorAll('.tab-sub-btn').forEach(btn => btn.addEventListener('click', () => {
+            document.querySelectorAll('.tab-sub-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            ['frequency', 'patterns', 'history'].forEach(tab => {
+                document.getElementById(`stat-${tab}`).style.display = 'none';
+            });
+            document.getElementById(`stat-${btn.dataset.tab}`).style.display = 'block';
+        }));
+
         // Lottery cards
         document.querySelectorAll('.lottery-card').forEach(card => card.addEventListener('click', () => {
             appState.currentLottery = card.dataset.type;
