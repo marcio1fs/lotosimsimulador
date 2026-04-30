@@ -143,13 +143,24 @@ export class Database {
 
     static async update(store, data) {
         if (this.useSupabase) {
+            const payload = { ...data };
+            
+            // Corrige nomenclatura
+            if (store === 'users' && payload.createdAt) {
+                payload.created_at = payload.createdAt;
+                delete payload.createdAt;
+            }
+            if (store === 'sessions' && payload.createdAt) delete payload.createdAt;
+            if (store === 'auto_settings' && payload.intervalMinutes !== undefined) delete payload.intervalMinutes;
+
             const primaryKey = (store === 'user_stats' || store === 'auto_settings') ? 'userId' : 'id';
-            if (!data[primaryKey]) {
-                const { data: result, error } = await supabase.from(store).insert(data).select().single();
+            
+            if (!payload[primaryKey]) {
+                const { data: result, error } = await supabase.from(store).insert(payload).select().single();
                 if (error) throw error;
                 return result;
             } else {
-                const { data: result, error } = await supabase.from(store).update(data).eq(primaryKey, data[primaryKey]).select().single();
+                const { data: result, error } = await supabase.from(store).update(payload).eq(primaryKey, payload[primaryKey]).select().single();
                 if (error) throw error;
                 return result;
             }
