@@ -297,6 +297,33 @@ class AppController {
         document.querySelectorAll('[data-action="close-modal"]').forEach(btn => btn.addEventListener('click', () => {
             document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
         }));
+
+        // Automation Toggles
+        const autoToggles = ['autoFetchToggle', 'autoGenerateToggle', 'autoConferenceToggle', 'autoAllLotteriesToggle'];
+        autoToggles.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('change', () => this.toggleAutomation(id));
+            }
+        });
+
+        // Automation Interval Buttons
+        document.querySelectorAll('.interval-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const minutes = parseInt(btn.dataset.minutes);
+                AutomationModel.state.intervalMinutes = minutes;
+                
+                // Restart timer se estiver ativo
+                if (AutomationModel.state.active) {
+                    AutomationController.start(() => this.runAutoCycle());
+                }
+                
+                AutomationModel.save(currentUser.id);
+                AppView.updateAutoUI(AutomationModel.state);
+                AutomationModel.addLog('info', `Intervalo alterado para ${minutes}min`);
+                AppView.renderAutoLog(AutomationModel.state.log);
+            });
+        });
     }
 
     static async fetchResults() {
