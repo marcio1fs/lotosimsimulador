@@ -59,37 +59,37 @@ export class LotteryModel {
     }
 
     /**
-     * Gera jogos inteligentes via GameGenerator
+     * Gera jogos inteligentes via GameGenerator com semente determinística
      */
-    static generateSmartGames(type, fullHistory, strategy = 'weighted', fixed = [], excluded = [], count = 10, timeWindow = 'full') {
+    static generateSmartGames(type, fullHistory, strategy = 'weighted', fixed = [], excluded = [], count = 10, timeWindow = 'full', seed = 123456) {
         const cfg = this.CONFIG[type];
         if (!cfg) return [];
 
         if (strategy === 'best_game') {
-            return GameGenerator.runBestGameMode(fullHistory, cfg, fixed, excluded, count);
+            return GameGenerator.runBestGameMode(fullHistory, cfg, fixed, excluded, count, seed);
         }
 
         if (strategy === 'maximum_precision') {
-            return GameGenerator.runMaximumPrecisionMode(fullHistory, cfg, fixed, excluded, count);
+            return GameGenerator.runMaximumPrecisionMode(fullHistory, cfg, fixed, excluded, count, seed);
         }
 
         const windowData = StatisticalAnalyzer.getWindow(fullHistory, timeWindow);
         const analysis = StatisticalAnalyzer.analyze(windowData, cfg);
         analysis.lastDrawNumbers = fullHistory[0]?.dezenas?.map(Number) || [];
 
-        // Executa um backtest rápido para obter o histórico recente de acertos
+        // Executa um backtest cego com semente determinística
         const generatorFn = (past, c) => {
             const pastAnalysis = StatisticalAnalyzer.analyze(past, c);
-            return GameGenerator.generateSingleCandidate(c.apiName, pastAnalysis, strategy, [], [], c);
+            return GameGenerator.generateSingleCandidate(c.apiName, pastAnalysis, strategy, [], [], c, null);
         };
-        const backtestSummary = BacktestEngine.runBacktest(windowData, cfg, generatorFn, { windowSize: 30 });
+        const backtestSummary = BacktestEngine.runBacktest(windowData, cfg, generatorFn, { windowSize: 30, seed });
 
-        const games = GameGenerator.generateBatch(type, analysis, strategy, fixed, excluded, count, cfg, DEFAULT_WEIGHTS, backtestSummary);
+        const games = GameGenerator.generateBatch(type, analysis, strategy, fixed, excluded, count, cfg, DEFAULT_WEIGHTS, backtestSummary, seed);
 
-        // Monte Carlo para o melhor jogo
+        // Monte Carlo determinístico para o melhor jogo
         const topGame = games[0];
         if (topGame) {
-            const mcResult = MonteCarloEngine.simulateCandidate(topGame.numbers, cfg);
+            const mcResult = MonteCarloEngine.simulateCandidate(topGame.numbers, cfg, 10000, { seed, history: windowData });
             topGame.monteCarlo = mcResult;
         }
 

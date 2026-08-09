@@ -166,7 +166,11 @@ export class StatisticalAnalyzer {
         const primeStats = this.calculateDistributionStats(primeList);
         const repetitionStats = this.calculateDistributionStats(repetitionList);
 
-        // Top Pares mais frequentes
+        // Top Pares mais frequentes com Support, Expected, Lift e Stability
+        const halfCount = Math.floor(history.length / 2);
+        const recentHistory = history.slice(0, halfCount);
+        const olderHistory = history.slice(halfCount);
+
         const topPairs = [];
         for (let i = 1; i <= total; i++) {
             for (let j = i + 1; j <= total; j++) {
@@ -175,8 +179,9 @@ export class StatisticalAnalyzer {
                 topPairs.push({
                     pair: [i, j],
                     count,
-                    expected: expectedPairCount,
-                    ratio: expectedPairCount > 0 ? count / expectedPairCount : 1
+                    expected: Number(expectedPairCount.toFixed(2)),
+                    support: Number((count / (drawCount || 1)).toFixed(4)),
+                    ratio: expectedPairCount > 0 ? Number((count / expectedPairCount).toFixed(4)) : 1
                 });
             }
         }
@@ -184,14 +189,32 @@ export class StatisticalAnalyzer {
 
         const topPairsSliced = topPairs.slice(0, 30);
         topPairsSliced.forEach(p => {
-            const freqA = (freqAbsolute[p.pair[0]] || 0) / drawCount;
-            const freqB = (freqAbsolute[p.pair[1]] || 0) / drawCount;
-            const pairFreq = p.count / drawCount;
+            const freqA = (freqAbsolute[p.pair[0]] || 0) / (drawCount || 1);
+            const freqB = (freqAbsolute[p.pair[1]] || 0) / (drawCount || 1);
+            const pairFreq = p.count / (drawCount || 1);
             p.lift = (freqA > 0 && freqB > 0) ? Number((pairFreq / (freqA * freqB)).toFixed(4)) : 1;
+
+            // Stability: comparação entre metades temporal recente e antiga
+            let recentCount = 0;
+            let olderCount = 0;
+            recentHistory.forEach(d => {
+                const nums = (d.dezenas || []).map(Number);
+                if (nums.includes(p.pair[0]) && nums.includes(p.pair[1])) recentCount++;
+            });
+            olderHistory.forEach(d => {
+                const nums = (d.dezenas || []).map(Number);
+                if (nums.includes(p.pair[0]) && nums.includes(p.pair[1])) olderCount++;
+            });
+            const rRate = recentHistory.length > 0 ? recentCount / recentHistory.length : 0;
+            const oRate = olderHistory.length > 0 ? olderCount / olderHistory.length : 0;
+            const maxRate = Math.max(rRate, oRate);
+            p.stability = maxRate > 0 ? Number((1 - Math.abs(rRate - oRate) / maxRate).toFixed(4)) : 1;
         });
 
-        // Análise de Trincas (Top 20 combinações de 3 números)
+        // Análise de Trincas com Support, Expected, Lift e Stability
         const tripleCounts = {};
+        const expectedTripleCount = drawCount * ((drawn * (drawn - 1) * (drawn - 2)) / (total * (total - 1) * (total - 2)));
+        
         for (const draw of history) {
             const nums = Array.isArray(draw.dezenas) ? draw.dezenas.map(Number).sort((a, b) => a - b) : [];
             for (let i = 0; i < nums.length; i++) {
@@ -204,7 +227,22 @@ export class StatisticalAnalyzer {
             }
         }
         const topTriples = Object.entries(tripleCounts)
-            .map(([key, count]) => ({ numbers: key.split('-').map(Number), count }))
+            .map(([key, count]) => {
+                const numbers = key.split('-').map(Number);
+                const freqA = (freqAbsolute[numbers[0]] || 0) / (drawCount || 1);
+                const freqB = (freqAbsolute[numbers[1]] || 0) / (drawCount || 1);
+                const freqC = (freqAbsolute[numbers[2]] || 0) / (drawCount || 1);
+                const tripleFreq = count / (drawCount || 1);
+                const lift = (freqA > 0 && freqB > 0 && freqC > 0) ? Number((tripleFreq / (freqA * freqB * freqC)).toFixed(4)) : 1;
+                
+                return { 
+                    numbers, 
+                    count,
+                    expected: Number(expectedTripleCount.toFixed(2)),
+                    support: Number((count / (drawCount || 1)).toFixed(4)),
+                    lift
+                };
+            })
             .sort((a, b) => b.count - a.count)
             .slice(0, 20);
 

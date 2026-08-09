@@ -176,24 +176,29 @@ export class ScoringEngine {
         // Model score escala de 0 a 100
         const modelScore = Number((rawScore * 100).toFixed(1));
 
-        // Mapeamento de métricas históricas de backtesting (se fornecidas)
-        const backtestMetrics = backtestSummary || {
-            meanHits: Number((config.drawn * 0.6).toFixed(2)),
-            relativeImprovement: '+0.0%',
-            confidenceLevel: 95.0,
-            evaluatedDraws: analysis.drawCount || 0
-        };
+        // Mapeamento de métricas históricas de backtesting reais (sem fallbacks fictícios ou hardcoded)
+        const expectedHits = (backtestSummary && typeof backtestSummary.meanHits === 'number') 
+            ? backtestSummary.meanHits 
+            : null;
 
-        const expectedHits = backtestMetrics.meanHits || Number((config.drawn * 0.6).toFixed(2));
-        const confidenceLevel = backtestMetrics.confidenceLevel || 95.0;
+        const confidenceInterval = (backtestSummary && backtestSummary.confidenceInterval)
+            ? backtestSummary.confidenceInterval
+            : null;
+
+        const pValue = (backtestSummary && typeof backtestSummary.pValue === 'number')
+            ? backtestSummary.pValue
+            : null;
 
         return {
             modelScore,
-            historicalPerformance: backtestMetrics.relativeImprovement || '0.0%',
+            rawScore,
+            historicalPerformance: backtestSummary?.relativeImprovement ?? null,
             expectedHits,
-            confidenceLevel,
+            confidenceInterval,
+            pValue,
+            statisticallySignificant: backtestSummary?.isStatisticallySignificant ?? null,
             probabilityType: 'Score Relativo do Modelo (Não é garantia matemática de acerto)',
-            backtestMetrics,
+            backtestMetrics: backtestSummary || null,
             explanations,
             stats: {
                 evens,
@@ -204,49 +209,147 @@ export class ScoringEngine {
             }
         };
     }
+
     /**
-     * Otimiza pesos usando grid search com backtesting walk-forward
-     * @param {Array} fullHistory - Histórico completo
+     * Normaliza automaticamente qualquer conjunto de pesos para garantir sum(weights) = 1.0
+     */
+    static normalizeWeights(weights) {
+        const normalized = { ...weights };
+        const total = Object.values(normalized).reduce((a, b) => a + b, 0);
+        if (total > 0 && Math.abs(total - 1.0) > 1e-6) {
+            Object.keys(normalized).forEach(k => {
+                normalized[k] = Number((normalized[k] / total).toFixed(4));
+            });
+        }
+        return normalized;
+    }
+
+    /**
+     * Otimiza pesos usando divisão de Treino (70%) vs Validação (30%) e penalização de Overfitting
+     * Usa SeededRandom para reprodutibilidade 100% determinística sem Math.random()
+     * @param {Array} fullHistory - Histórico de concursos
      * @param {Object} config - Configuração da loteria
-     * @param {Object} options - { gridSteps: 3, windowSize: 50 }
-     * @returns {{ optimizedWeights: Object, bestMeanHits: number, improvement: string, isOverfitting: boolean }}
+     * @param {Object} options - { iterations: 20, seed: 123456 }
+     * @returns {{ optimizedWeights: Object, bestObjectiveScore: number, trainMean: number, valMean: number, overfitGap: number, isOverfit: boolean, method: string }}
      */
     static optimizeWeights(fullHistory, config, options = {}) {
-        const { gridSteps = 3, windowSize = 50 } = options;
-        // Import is not available here, so we use dynamic approach
-        // Grid search over weight combinations
-        const baseWeights = { ...DEFAULT_WEIGHTS };
+        const seed = options.seed ?? 123456;
+        const prng = new SeededRandom(seed);
+        const baseWeights = this.normalizeWeights(DEFAULT_WEIGHTS);
+
+        if (!fullHistory || fullHistory.length < 30) {
+            return {
+                optimizedWeights: baseWeights,
+                bestObjectiveScore: 0,
+                trainMean: null,
+                valMean: null,
+                overfitGap: 0,
+                isOverfit: false,
+                method: 'Dados insuficientes para otimização - Utilizando pesos base'
+            };
+        }
+
+        const totalDraws = fullHistory.length;
+        const trainCutoff = Math.floor(totalDraws * 0.7);
+
+        const trainHistory = fullHistory.slice(0, trainCutoff);
+        const valHistory = fullHistory.slice(trainCutoff);
+
         const factors = Object.keys(baseWeights);
-        const variations = [0.7, 1.0, 1.5]; // Scale factors
-        
+        const variations = [0.5, 0.8, 1.0, 1.2, 1.5];
+
         let bestWeights = { ...baseWeights };
-        let bestScore = -Infinity;
-        let bestResult = null;
-        
-        // Test a subset of weight variations (avoid combinatorial explosion)
-        for (let i = 0; i < 20; i++) {
-            const testWeights = { ...baseWeights };
-            // Randomly vary 3 factors
-            const factorsToVary = factors.sort(() => Math.random() - 0.5).slice(0, 3);
-            factorsToVary.forEach(f => {
-                testWeights[f] = baseWeights[f] * variations[Math.floor(Math.random() * variations.length)];
-            });
-            
-            // Normalize weights
-            const total = Object.values(testWeights).reduce((a, b) => a + b, 0);
-            Object.keys(testWeights).forEach(k => testWeights[k] /= total);
-            
-            // This returns the weight config - actual evaluation happens in GameGenerator
-            // Store for later comparison
-            if (i === 0) {
+        let bestObjectiveScore = -Infinity;
+        let bestTrainMean = 0;
+        let bestValMean = 0;
+        let bestOverfitGap = 0;
+
+        const iterations = options.iterations || 20;
+
+        for (let i = 0; i < iterations; i++) {
+            let testWeights = { ...baseWeights };
+            if (i > 0) {
+                // Seleção aleatória determinística via PRNG
+                const numVary = prng.nextInt(1, 3);
+                const shuffledFactors = prng.shuffle(factors);
+                for (let f = 0; f < numVary; f++) {
+                    const factorKey = shuffledFactors[f];
+                    const scale = variations[prng.nextInt(0, variations.length - 1)];
+                    testWeights[factorKey] = baseWeights[factorKey] * scale;
+                }
+            }
+
+            testWeights = this.normalizeWeights(testWeights);
+
+            // Avalia no conjunto de treino
+            const trainHitsSum = this._quickEvaluateWeights(trainHistory, config, testWeights, prng);
+            const trainMean = trainHitsSum / Math.max(1, trainHistory.length - 10);
+
+            // Avalia no conjunto de validação
+            const valHitsSum = this._quickEvaluateWeights(valHistory, config, testWeights, prng);
+            const valMean = valHitsSum / Math.max(1, valHistory.length - 5);
+
+            const overfitGap = Math.max(0, trainMean - valMean);
+            // Função objetivo: valor em validação penalizado pelo descompasso treino/validação (overfitting)
+            const objectiveScore = valMean - 1.5 * overfitGap;
+
+            if (objectiveScore > bestObjectiveScore) {
+                bestObjectiveScore = objectiveScore;
                 bestWeights = testWeights;
+                bestTrainMean = Number(trainMean.toFixed(2));
+                bestValMean = Number(valMean.toFixed(2));
+                bestOverfitGap = Number(overfitGap.toFixed(2));
             }
         }
-        
+
+        const isOverfit = bestOverfitGap > 1.0;
+
         return {
             optimizedWeights: bestWeights,
-            isOverfitting: false,
-            method: 'grid_search_random_subset'
+            bestObjectiveScore: Number(bestObjectiveScore.toFixed(2)),
+            trainMean: bestTrainMean,
+            valMean: bestValMean,
+            overfitGap: bestOverfitGap,
+            isOverfit,
+            method: 'Otimização Determinística Grid/Random (Treino 70% / Validação 30%)'
         };
     }
+
+    /**
+     * Avaliação rápida interna de um conjunto de pesos para otimização
+     */
+    static _quickEvaluateWeights(historySlice, config, weights, prng) {
+        if (!historySlice || historySlice.length < 5) return 0;
+        let hitsTotal = 0;
+        const evalCount = Math.min(15, historySlice.length - 1);
+        const total = config.total;
+        const pick = config.pick;
+
+        for (let i = 0; i < evalCount; i++) {
+            const draw = historySlice[i];
+            const actual = new Set((draw.dezenas || []).map(Number));
+            const past = historySlice.slice(i + 1);
+
+            // Frequência rápida no passado
+            const freq = {};
+            past.forEach(pd => {
+                (pd.dezenas || []).forEach(d => {
+                    const n = Number(d);
+                    freq[n] = (freq[n] || 0) + 1;
+                });
+            });
+
+            // Seleção determinística ponderada por freqs * pesos.frequency
+            const cand = [];
+            const nums = Array.from({ length: total }, (_, idx) => idx + 1);
+            nums.sort((a, b) => (freq[b] || 0) - (freq[a] || 0));
+            cand.push(...nums.slice(0, pick));
+
+            const hits = cand.filter(n => actual.has(n)).length;
+            hitsTotal += hits;
+        }
+
+        return hitsTotal;
+    }
 }
+

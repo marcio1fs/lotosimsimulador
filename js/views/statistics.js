@@ -151,14 +151,55 @@ export class StatisticsView {
     }
 
     /**
-     * Renderiza distribuição Monte Carlo como histograma
+     * Renderiza o Relatório Final Sintético do Modelo com Status de Validação
      */
-    static renderMonteCarloChart(mcData) {
-        if (!mcData || !mcData.empiricalDistribution) return;
-        const dist = mcData.empiricalDistribution;
-        const labels = Object.keys(dist).sort((a, b) => parseInt(a) - parseInt(b));
-        const values = labels.map(k => dist[k]);
-        this._renderBar('monteCarloChart', labels.map(k => `${k} acertos`), values, labels.map(() => 'rgba(16,185,129,0.6)'));
+    static renderModelReport(pipeline) {
+        const container = document.getElementById('modelReportPanel');
+        if (!container || !pipeline) return;
+
+        const statusBadges = {
+            VALIDATED: '<span class="badge badge-green">VALIDADO (Superioridade Confirmada)</span>',
+            NOT_SIGNIFICANT: '<span class="badge badge-gold">NÃO SIGNIFICANTE (p >= 0.05)</span>',
+            OVERFIT: '<span class="badge badge-red">OVERFITTING DETECTADO</span>',
+            BASELINE_NOT_BEATEN: '<span class="badge badge-red">BASELINE NÃO SUPERADA</span>',
+            INSUFFICIENT_DATA: '<span class="badge badge-gold">DADOS INSUFICIENTES</span>',
+            NOT_VALIDATED: '<span class="badge badge-purple">NÃO VALIDADO</span>'
+        };
+
+        const bt = pipeline.backtestResult || {};
+        const mc = pipeline.monteCarloResult || {};
+        const statusHtml = statusBadges[pipeline.status] || statusBadges.NOT_VALIDATED;
+
+        const ciText = bt.confidenceInterval && typeof bt.confidenceInterval.lower === 'number'
+            ? `[${bt.confidenceInterval.lower} — ${bt.confidenceInterval.upper}] (${bt.confidenceInterval.method || 'Student-t'})`
+            : 'Dados Insuficientes';
+
+        container.innerHTML = `
+            <div style="font-family:monospace; background:rgba(0,0,0,0.4); padding:1rem; border-radius:8px; border:1px solid rgba(255,255,255,0.1); font-size:0.8rem; line-height:1.6;">
+                <div style="font-weight:bold; color:var(--text-main); border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:0.4rem; margin-bottom:0.6rem;">
+                    =====================================<br>
+                    RELATÓRIO DE VALIDAÇÃO DO MODELO<br>
+                    =====================================
+                </div>
+                <div>Status do Modelo: ${statusHtml}</div>
+                <div>Amostra Avaliada: <strong>${bt.evaluatedDraws || 0} concursos</strong></div>
+                <div>Média do Modelo: <strong>${typeof bt.meanHits === 'number' ? bt.meanHits.toFixed(2) : '-'} acertos</strong></div>
+                <div>Média da Baseline: <strong>${typeof bt.baselineMean === 'number' ? bt.baselineMean.toFixed(2) : '-'} acertos</strong></div>
+                <div>Diferença ($\Delta$): <strong>${typeof bt.diffMean === 'number' ? (bt.diffMean > 0 ? '+' : '') + bt.diffMean.toFixed(2) : '-'} acertos</strong></div>
+                <div>Evolução Relativa: <strong>${bt.relativeImprovement || '0.0%'}</strong></div>
+                <div>Intervalo de Confiança 95%: <strong>${ciText}</strong></div>
+                <div>P-Value Exato (t-Student): <strong>${typeof bt.pValue === 'number' ? bt.pValue.toFixed(6) : '-'}</strong></div>
+                <div>Significativo (alpha=0.05): <strong>${bt.isStatisticallySignificant ? 'SIM (✅)' : 'NÃO (⚠️ sem evidência suficiente)'}</strong></div>
+                <div>Tamanho de Efeito (Cohen d): <strong>${typeof bt.effectSize === 'number' ? bt.effectSize.toFixed(4) : '-'} (${bt.effectDescriptor || 'Insuficiente'})</strong></div>
+                <div>Estabilidade (Monte Carlo): <strong>${mc.stabilityScore || '-'} / 100</strong></div>
+                <div>Cobertura do Portfólio: <strong>${pipeline.portfolioCoverage || '-'}%</strong></div>
+                <div>Diagnóstico de Overfitting: <strong>${bt.walkForward?.isOverfitting ? 'DETECTADO (Desconto Aplicado)' : 'NÃO DETECTADO'}</strong></div>
+                <div>Monte Carlo Iterações: <strong>${mc.iterations || 10000} (Seed: ${pipeline.seed || 123456})</strong></div>
+                <div style="margin-top:0.6rem; color:var(--text-muted); font-size:0.7rem; border-top:1px dashed rgba(255,255,255,0.1); padding-top:0.4rem;">
+                    Conclusão: ${bt.conclusion || 'Modelo sob análise estatística contínua.'}
+                </div>
+            </div>
+        `;
     }
 
     static showStats(show) { 

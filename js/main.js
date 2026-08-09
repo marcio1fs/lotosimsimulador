@@ -463,6 +463,18 @@ class AppController {
             StatisticsView.renderProbChart(appState.generatedGames);
             StatisticsView.renderComparisonChart(appState.generatedGames, type, rd);
             StatisticsView.renderRanking(appState.generatedGames);
+
+            if (appState.generatedGames.modelPipeline) {
+                StatisticsView.renderModelReport(appState.generatedGames.modelPipeline);
+                if (appState.generatedGames.modelPipeline.backtestResult?.walkForward) {
+                    StatisticsView.renderWalkForward(appState.generatedGames.modelPipeline.backtestResult.walkForward);
+                }
+                if (appState.generatedGames.modelPipeline.monteCarloResult) {
+                    StatisticsView.renderMonteCarloChart(appState.generatedGames.modelPipeline.monteCarloResult);
+                }
+            } else if (appState.generatedGames[0]?.monteCarlo) {
+                StatisticsView.renderMonteCarloChart(appState.generatedGames[0].monteCarlo);
+            }
         }
     }
 

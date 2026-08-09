@@ -5,6 +5,8 @@
 
 import { StatisticalAnalyzer } from './statisticalAnalyzer.js';
 import { BaselineEngine } from './baselineEngine.js';
+import { StatisticalInference } from './statisticalInference.js';
+import { SeededRandom } from './prng.js';
 
 export class BacktestEngine {
     /**
@@ -12,7 +14,7 @@ export class BacktestEngine {
      * @param {Array} fullHistory - Histórico completo de concursos (ordenado do mais recente [0] para o mais antigo [len-1])
      * @param {Object} config - Configuração da loteria (total, pick, drawn)
      * @param {Function} generatorFn - Função (historyBefore, config) => gameNumbers
-     * @param {Object} options - Parâmetros do backtest (windowSize, sampleCount, walkForwardSplit)
+     * @param {Object} options - Parâmetros do backtest (windowSize, sampleCount, walkForwardSplit, seed)
      */
     static runBacktest(fullHistory, config, generatorFn, options = {}) {
         if (!fullHistory || fullHistory.length < 10) {
@@ -41,6 +43,9 @@ export class BacktestEngine {
         const baselineHitsList = [];
         const hitTierBreakdown = {};
 
+        const baseSeed = options.seed ?? 123456;
+        const prng = new SeededRandom(baseSeed);
+
         // Executa o teste cego concurso por concurso
         for (let i = startIndex; i < totalDraws; i++) {
             // DATA LEAKAGE PREVENTION: usar rigorosamente apenas concursos anteriores a 'i'
@@ -52,7 +57,8 @@ export class BacktestEngine {
             // Gera o jogo baseado apenas no passado
             const predictedGame = generatorFn(historyBefore, config);
             const predArray = Array.isArray(predictedGame) ? predictedGame : 
-                              (predictedGame && predictedGame.dezenas ? predictedGame.dezenas : []);
+                              (predictedGame && predictedGame.dezenas ? predictedGame.dezenas : 
+                              (predictedGame && predictedGame.numbers ? predictedGame.numbers : []));
 
             // Calcula quantidade de acertos no concurso 'i'
             let hits = 0;
@@ -67,8 +73,8 @@ export class BacktestEngine {
                 hitTierBreakdown[hits] = (hitTierBreakdown[hits] || 0) + 1;
             }
             
-            // Baseline local para t-test
-            const baselineGame = BaselineEngine.generateRandomGame(config);
+            // Baseline local para t-test com PRNG controlado por seed
+            const baselineGame = BaselineEngine.generateRandomGame(config, prng);
             let bHits = 0;
             baselineGame.forEach(n => {
                 if (actualNumbers.has(n)) bHits++;
@@ -77,19 +83,18 @@ export class BacktestEngine {
         }
 
         // Estatísticas de acerto do modelo
-        const modelStats = StatisticalAnalyzer.calculateDistributionStats(hitsList);
+        const modelStats = StatisticalInference.calculateStats(hitsList);
 
         // Executa Baseline Aleatória idêntica para os mesmos concursos
-        const baselineResult = BaselineEngine.runRandomBaseline(fullHistory, config, windowSize);
+        const baselineResult = BaselineEngine.runRandomBaseline(fullHistory, config, windowSize, 30, baseSeed);
 
-        // Comparação com a baseline
-        const diffMean = Number((modelStats.mean - baselineResult.mean).toFixed(2));
-        const relativeImprovement = baselineResult.mean > 0 
-            ? ((diffMean / baselineResult.mean) * 100).toFixed(1) + '%' 
-            : '0.0%';
-            
-        const tTestResult = this.pairedTTest(hitsList, baselineHitsList);
-        const confidenceInterval = this.confidenceInterval95(hitsList);
+        // Comparação de Inferência Estatística Exata com a baseline
+        const inferenceTest = StatisticalInference.pairedTTest(hitsList, baselineHitsList, 0.05);
+        const confidenceInterval = StatisticalInference.confidenceInterval(hitsList, 0.95);
+        const bootstrapResult = StatisticalInference.bootstrapCompare(hitsList, baselineHitsList, {
+            iterations: options.bootstrapIterations || 5000,
+            seed: options.seed || 123456
+        });
 
         // Detecção de Overfitting (Walk-Forward Split)
         const trainTestSplit = this.evaluateWalkForward(chronological, config, generatorFn, windowSize);
@@ -98,18 +103,22 @@ export class BacktestEngine {
             evaluatedDraws: hitsList.length,
             meanHits: modelStats.mean,
             medianHits: modelStats.median,
-            minHits: modelStats.min,
-            maxHits: modelStats.max,
-            stdDev: modelStats.stdDev,
+            minHits: Math.min(...hitsList),
+            maxHits: Math.max(...hitsList),
+            stdDev: modelStats.standardDeviation,
             hitsDistribution,
             hitTierBreakdown,
             baselineMean: baselineResult.mean,
-            diffMean,
-            relativeImprovement,
+            diffMean: inferenceTest.difference,
+            relativeImprovement: inferenceTest.relativeImprovement,
             confidenceInterval,
-            pValue: tTestResult.pValue,
-            isStatisticallySignificant: tTestResult.isSignificant,
-            tTestResult,
+            pValue: inferenceTest.pValue,
+            isStatisticallySignificant: inferenceTest.statisticallySignificant,
+            effectSize: inferenceTest.effectSize,
+            effectDescriptor: inferenceTest.effectDescriptor,
+            conclusion: inferenceTest.conclusion,
+            tTestResult: inferenceTest,
+            bootstrapResult,
             walkForward: trainTestSplit,
             dataLeakageDetected: false
         };
@@ -209,52 +218,20 @@ export class BacktestEngine {
     }
 
     /**
-     * Teste t pareado para comparar modelo vs baseline
-     * @returns {{ tStatistic: number, pValue: number, isSignificant: boolean }}
+     * Teste t pareado delegando para o módulo de Inferência Estatística Exata
      */
-    static pairedTTest(modelHits, baselineHits) {
-        const n = Math.min(modelHits.length, baselineHits.length);
-        if (n < 2) return { tStatistic: 0, pValue: 1, isSignificant: false };
-        
-        const diffs = modelHits.slice(0, n).map((m, i) => m - baselineHits[i]);
-        const meanDiff = diffs.reduce((a, b) => a + b, 0) / n;
-        const variance = diffs.reduce((s, d) => s + Math.pow(d - meanDiff, 2), 0) / (n - 1);
-        const se = Math.sqrt(variance / n);
-        
-        if (se === 0) return { tStatistic: 0, pValue: meanDiff > 0 ? 0 : 1, isSignificant: meanDiff > 0 };
-        
-        const tStat = meanDiff / se;
-        // Approximate p-value for one-tailed test using t-distribution
-        // Using approximation: p ≈ 0.5 * erfc(|t| / sqrt(2)) for large n
-        const df = n - 1;
-        const x = df / (df + tStat * tStat);
-        // Regularized incomplete beta function approximation
-        const pValue = tStat > 0 ? 0.5 * Math.exp(-0.5 * tStat * tStat * (1 + 0.3 / df)) : 1;
-        
+    static pairedTTest(modelHits, baselineHits, alpha = 0.05) {
+        const res = StatisticalInference.pairedTTest(modelHits, baselineHits, alpha);
         return {
-            tStatistic: Number(tStat.toFixed(4)),
-            pValue: Number(Math.max(0, Math.min(1, pValue)).toFixed(6)),
-            isSignificant: pValue < 0.05,
-            n,
-            meanDiff: Number(meanDiff.toFixed(4))
+            ...res,
+            isSignificant: res.statisticallySignificant
         };
     }
 
     /**
-     * Calcula intervalo de confiança de 95% para a média
+     * Intervalo de Confiança delegando para o módulo de Inferência Estatística
      */
     static confidenceInterval95(values) {
-        const n = values.length;
-        if (n < 2) return { lower: values[0] || 0, upper: values[0] || 0, margin: 0 };
-        const mean = values.reduce((a, b) => a + b, 0) / n;
-        const variance = values.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / (n - 1);
-        const se = Math.sqrt(variance / n);
-        const margin = 1.96 * se;
-        return {
-            lower: Number((mean - margin).toFixed(4)),
-            upper: Number((mean + margin).toFixed(4)),
-            margin: Number(margin.toFixed(4)),
-            mean: Number(mean.toFixed(4))
-        };
+        return StatisticalInference.confidenceInterval(values, 0.95);
     }
 }

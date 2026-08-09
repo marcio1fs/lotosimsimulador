@@ -145,19 +145,21 @@ export class AppView {
             const stats = typeof g.stats === 'string' ? JSON.parse(g.stats) : g.stats;
             const explanations = typeof g.explanations === 'string' ? JSON.parse(g.explanations) : (g.explanations || []);
             const modelScore = g.modelScore || 0;
-            const perf = g.historicalPerformance || '+0.0%';
-            const expectedHits = g.expectedHits || (cfg.drawn * 0.6).toFixed(1);
+            const perf = g.historicalPerformance ? g.historicalPerformance : 'Sem dados';
+            const expectedHitsDisplay = typeof g.expectedHits === 'number' ? `${g.expectedHits} acertos` : 'Dados estatísticos insuficientes';
             const ci = g.confidenceInterval;
             const seed = g.seed;
             const mc = g.monteCarlo;
             const coverage = g.portfolioCoverage;
 
             // Badge de significância
-            const sigBadge = g.isStatisticallySignificant === true 
+            const sigBadge = g.statisticallySignificant === true || g.isStatisticallySignificant === true 
                 ? '<span class="badge badge-green" style="font-size:0.6rem;">✅ Significante</span>'
-                : g.isStatisticallySignificant === false 
+                : g.statisticallySignificant === false || g.isStatisticallySignificant === false
                     ? '<span class="badge badge-gold" style="font-size:0.6rem;">⚠️ Não-significante</span>'
                     : '';
+
+            const ciMethodText = ci && ci.method ? ` (${ci.method})` : '';
 
             return `
             <div class="game-card animate-in" style="animation-delay:${i*0.05}s">
@@ -168,8 +170,8 @@ export class AppView {
                 
                 <div class="game-metrics-row" style="display:flex; flex-wrap:wrap; gap:0.5rem; font-size:0.72rem; color:var(--text-muted); margin-bottom:0.75rem; background:rgba(255,255,255,0.03); padding:0.5rem 0.6rem; border-radius:6px;">
                     <div>Histórico: <strong style="color:var(--accent-green);">${perf}</strong></div>
-                    <div>Esperado: <strong>${expectedHits} acertos</strong></div>
-                    ${ci ? `<div>IC 95%: <strong>[${ci.lower} — ${ci.upper}]</strong></div>` : ''}
+                    <div>Esperado: <strong>${expectedHitsDisplay}</strong></div>
+                    ${ci && typeof ci.lower === 'number' ? `<div>IC 95%${ciMethodText}: <strong>[${ci.lower} — ${ci.upper}]</strong></div>` : ''}
                     ${sigBadge}
                 </div>
 
