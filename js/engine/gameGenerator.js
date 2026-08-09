@@ -6,6 +6,7 @@ import { StatisticalAnalyzer } from './statisticalAnalyzer.js';
 import { ScoringEngine, DEFAULT_WEIGHTS } from './scoringEngine.js';
 import { BacktestEngine } from './backtestEngine.js';
 import { BaselineEngine } from './baselineEngine.js';
+import { SeededRandom } from './prng.js';
 
 export class GameGenerator {
     /**
@@ -34,12 +35,13 @@ export class GameGenerator {
      * @param {Object} backtestSummary - Resumo de backtesting (opcional)
      */
     static generateBatch(type, analysis, strategy, fixed = [], excluded = [], count = 10, config, customWeights = null, backtestSummary = null) {
+        const rng = new SeededRandom();
         const candidatesPool = [];
         const poolSize = Math.max(count * 8, 100);
 
         // Gera piscina de candidatos
         for (let i = 0; i < poolSize; i++) {
-            const game = this.generateSingleCandidate(type, analysis, strategy, fixed, excluded, config, customWeights);
+            const game = this.generateSingleCandidate(type, analysis, strategy, fixed, excluded, config, customWeights, rng);
             if (game && game.length === config.pick) {
                 // Garante que é estritamente único internamente
                 const unique = [...new Set(game)].sort((a, b) => a - b);
@@ -91,24 +93,30 @@ export class GameGenerator {
             selectedGames.push({ numbers: randomGame, scoreObj });
         }
 
+        // Calcula coverage do portfólio
+        const allNumbers = new Set();
+        selectedGames.forEach(g => g.numbers.forEach(n => allNumbers.add(n)));
+        const portfolioCoverage = Number((allNumbers.size / config.total * 100).toFixed(1));
+
         return selectedGames.map((g, idx) => ({
             id: Date.now() + idx,
             numbers: g.numbers,
-            probability: g.scoreObj.modelScore,
             modelScore: g.scoreObj.modelScore,
             historicalPerformance: g.scoreObj.historicalPerformance,
             expectedHits: g.scoreObj.expectedHits,
             confidenceLevel: g.scoreObj.confidenceLevel,
             probabilityType: g.scoreObj.probabilityType,
             explanations: g.scoreObj.explanations,
-            stats: g.scoreObj.stats
+            stats: g.scoreObj.stats,
+            portfolioCoverage,
+            seed: rng.seed
         }));
     }
 
     /**
      * Gera uma única combinação candidata baseada na estratégia
      */
-    static generateSingleCandidate(type, analysis, strategy, fixed = [], excluded = [], config, customWeights = null) {
+    static generateSingleCandidate(type, analysis, strategy, fixed = [], excluded = [], config, customWeights = null, rng = null) {
         const total = config.total;
         const pick = config.pick;
         const { freqAbsolute, currentDelay } = analysis;
@@ -149,7 +157,7 @@ export class GameGenerator {
                     // Modelo Estatístico Adaptativo: equilibra alta frequência, recência e retorno de atrasos moderados
                     const fNorm = (f - minFreq) / rangeFreq;
                     const dNorm = d / (maxDelay || 1);
-                    weight = (fNorm * 0.45) + (dNorm * 0.35) + (Math.random() * 0.20);
+                    weight = (fNorm * 0.45) + (dNorm * 0.35) + ((rng ? rng.next() : Math.random()) * 0.20);
                     break;
             }
 
@@ -166,18 +174,20 @@ export class GameGenerator {
         while (selected.size < pick && pool.length > 0 && attempts < 100) {
             attempts++;
             const topSliceSize = Math.min(6, pool.length);
-            const randomIndex = Math.floor(Math.random() * topSliceSize);
+            const randomIndex = Math.floor((rng ? rng.next() : Math.random()) * topSliceSize);
             const chosen = pool[randomIndex];
 
             if (chosen && !selected.has(chosen.num)) {
                 selected.add(chosen.num);
                 pool.splice(randomIndex, 1);
+            } else if (chosen) {
+                pool.splice(randomIndex, 1); // Remove already-selected number from pool
             }
         }
 
         // Se faltar dezenas por limites de exclusão, completa com números aleatórios válidos
         while (selected.size < pick) {
-            const randNum = Math.floor(Math.random() * total) + 1;
+            const randNum = Math.floor((rng ? rng.next() : Math.random()) * total) + 1;
             if (!excluded.includes(randNum)) {
                 selected.add(randNum);
             }

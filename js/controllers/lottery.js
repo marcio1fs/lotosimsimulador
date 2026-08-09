@@ -4,6 +4,7 @@ import { Database } from '../db/database.js';
 import { StatisticalAnalyzer } from '../engine/statisticalAnalyzer.js';
 import { BacktestEngine } from '../engine/backtestEngine.js';
 import { GameGenerator } from '../engine/gameGenerator.js';
+import { BaselineEngine } from '../engine/baselineEngine.js';
 
 export class LotteryController {
     /**
@@ -87,7 +88,6 @@ export class LotteryController {
                 lotteryType: type,
                 strategy,
                 numbers: JSON.stringify(game.numbers),
-                probability: game.probability,
                 modelScore: game.modelScore,
                 historicalPerformance: game.historicalPerformance,
                 expectedHits: game.expectedHits,
@@ -127,14 +127,17 @@ export class LotteryController {
 
         strategies.forEach(strat => {
             if (strat.id === 'random') {
-                const generatorFn = (past, cfg) => GameGenerator.generateSingleCandidate(cfg.apiName, StatisticalAnalyzer.analyze(past, cfg), 'weighted', [], [], cfg);
+                const generatorFn = (past, cfg) => BaselineEngine.generateRandomGame(cfg);
                 const bt = BacktestEngine.runBacktest(fullHistory, config, generatorFn, { windowSize });
                 results.push({
                     strategy: strat.name,
                     meanHits: bt.baselineMean,
                     baselineMean: bt.baselineMean,
                     diff: 0.0,
-                    relativeImprovement: '0.0%'
+                    relativeImprovement: '0.0%',
+                    pValue: 1,
+                    isSignificant: false,
+                    confidenceInterval: null
                 });
             } else {
                 const generatorFn = (past, cfg) => {
@@ -147,7 +150,10 @@ export class LotteryController {
                     meanHits: bt.meanHits,
                     baselineMean: bt.baselineMean,
                     diff: bt.diffMean,
-                    relativeImprovement: bt.relativeImprovement
+                    relativeImprovement: bt.relativeImprovement,
+                    pValue: bt.pValue,
+                    isSignificant: bt.isStatisticallySignificant,
+                    confidenceInterval: bt.confidenceInterval
                 });
             }
         });

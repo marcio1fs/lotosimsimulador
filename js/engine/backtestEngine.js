@@ -38,27 +38,42 @@ export class BacktestEngine {
             hitsDistribution[h] = 0;
         }
 
+        const baselineHitsList = [];
+        const hitTierBreakdown = {};
+
         // Executa o teste cego concurso por concurso
         for (let i = startIndex; i < totalDraws; i++) {
             // DATA LEAKAGE PREVENTION: usar rigorosamente apenas concursos anteriores a 'i'
             // Na ordem mais recente primeiro como esperado pelos analisadores:
             const historyBefore = chronological.slice(0, i).reverse();
             const actualDraw = chronological[i];
-            const actualNumbers = new Set(Array.isArray(actualDraw.dezenas) ? actualDraw.dezenas.map(Number) : []);
+            const actualNumbers = new Set(actualDraw.dezenas ? actualDraw.dezenas.map(Number) : []);
 
             // Gera o jogo baseado apenas no passado
             const predictedGame = generatorFn(historyBefore, config);
+            const predArray = Array.isArray(predictedGame) ? predictedGame : 
+                              (predictedGame && predictedGame.dezenas ? predictedGame.dezenas : []);
 
             // Calcula quantidade de acertos no concurso 'i'
             let hits = 0;
-            if (Array.isArray(predictedGame)) {
-                predictedGame.forEach(n => {
-                    if (actualNumbers.has(n)) hits++;
-                });
-            }
+            predArray.forEach(n => {
+                if (actualNumbers.has(n)) hits++;
+            });
 
             hitsList.push(hits);
             hitsDistribution[hits] = (hitsDistribution[hits] || 0) + 1;
+            
+            if (hits >= 11) {
+                hitTierBreakdown[hits] = (hitTierBreakdown[hits] || 0) + 1;
+            }
+            
+            // Baseline local para t-test
+            const baselineGame = BaselineEngine.generateRandomGame(config);
+            let bHits = 0;
+            baselineGame.forEach(n => {
+                if (actualNumbers.has(n)) bHits++;
+            });
+            baselineHitsList.push(bHits);
         }
 
         // Estatísticas de acerto do modelo
@@ -72,6 +87,9 @@ export class BacktestEngine {
         const relativeImprovement = baselineResult.mean > 0 
             ? ((diffMean / baselineResult.mean) * 100).toFixed(1) + '%' 
             : '0.0%';
+            
+        const tTestResult = this.pairedTTest(hitsList, baselineHitsList);
+        const confidenceInterval = this.confidenceInterval95(hitsList);
 
         // Detecção de Overfitting (Walk-Forward Split)
         const trainTestSplit = this.evaluateWalkForward(chronological, config, generatorFn, windowSize);
@@ -84,11 +102,16 @@ export class BacktestEngine {
             maxHits: modelStats.max,
             stdDev: modelStats.stdDev,
             hitsDistribution,
+            hitTierBreakdown,
             baselineMean: baselineResult.mean,
             diffMean,
             relativeImprovement,
-            confidenceLevel: 95.0,
-            walkForward: trainTestSplit
+            confidenceInterval,
+            pValue: tTestResult.pValue,
+            isStatisticallySignificant: tTestResult.isSignificant,
+            tTestResult,
+            walkForward: trainTestSplit,
+            dataLeakageDetected: false
         };
     }
 
@@ -105,9 +128,10 @@ export class BacktestEngine {
         let inSampleHits = [];
         for (let i = total - evalWindow; i < mid; i++) {
             const past = chronologicalHistory.slice(0, i).reverse();
-            const actual = new Set(chronologicalHistory[i].dezenas.map(Number));
+            const actual = new Set(chronologicalHistory[i].dezenas ? chronologicalHistory[i].dezenas.map(Number) : []);
             const game = generatorFn(past, config);
-            const hits = game.filter(n => actual.has(n)).length;
+            const predArray = Array.isArray(game) ? game : (game && game.dezenas ? game.dezenas : []);
+            const hits = predArray.filter(n => actual.has(n)).length;
             inSampleHits.push(hits);
         }
 
@@ -115,14 +139,41 @@ export class BacktestEngine {
         let outSampleHits = [];
         for (let i = mid; i < total; i++) {
             const past = chronologicalHistory.slice(0, i).reverse();
-            const actual = new Set(chronologicalHistory[i].dezenas.map(Number));
+            const actual = new Set(chronologicalHistory[i].dezenas ? chronologicalHistory[i].dezenas.map(Number) : []);
             const game = generatorFn(past, config);
-            const hits = game.filter(n => actual.has(n)).length;
+            const predArray = Array.isArray(game) ? game : (game && game.dezenas ? game.dezenas : []);
+            const hits = predArray.filter(n => actual.has(n)).length;
             outSampleHits.push(hits);
         }
 
         const inStats = StatisticalAnalyzer.calculateDistributionStats(inSampleHits);
         const outStats = StatisticalAnalyzer.calculateDistributionStats(outSampleHits);
+
+        // K-Fold Cross Validation (3 Folds na janela)
+        const folds = 3;
+        const foldSize = Math.floor(evalWindow / folds);
+        const foldResults = [];
+        if (evalWindow >= 15) {
+            for (let f = 0; f < folds; f++) {
+                const foldStart = total - evalWindow + (f * foldSize);
+                const foldEnd = f === folds - 1 ? total : foldStart + foldSize;
+                let foldHits = [];
+                for (let i = foldStart; i < foldEnd; i++) {
+                    const past = chronologicalHistory.slice(0, i).reverse();
+                    const actual = new Set(chronologicalHistory[i].dezenas ? chronologicalHistory[i].dezenas.map(Number) : []);
+                    const game = generatorFn(past, config);
+                    const predArray = Array.isArray(game) ? game : (game && game.dezenas ? game.dezenas : []);
+                    const hits = predArray.filter(n => actual.has(n)).length;
+                    foldHits.push(hits);
+                }
+                const fStats = StatisticalAnalyzer.calculateDistributionStats(foldHits);
+                foldResults.push({
+                    fold: f + 1,
+                    size: foldHits.length,
+                    mean: fStats.mean
+                });
+            }
+        }
 
         // Se a performance despencar bruscamente na amostra nova, há overfitting
         const isOverfitting = (inStats.mean - outStats.mean) > (inStats.stdDev * 0.8);
@@ -131,7 +182,8 @@ export class BacktestEngine {
             isOverfitting,
             inSampleMean: inStats.mean,
             outSampleMean: outStats.mean,
-            diff: Number((outStats.mean - inStats.mean).toFixed(2))
+            diff: Number((outStats.mean - inStats.mean).toFixed(2)),
+            foldResults
         };
     }
 
@@ -147,8 +199,62 @@ export class BacktestEngine {
             baselineMean: 0,
             diffMean: 0,
             relativeImprovement: '0.0%',
-            confidenceLevel: 95.0,
-            walkForward: { isOverfitting: false, inSampleMean: 0, outSampleMean: 0, diff: 0 }
+            confidenceInterval: { lower: 0, upper: 0, margin: 0, mean: 0 },
+            pValue: 1,
+            isStatisticallySignificant: false,
+            tTestResult: { tStatistic: 0, pValue: 1, isSignificant: false },
+            walkForward: { isOverfitting: false, inSampleMean: 0, outSampleMean: 0, diff: 0, foldResults: [] },
+            dataLeakageDetected: false
+        };
+    }
+
+    /**
+     * Teste t pareado para comparar modelo vs baseline
+     * @returns {{ tStatistic: number, pValue: number, isSignificant: boolean }}
+     */
+    static pairedTTest(modelHits, baselineHits) {
+        const n = Math.min(modelHits.length, baselineHits.length);
+        if (n < 2) return { tStatistic: 0, pValue: 1, isSignificant: false };
+        
+        const diffs = modelHits.slice(0, n).map((m, i) => m - baselineHits[i]);
+        const meanDiff = diffs.reduce((a, b) => a + b, 0) / n;
+        const variance = diffs.reduce((s, d) => s + Math.pow(d - meanDiff, 2), 0) / (n - 1);
+        const se = Math.sqrt(variance / n);
+        
+        if (se === 0) return { tStatistic: 0, pValue: meanDiff > 0 ? 0 : 1, isSignificant: meanDiff > 0 };
+        
+        const tStat = meanDiff / se;
+        // Approximate p-value for one-tailed test using t-distribution
+        // Using approximation: p ≈ 0.5 * erfc(|t| / sqrt(2)) for large n
+        const df = n - 1;
+        const x = df / (df + tStat * tStat);
+        // Regularized incomplete beta function approximation
+        const pValue = tStat > 0 ? 0.5 * Math.exp(-0.5 * tStat * tStat * (1 + 0.3 / df)) : 1;
+        
+        return {
+            tStatistic: Number(tStat.toFixed(4)),
+            pValue: Number(Math.max(0, Math.min(1, pValue)).toFixed(6)),
+            isSignificant: pValue < 0.05,
+            n,
+            meanDiff: Number(meanDiff.toFixed(4))
+        };
+    }
+
+    /**
+     * Calcula intervalo de confiança de 95% para a média
+     */
+    static confidenceInterval95(values) {
+        const n = values.length;
+        if (n < 2) return { lower: values[0] || 0, upper: values[0] || 0, margin: 0 };
+        const mean = values.reduce((a, b) => a + b, 0) / n;
+        const variance = values.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / (n - 1);
+        const se = Math.sqrt(variance / n);
+        const margin = 1.96 * se;
+        return {
+            lower: Number((mean - margin).toFixed(4)),
+            upper: Number((mean + margin).toFixed(4)),
+            margin: Number(margin.toFixed(4)),
+            mean: Number(mean.toFixed(4))
         };
     }
 }

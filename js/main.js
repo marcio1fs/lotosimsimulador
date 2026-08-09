@@ -476,7 +476,7 @@ class AppController {
 
         appState.generatedGames.forEach((g, i) => {
             const nums = g.numbers.map(n => String(n).padStart(2, '0')).join(' - ');
-            content += `JOGO #${i+1} [Confiança: ${g.probability}%]\n`;
+            content += `JOGO #${i+1} [Score: ${g.modelScore}/100]\n`;
             content += `${nums}\n\n`;
         });
 
@@ -516,28 +516,7 @@ class AppController {
         AppView.renderConferenceResults(results, type, appState.resultsData[type]?.lastResult);
     }
 
-    static updateStats() {
-        const type = appState.currentLottery;
-        const rd = appState.resultsData[type];
-        if (!rd || !rd.analysis) { 
-            StatisticsView.showStats(false); 
-            StatisticsView.showPatterns(false); 
-            return; 
-        }
-        
-        StatisticsView.showStats(true);
-        StatisticsView.renderFrequency(type, rd);
-        StatisticsView.renderParity(rd, type);
-        StatisticsView.renderRange(type, rd);
-        StatisticsView.renderFreqGrid(type, rd);
-        
-        if (appState.generatedGames.length > 0) {
-            StatisticsView.showPatterns(true);
-            StatisticsView.renderProbChart(appState.generatedGames);
-            StatisticsView.renderComparisonChart(appState.generatedGames, type, rd);
-            StatisticsView.renderRanking(appState.generatedGames);
-        }
-    }
+
 
     static toggleAutomation(id) {
         const key = id.replace('Toggle','').toLowerCase(); // 'autofetch'

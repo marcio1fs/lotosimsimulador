@@ -25,6 +25,7 @@ export class StatisticalAnalyzer {
     static analyze(history, config) {
         const total = config.total;
         const drawCount = history.length;
+        const drawn = config.drawn || config.pick;
 
         // 1. Inicialização das estruturas de dados
         const freqAbsolute = {};
@@ -113,7 +114,7 @@ export class StatisticalAnalyzer {
         });
 
         // 2. Cálculos derivados
-        const expectedFreq = drawCount * (config.drawn || config.pick) / total;
+        const expectedFreq = drawCount * drawn / total;
 
         // Frequência relativa, ponderada e tendência
         const freqRelative = {};
@@ -170,7 +171,7 @@ export class StatisticalAnalyzer {
         for (let i = 1; i <= total; i++) {
             for (let j = i + 1; j <= total; j++) {
                 const count = pairMatrix[i][j];
-                const expectedPairCount = drawCount * ((config.drawn * (config.drawn - 1)) / (total * (total - 1)));
+                const expectedPairCount = drawCount * ((drawn * (drawn - 1)) / (total * (total - 1)));
                 topPairs.push({
                     pair: [i, j],
                     count,
@@ -180,6 +181,34 @@ export class StatisticalAnalyzer {
             }
         }
         topPairs.sort((a, b) => b.count - a.count);
+
+        const topPairsSliced = topPairs.slice(0, 30);
+        topPairsSliced.forEach(p => {
+            const freqA = (freqAbsolute[p.pair[0]] || 0) / drawCount;
+            const freqB = (freqAbsolute[p.pair[1]] || 0) / drawCount;
+            const pairFreq = p.count / drawCount;
+            p.lift = (freqA > 0 && freqB > 0) ? Number((pairFreq / (freqA * freqB)).toFixed(4)) : 1;
+        });
+
+        // Análise de Trincas (Top 20 combinações de 3 números)
+        const tripleCounts = {};
+        for (const draw of history) {
+            const nums = Array.isArray(draw.dezenas) ? draw.dezenas.map(Number).sort((a, b) => a - b) : [];
+            for (let i = 0; i < nums.length; i++) {
+                for (let j = i + 1; j < nums.length; j++) {
+                    for (let k = j + 1; k < nums.length; k++) {
+                        const key = `${nums[i]}-${nums[j]}-${nums[k]}`;
+                        tripleCounts[key] = (tripleCounts[key] || 0) + 1;
+                    }
+                }
+            }
+        }
+        const topTriples = Object.entries(tripleCounts)
+            .map(([key, count]) => ({ numbers: key.split('-').map(Number), count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 20);
+
+        const chiSquare = this.chiSquareUniformity(freqAbsolute, total, drawCount, drawn);
 
         return {
             drawCount,
@@ -196,8 +225,36 @@ export class StatisticalAnalyzer {
             primeStats,
             repetitionStats,
             rangeDistributions,
-            topPairs: topPairs.slice(0, 30), // Top 30 pares
-            pairMatrix
+            topPairs: topPairsSliced, // Top 30 pares com lift
+            pairMatrix,
+            topTriples,
+            chiSquare
+        };
+    }
+
+    /**
+     * Teste Chi-Quadrado de uniformidade para frequências
+     * @returns {{ chiSquare: number, degreesOfFreedom: number, pValue: number, isUniform: boolean }}
+     */
+    static chiSquareUniformity(freqAbsolute, total, drawCount, drawn) {
+        const expected = (drawCount * drawn) / total;
+        let chiSq = 0;
+        for (let n = 1; n <= total; n++) {
+            const observed = freqAbsolute[n] || 0;
+            chiSq += Math.pow(observed - expected, 2) / expected;
+        }
+        const df = total - 1;
+        // Approximate p-value using Wilson-Hilferty approximation
+        const z = Math.pow(chiSq / df, 1/3) - (1 - 2 / (9 * df));
+        const se = Math.sqrt(2 / (9 * df));
+        const zScore = z / se;
+        // Standard normal CDF approximation
+        const pValue = 1 - 0.5 * (1 + Math.tanh(zScore * 0.7978845608));
+        return {
+            chiSquare: Number(chiSq.toFixed(4)),
+            degreesOfFreedom: df,
+            pValue: Number(Math.max(0, Math.min(1, pValue)).toFixed(6)),
+            isUniform: pValue > 0.05
         };
     }
 
@@ -205,8 +262,9 @@ export class StatisticalAnalyzer {
      * Calcula métricas estatísticas descritivas (média, mediana, desvio padrão, min, max, P10, P90)
      */
     static calculateDistributionStats(list) {
-        if (!list || list.length === 0) {
-            return { mean: 0, median: 0, stdDev: 0, min: 0, max: 0, p10: 0, p90: 0, distribution: {} };
+        if (!list || list.length <= 1) {
+            const val = list && list.length === 1 ? list[0] : 0;
+            return { mean: val, median: val, variance: 0, stdDev: 0, min: val, max: val, p10: val, p90: val, distribution: {} };
         }
 
         const sorted = [...list].sort((a, b) => a - b);
@@ -214,12 +272,14 @@ export class StatisticalAnalyzer {
         const sum = sorted.reduce((a, b) => a + b, 0);
         const mean = sum / len;
 
-        const variance = sorted.reduce((s, val) => s + Math.pow(val - mean, 2), 0) / len;
+        const variance = sorted.reduce((s, val) => s + Math.pow(val - mean, 2), 0) / (len - 1);
         const stdDev = Math.sqrt(variance);
 
         const median = len % 2 === 0 ? (sorted[len / 2 - 1] + sorted[len / 2]) / 2 : sorted[Math.floor(len / 2)];
-        const p10 = sorted[Math.floor(len * 0.10)] || sorted[0];
-        const p90 = sorted[Math.floor(len * 0.90)] || sorted[len - 1];
+        const p10Idx = (len - 1) * 0.10;
+        const p10 = sorted[Math.floor(p10Idx)] + (p10Idx % 1) * ((sorted[Math.ceil(p10Idx)] || sorted[Math.floor(p10Idx)]) - sorted[Math.floor(p10Idx)]);
+        const p90Idx = (len - 1) * 0.90;
+        const p90 = sorted[Math.floor(p90Idx)] + (p90Idx % 1) * ((sorted[Math.ceil(p90Idx)] || sorted[Math.floor(p90Idx)]) - sorted[Math.floor(p90Idx)]);
 
         const distribution = {};
         sorted.forEach(val => {
@@ -229,6 +289,7 @@ export class StatisticalAnalyzer {
         return {
             mean: Number(mean.toFixed(2)),
             median,
+            variance: Number(variance.toFixed(2)),
             stdDev: Number(stdDev.toFixed(2)),
             min: sorted[0],
             max: sorted[len - 1],

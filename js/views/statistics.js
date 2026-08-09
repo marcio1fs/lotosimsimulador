@@ -67,8 +67,13 @@ export class StatisticsView {
 
         tbody.innerHTML = benchmarkList.map(item => {
             const isDiffPos = item.diff > 0;
-            const diffText = isDiffPos ? `+${item.diff}` : `${item.diff}`;
+            const diffText = isDiffPos ? `+${item.diff.toFixed(4)}` : `${(item.diff || 0).toFixed(4)}`;
             const badgeCls = isDiffPos ? 'badge-green' : item.diff === 0 ? 'badge-purple' : 'badge-red';
+            const pVal = item.pValue !== undefined ? item.pValue.toFixed(4) : '-';
+            const sigIcon = item.isSignificant ? '✅' : '⚠️';
+            const ciText = item.confidenceInterval 
+                ? `[${item.confidenceInterval.lower} — ${item.confidenceInterval.upper}]` 
+                : '-';
             return `
                 <tr>
                     <td><strong>${item.strategy}</strong></td>
@@ -76,14 +81,16 @@ export class StatisticsView {
                     <td>${item.baselineMean.toFixed(2)} acertos</td>
                     <td><span class="badge ${badgeCls}">${diffText}</span></td>
                     <td><strong>${item.relativeImprovement}</strong></td>
+                    <td>${sigIcon} p=${pVal}</td>
+                    <td style="font-size:0.7rem;">${ciText}</td>
                 </tr>
             `;
         }).join('');
     }
 
     static renderProbChart(games) {
-        const sorted = [...games].sort((a, b) => (b.modelScore || b.probability) - (a.modelScore || a.probability));
-        this._renderBar('probChart', sorted.map((g, i) => `Jogo #${i+1}`), sorted.map(g => parseFloat(g.modelScore || g.probability)), sorted.map((_, i) => `rgba(139,92,246,${0.3+(i/sorted.length)*0.7})`), true);
+        const sorted = [...games].sort((a, b) => (b.modelScore || 0) - (a.modelScore || 0));
+        this._renderBar('probChart', sorted.map((g, i) => `Jogo #${i+1}`), sorted.map(g => parseFloat(g.modelScore || 0)), sorted.map((_, i) => `rgba(139,92,246,${0.3+(i/sorted.length)*0.7})`), true);
     }
 
     static renderComparisonChart(games, type, resultsData) {
@@ -94,13 +101,64 @@ export class StatisticsView {
     }
 
     static renderRanking(games) {
-        const sorted = [...games].sort((a, b) => (b.modelScore || b.probability) - (a.modelScore || a.probability));
+        const sorted = [...games].sort((a, b) => (b.modelScore || 0) - (a.modelScore || 0));
         document.getElementById('rankingBody').innerHTML = sorted.map((g, i) => {
-            const score = g.modelScore || g.probability;
+            const score = g.modelScore || 0;
             const perf = g.historicalPerformance || '+0.0%';
             const expected = g.expectedHits || '-';
-            return `<tr><td>${i+1}</td><td><span class="badge badge-purple">#${g.id}</span></td><td style="font-size:0.75rem;">${g.numbers.map(n => String(n).padStart(2,'0')).join(' ')}</td><td><span class="badge badge-gold">${score}</span></td><td>${expected} acertos</td><td><span class="badge badge-green">${perf}</span></td></tr>`;
+            const ci = g.confidenceInterval;
+            const ciText = ci ? `[${ci.lower}—${ci.upper}]` : '';
+            const seed = g.seed ? `<span style="font-size:0.6rem;color:var(--text-muted);">${g.seed}</span>` : '';
+            return `<tr><td>${i+1}</td><td><span class="badge badge-purple">#${g.id}</span></td><td style="font-size:0.75rem;">${g.numbers.map(n => String(n).padStart(2,'0')).join(' ')}</td><td><span class="badge badge-gold">${score}/100</span></td><td>${expected} acertos <span style="font-size:0.65rem;color:var(--text-muted);">${ciText}</span></td><td><span class="badge badge-green">${perf}</span></td></tr>`;
         }).join('');
+    }
+
+    /**
+     * Renderiza painel de Walk-Forward e diagnósticos de overfitting
+     */
+    static renderWalkForward(walkForwardData) {
+        const container = document.getElementById('walkForwardPanel');
+        if (!container || !walkForwardData) return;
+
+        const ov = walkForwardData.isOverfitting;
+        const ovBadge = ov ? '<span class="badge badge-red">⚠️ DETECTADO</span>' : '<span class="badge badge-green">✅ NÃO DETECTADO</span>';
+        
+        let foldsHtml = '';
+        if (walkForwardData.foldResults) {
+            foldsHtml = walkForwardData.foldResults.map((f, i) => 
+                `<div style="display:flex;justify-content:space-between;padding:0.3rem 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <span>Fold ${i+1}</span>
+                    <span>In: ${f.inSampleMean?.toFixed(2) || '-'}</span>
+                    <span>Out: ${f.outSampleMean?.toFixed(2) || '-'}</span>
+                    <span>${f.degradation?.toFixed(2) || '0.00'}</span>
+                </div>`
+            ).join('');
+        }
+
+        container.innerHTML = `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+                <div style="background:rgba(255,255,255,0.03);padding:0.75rem;border-radius:8px;">
+                    <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.3rem;">Overfitting</div>
+                    <div>${ovBadge}</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.03);padding:0.75rem;border-radius:8px;">
+                    <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.3rem;">Degradação In→Out</div>
+                    <div style="font-size:1.1rem;font-weight:700;">${walkForwardData.degradation?.toFixed(2) || '0.00'}</div>
+                </div>
+            </div>
+            ${foldsHtml ? `<div style="margin-top:0.75rem;font-size:0.72rem;">${foldsHtml}</div>` : ''}
+        `;
+    }
+
+    /**
+     * Renderiza distribuição Monte Carlo como histograma
+     */
+    static renderMonteCarloChart(mcData) {
+        if (!mcData || !mcData.empiricalDistribution) return;
+        const dist = mcData.empiricalDistribution;
+        const labels = Object.keys(dist).sort((a, b) => parseInt(a) - parseInt(b));
+        const values = labels.map(k => dist[k]);
+        this._renderBar('monteCarloChart', labels.map(k => `${k} acertos`), values, labels.map(() => 'rgba(16,185,129,0.6)'));
     }
 
     static showStats(show) { 

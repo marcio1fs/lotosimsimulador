@@ -106,7 +106,10 @@ export class AppView {
         const analysis = resultsData.analysis;
         if (!results || !analysis) return;
         const cfg = LotteryModel.CONFIG[type];
-        const { freq, atraso } = analysis;
+        const freq = resultsData.freq || analysis.freqAbsolute || {};
+        const atraso = resultsData.atraso || analysis.currentDelay || {};
+
+        if (!freq || Object.keys(freq).length === 0) return;
 
         const entries = Object.entries(freq).map(([num, f]) => ({ num: parseInt(num), freq: f }));
         const sorted = [...entries].sort((a, b) => b.freq - a.freq);
@@ -141,20 +144,33 @@ export class AppView {
         document.getElementById('gamesGrid').innerHTML = games.map((g, i) => {
             const stats = typeof g.stats === 'string' ? JSON.parse(g.stats) : g.stats;
             const explanations = typeof g.explanations === 'string' ? JSON.parse(g.explanations) : (g.explanations || []);
-            const modelScore = g.modelScore || g.probability || 80.0;
+            const modelScore = g.modelScore || 0;
             const perf = g.historicalPerformance || '+0.0%';
             const expectedHits = g.expectedHits || (cfg.drawn * 0.6).toFixed(1);
+            const ci = g.confidenceInterval;
+            const seed = g.seed;
+            const mc = g.monteCarlo;
+            const coverage = g.portfolioCoverage;
+
+            // Badge de significância
+            const sigBadge = g.isStatisticallySignificant === true 
+                ? '<span class="badge badge-green" style="font-size:0.6rem;">✅ Significante</span>'
+                : g.isStatisticallySignificant === false 
+                    ? '<span class="badge badge-gold" style="font-size:0.6rem;">⚠️ Não-significante</span>'
+                    : '';
 
             return `
             <div class="game-card animate-in" style="animation-delay:${i*0.05}s">
                 <div class="game-card-header">
                     <span class="game-number">${cfg.icon} Jogo #${i+1}</span>
-                    <span class="game-prob badge-purple">Score do Modelo: ${modelScore}</span>
+                    <span class="game-prob badge-purple">Score: ${modelScore}/100</span>
                 </div>
                 
-                <div class="game-metrics-row" style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.75rem; background:rgba(255,255,255,0.03); padding:0.4rem 0.6rem; border-radius:6px;">
-                    <div>Desempenho Histórico: <strong style="color:var(--accent-green);">${perf}</strong></div>
-                    <div>Média Esperada: <strong>${expectedHits} acertos</strong></div>
+                <div class="game-metrics-row" style="display:flex; flex-wrap:wrap; gap:0.5rem; font-size:0.72rem; color:var(--text-muted); margin-bottom:0.75rem; background:rgba(255,255,255,0.03); padding:0.5rem 0.6rem; border-radius:6px;">
+                    <div>Histórico: <strong style="color:var(--accent-green);">${perf}</strong></div>
+                    <div>Esperado: <strong>${expectedHits} acertos</strong></div>
+                    ${ci ? `<div>IC 95%: <strong>[${ci.lower} — ${ci.upper}]</strong></div>` : ''}
+                    ${sigBadge}
                 </div>
 
                 <div class="game-balls">
@@ -175,6 +191,13 @@ export class AppView {
                         <div class="game-stat-label">Soma</div>
                         <div class="game-stat-value">${stats.sum}</div>
                     </div>
+                    ${coverage ? `<div class="game-stat-item"><div class="game-stat-label">Cobertura</div><div class="game-stat-value">${coverage}%</div></div>` : ''}
+                </div>
+                ` : ''}
+
+                ${mc ? `
+                <div style="margin-top:0.5rem; font-size:0.7rem; color:var(--text-muted); background:rgba(139,92,246,0.05); padding:0.4rem 0.6rem; border-radius:6px; border:1px solid rgba(139,92,246,0.1);">
+                    <span style="font-weight:600;">🎲 Monte Carlo:</span> Estabilidade ${mc.stabilityScore}/100 · ${mc.iterations} sims
                 </div>
                 ` : ''}
 
@@ -184,6 +207,8 @@ export class AppView {
                     ${explanations.slice(0, 3).map(exp => `<div style="margin-bottom:0.15rem;">${exp}</div>`).join('')}
                 </div>
                 ` : ''}
+
+                ${seed ? `<div style="font-size:0.6rem; color:var(--text-muted); margin-top:0.4rem; opacity:0.6;">Seed: ${seed}</div>` : ''}
             </div>`;
         }).join('');
     }

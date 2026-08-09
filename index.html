@@ -351,7 +351,7 @@
                         <div class="stat-card" style="grid-column:1/-1;">
                             <div class="stat-card-title"><span>🎯</span> Ranking de Estratégias vs Baseline Aleatória (Backtest Histórico)</div>
                             <table class="history-table">
-                                <thead><tr><th>Estratégia</th><th>Média de Acertos</th><th>Baseline Aleatória</th><th>Diferença ($\Delta$)</th><th>Evolução Relativa</th></tr></thead>
+                                <thead><tr><th>Estratégia</th><th>Média de Acertos</th><th>Baseline Aleatória</th><th>Diferença</th><th>Evolução Relativa</th><th>Significância</th><th>IC 95%</th></tr></thead>
                                 <tbody id="strategyBenchmarkBody"></tbody>
                             </table>
                         </div>
@@ -364,9 +364,17 @@
                             <div class="chart-container"><canvas id="comparisonChart"></canvas></div>
                         </div>
                         <div class="stat-card" style="grid-column:1/-1;">
+                            <div class="stat-card-title"><span>🔬</span> Validação Walk-Forward e Detecção de Overfitting</div>
+                            <div id="walkForwardPanel" style="padding:0.5rem;"><div style="text-align:center;color:var(--text-muted);font-size:0.8rem;">Gere simulações para ver a validação walk-forward</div></div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title"><span>🎲</span> Distribuição Monte Carlo</div>
+                            <div class="chart-container"><canvas id="monteCarloChart"></canvas></div>
+                        </div>
+                        <div class="stat-card" style="grid-column:1/-1;">
                             <div class="stat-card-title"><span>🏆</span> Ranking e Métricas Transparentes dos Jogos Gerados</div>
                             <table class="history-table">
-                                <thead><tr><th>#</th><th>Identificador</th><th>Dezenas</th><th>Score do Modelo</th><th>Acertos Esperados</th><th>Desempenho Histórico</th></tr></thead>
+                                <thead><tr><th>#</th><th>Identificador</th><th>Dezenas</th><th>Score do Modelo</th><th>Acertos Esperados (IC 95%)</th><th>Desempenho Histórico</th></tr></thead>
                                 <tbody id="rankingBody"></tbody>
                             </table>
                         </div>

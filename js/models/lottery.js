@@ -2,6 +2,7 @@ import { StatisticalAnalyzer, PRIMES } from '../engine/statisticalAnalyzer.js';
 import { ScoringEngine, DEFAULT_WEIGHTS } from '../engine/scoringEngine.js';
 import { GameGenerator } from '../engine/gameGenerator.js';
 import { BacktestEngine } from '../engine/backtestEngine.js';
+import { MonteCarloEngine } from '../engine/monteCarloEngine.js';
 
 /**
  * Model: Lottery - Configurações, Regras de Negócio e Pontuação Estatística
@@ -28,6 +29,7 @@ export class LotteryModel {
 
         const windowData = StatisticalAnalyzer.getWindow(results, timeWindow);
         const fullAnalysis = StatisticalAnalyzer.analyze(windowData, cfg);
+        fullAnalysis.lastDrawNumbers = results[0]?.dezenas?.map(Number) || [];
 
         return {
             freq: fullAnalysis.freqAbsolute,
@@ -73,6 +75,7 @@ export class LotteryModel {
 
         const windowData = StatisticalAnalyzer.getWindow(fullHistory, timeWindow);
         const analysis = StatisticalAnalyzer.analyze(windowData, cfg);
+        analysis.lastDrawNumbers = fullHistory[0]?.dezenas?.map(Number) || [];
 
         // Executa um backtest rápido para obter o histórico recente de acertos
         const generatorFn = (past, c) => {
@@ -81,6 +84,15 @@ export class LotteryModel {
         };
         const backtestSummary = BacktestEngine.runBacktest(windowData, cfg, generatorFn, { windowSize: 30 });
 
-        return GameGenerator.generateBatch(type, analysis, strategy, fixed, excluded, count, cfg, DEFAULT_WEIGHTS, backtestSummary);
+        const games = GameGenerator.generateBatch(type, analysis, strategy, fixed, excluded, count, cfg, DEFAULT_WEIGHTS, backtestSummary);
+
+        // Monte Carlo para o melhor jogo
+        const topGame = games[0];
+        if (topGame) {
+            const mcResult = MonteCarloEngine.simulateCandidate(topGame.numbers, cfg);
+            topGame.monteCarlo = mcResult;
+        }
+
+        return games;
     }
 }
