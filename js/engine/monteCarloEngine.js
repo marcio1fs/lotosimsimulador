@@ -88,31 +88,90 @@ export class MonteCarloEngine {
 
     /**
      * Calcula o Coverage Score (0-100) para um portfólio de jogos gerados
-     * Avalia diversificação, amplitude e ausência de hiper-concentração.
+     * Avalia quantidade de jogos, dezenas únicas, ocupação do volante e desvio de concentração.
      */
-    static calculatePortfolioCoverage(games, config) {
-        if (!games || games.length === 0) return 0;
-        const total = config.total;
+    static calculateCoverageScore(games, config) {
+        if (!games || !Array.isArray(games) || games.length === 0) return 0;
+        const total = config?.total || 25;
+        const pick = config?.pick || 15;
+        const totalPositions = games.length * pick;
+
         const uniqueNumbers = new Set();
         const numberCounts = {};
 
         games.forEach(g => {
-            const nums = g.numbers || g;
+            const nums = Array.isArray(g) ? g : (g.numbers || []);
             nums.forEach(n => {
-                uniqueNumbers.add(n);
-                numberCounts[n] = (numberCounts[n] || 0) + 1;
+                const num = Number(n);
+                if (Number.isFinite(num)) {
+                    uniqueNumbers.add(num);
+                    numberCounts[num] = (numberCounts[num] || 0) + 1;
+                }
             });
         });
 
-        const uniqueRatio = uniqueNumbers.size / total;
-        // Fator de uniformidade (desvio padrão das frequências no portfólio)
-        const counts = Object.values(numberCounts);
-        const meanCount = counts.reduce((a, b) => a + b, 0) / (uniqueNumbers.size || 1);
-        const countVar = counts.reduce((s, c) => s + Math.pow(c - meanCount, 2), 0) / (counts.length || 1);
-        const uniformityPenalty = Math.sqrt(countVar) / (games.length || 1);
+        if (uniqueNumbers.size === 0) return 0;
 
-        const coverageScore = Number(Math.max(0, Math.min(100, (uniqueRatio * 100) - (uniformityPenalty * 20))).toFixed(1));
-        return coverageScore;
+        // Proporção de dezenas do volante cobertas
+        const totalCoverageRatio = uniqueNumbers.size / total;
+        // Proporção de dezenas únicas em relação à capacidade máxima do lote
+        const maxPossibleUnique = Math.min(total, totalPositions);
+        const positionCoverageRatio = uniqueNumbers.size / maxPossibleUnique;
+
+        // Penalidade por hiper-concentração de frequência entre as dezenas escolhidas
+        const counts = Object.values(numberCounts);
+        const meanCount = counts.reduce((a, b) => a + b, 0) / counts.length;
+        const variance = counts.reduce((s, c) => s + Math.pow(c - meanCount, 2), 0) / counts.length;
+        const stdDev = Math.sqrt(variance);
+        const concentrationPenalty = meanCount > 0 ? (stdDev / meanCount) : 0;
+
+        // Score ponderado determinístico de 0 a 100
+        const rawCoverage = (totalCoverageRatio * 60 + positionCoverageRatio * 40) * Math.max(0.4, 1 - concentrationPenalty * 0.3);
+        const coverageScore = Number(Math.max(0, Math.min(100, rawCoverage)).toFixed(1));
+        return Number.isFinite(coverageScore) ? coverageScore : 0;
+    }
+
+    /**
+     * Alias para compatibilidade
+     */
+    static calculatePortfolioCoverage(games, config) {
+        return this.calculateCoverageScore(games, config);
+    }
+
+    /**
+     * Calcula o Diversification Score (0-100) para um portfólio de jogos
+     * Baseia-se no complemento da distância média de Jaccard entre todos os pares do lote.
+     */
+    static calculateDiversificationScore(games, config) {
+        if (!games || !Array.isArray(games) || games.length <= 1) return 100;
+
+        let totalSimilarity = 0;
+        let pairCount = 0;
+
+        for (let i = 0; i < games.length; i++) {
+            const gameA = Array.isArray(games[i]) ? games[i] : (games[i].numbers || []);
+            const setA = new Set(gameA.map(Number));
+
+            for (let j = i + 1; j < games.length; j++) {
+                const gameB = Array.isArray(games[j]) ? games[j] : (games[j].numbers || []);
+                const setB = new Set(gameB.map(Number));
+
+                let intersection = 0;
+                setA.forEach(n => { if (setB.has(n)) intersection++; });
+                const union = new Set([...gameA.map(Number), ...gameB.map(Number)]).size;
+                const similarity = union > 0 ? intersection / union : 0;
+
+                totalSimilarity += similarity;
+                pairCount++;
+            }
+        }
+
+        if (pairCount === 0) return 100;
+
+        const avgSimilarity = totalSimilarity / pairCount;
+        // Quanto menor a similaridade média entre os pares, maior a diversificação (0-100)
+        const divScore = Number(((1 - avgSimilarity) * 100).toFixed(1));
+        return Number.isFinite(divScore) ? Math.max(0, Math.min(100, divScore)) : 100;
     }
 }
 

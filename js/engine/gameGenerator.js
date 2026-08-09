@@ -100,22 +100,24 @@ export class GameGenerator {
             selectedGames.push({ numbers: randomGame, scoreObj });
         }
 
-        // Calcula coverage do portfólio
-        const allNumbers = new Set();
-        selectedGames.forEach(g => g.numbers.forEach(n => allNumbers.add(n)));
-        const portfolioCoverage = Number((allNumbers.size / config.total * 100).toFixed(1));
+        // Calcula coverage e diversificação do portfólio
+        const coverageScore = MonteCarloEngine.calculateCoverageScore(selectedGames, config);
+        const diversificationScore = MonteCarloEngine.calculateDiversificationScore(selectedGames, config);
 
         return selectedGames.map((g, idx) => ({
-            id: Date.now() + idx,
+            id: (seed || 123456) + idx,
             numbers: g.numbers,
             modelScore: g.scoreObj.modelScore,
+            rawScore: g.scoreObj.rawScore,
             historicalPerformance: g.scoreObj.historicalPerformance,
             expectedHits: g.scoreObj.expectedHits,
             confidenceLevel: g.scoreObj.confidenceLevel,
             probabilityType: g.scoreObj.probabilityType,
             explanations: g.scoreObj.explanations,
             stats: g.scoreObj.stats,
-            portfolioCoverage,
+            coverageScore,
+            diversificationScore,
+            portfolioCoverage: coverageScore,
             seed: rng.seed
         }));
     }
@@ -332,8 +334,9 @@ export class GameGenerator {
             else break;
         }
 
-        // 14. Cobertura do Portfólio
-        const portfolioCoverage = MonteCarloEngine.calculatePortfolioCoverage(diversifiedBatch, config);
+        // 14. Cobertura e Diversificação do Portfólio
+        const coverageScore = MonteCarloEngine.calculateCoverageScore(diversifiedBatch, config);
+        const diversificationScore = MonteCarloEngine.calculateDiversificationScore(diversifiedBatch, config);
 
         // 15. Atribuição do Status do Modelo
         let status = 'NOT_VALIDATED';
@@ -349,7 +352,9 @@ export class GameGenerator {
 
         // Anexa metadados do pipeline completo no resultado do portfólio
         diversifiedBatch.forEach((game, idx) => {
-            game.portfolioCoverage = portfolioCoverage;
+            game.coverageScore = coverageScore;
+            game.diversificationScore = diversificationScore;
+            game.portfolioCoverage = coverageScore;
             if (idx === 0) game.monteCarlo = monteCarloResult;
         });
 
@@ -358,7 +363,9 @@ export class GameGenerator {
             backtestResult,
             optWeightsResult,
             monteCarloResult,
-            portfolioCoverage,
+            coverageScore,
+            diversificationScore,
+            portfolioCoverage: coverageScore,
             seed
         };
 

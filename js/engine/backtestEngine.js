@@ -185,13 +185,24 @@ export class BacktestEngine {
         }
 
         // Se a performance despencar bruscamente na amostra nova, há overfitting
-        const isOverfitting = (inStats.mean - outStats.mean) > (inStats.stdDev * 0.8);
+        const isOverfitting = (inStats.mean - outStats.mean) > ((inStats.stdDev || 1) * 0.8);
+
+        // Estabilidade entre folds (0 a 100)
+        const foldMeans = foldResults.map(f => f.mean);
+        const foldMeanAvg = foldMeans.length > 0 ? (foldMeans.reduce((a, b) => a + b, 0) / foldMeans.length) : 0;
+        const foldVar = foldMeans.length > 0 ? (foldMeans.reduce((s, m) => s + Math.pow(m - foldMeanAvg, 2), 0) / foldMeans.length) : 0;
+        const foldStd = Math.sqrt(foldVar);
+        const overfitGap = Math.max(0, inStats.mean - outStats.mean);
+        
+        const rawStability = 100 - (foldStd * 40 + overfitGap * 30);
+        const stabilityScore = Number(Math.max(0, Math.min(100, rawStability)).toFixed(1));
 
         return {
             isOverfitting,
             inSampleMean: inStats.mean,
             outSampleMean: outStats.mean,
             diff: Number((outStats.mean - inStats.mean).toFixed(2)),
+            stabilityScore: Number.isFinite(stabilityScore) ? stabilityScore : 50,
             foldResults
         };
     }
@@ -212,7 +223,7 @@ export class BacktestEngine {
             pValue: 1,
             isStatisticallySignificant: false,
             tTestResult: { tStatistic: 0, pValue: 1, isSignificant: false },
-            walkForward: { isOverfitting: false, inSampleMean: 0, outSampleMean: 0, diff: 0, foldResults: [] },
+            walkForward: { isOverfitting: false, inSampleMean: 0, outSampleMean: 0, diff: 0, stabilityScore: 50, foldResults: [] },
             dataLeakageDetected: false
         };
     }

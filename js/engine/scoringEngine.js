@@ -263,6 +263,7 @@ export class ScoringEngine {
         let bestTrainMean = 0;
         let bestValMean = 0;
         let bestOverfitGap = 0;
+        let bestBreakdown = null;
 
         const iterations = options.iterations || 20;
 
@@ -290,15 +291,32 @@ export class ScoringEngine {
             const valMean = valHitsSum / Math.max(1, valHistory.length - 5);
 
             const overfitGap = Math.max(0, trainMean - valMean);
-            // Função objetivo: valor em validação penalizado pelo descompasso treino/validação (overfitting)
-            const objectiveScore = valMean - 1.5 * overfitGap;
+            
+            // Função objetivo transparente (Requirement 8):
+            // Objective = 0.30 * performance + 0.35 * outOfSample + 0.20 * stability + 0.15 * statisticalEvidence - overfitPenalty
+            const expectedMean = (config.pick * (config.drawn || config.pick)) / config.total;
+            const perfScore = Math.min(100, (trainMean / (expectedMean || 1)) * 50);
+            const outOfSampleScore = Math.min(100, (valMean / (expectedMean || 1)) * 50);
+            const stabilityComponent = Math.max(0, 100 - overfitGap * 30);
+            const statEvidence = Math.min(100, Math.max(0, (valMean - expectedMean) * 40 + 50));
+            const overfitPenalty = overfitGap * 25;
 
-            if (objectiveScore > bestObjectiveScore) {
-                bestObjectiveScore = objectiveScore;
+            const compositeObjectiveScore = (0.30 * perfScore) + (0.35 * outOfSampleScore) + (0.20 * stabilityComponent) + (0.15 * statEvidence) - overfitPenalty;
+
+            if (compositeObjectiveScore > bestObjectiveScore) {
+                bestObjectiveScore = compositeObjectiveScore;
                 bestWeights = testWeights;
                 bestTrainMean = Number(trainMean.toFixed(2));
                 bestValMean = Number(valMean.toFixed(2));
                 bestOverfitGap = Number(overfitGap.toFixed(2));
+                bestBreakdown = {
+                    performance: Number(perfScore.toFixed(1)),
+                    outOfSample: Number(outOfSampleScore.toFixed(1)),
+                    stability: Number(stabilityComponent.toFixed(1)),
+                    statisticalEvidence: Number(statEvidence.toFixed(1)),
+                    overfitPenalty: Number(overfitPenalty.toFixed(1)),
+                    finalObjective: Number(compositeObjectiveScore.toFixed(1))
+                };
             }
         }
 
@@ -306,10 +324,18 @@ export class ScoringEngine {
 
         return {
             optimizedWeights: bestWeights,
-            bestObjectiveScore: Number(bestObjectiveScore.toFixed(2)),
-            trainMean: bestTrainMean,
-            valMean: bestValMean,
-            overfitGap: bestOverfitGap,
+            bestObjectiveScore: Number(Number.isFinite(bestObjectiveScore) ? bestObjectiveScore.toFixed(2) : 0),
+            trainMean: Number.isFinite(bestTrainMean) ? bestTrainMean : null,
+            valMean: Number.isFinite(bestValMean) ? bestValMean : null,
+            overfitGap: Number.isFinite(bestOverfitGap) ? bestOverfitGap : 0,
+            objectiveBreakdown: bestBreakdown || {
+                performance: 0,
+                outOfSample: 0,
+                stability: 0,
+                statisticalEvidence: 0,
+                overfitPenalty: 0,
+                finalObjective: 0
+            },
             isOverfit,
             method: 'Otimização Determinística Grid/Random (Treino 70% / Validação 30%)'
         };

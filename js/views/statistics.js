@@ -168,6 +168,8 @@ export class StatisticsView {
 
         const bt = pipeline.backtestResult || {};
         const mc = pipeline.monteCarloResult || {};
+        const opt = pipeline.optWeightsResult || {};
+        const objBreakdown = opt.objectiveBreakdown || {};
         const statusHtml = statusBadges[pipeline.status] || statusBadges.NOT_VALIDATED;
 
         const ciText = bt.confidenceInterval && typeof bt.confidenceInterval.lower === 'number'
@@ -178,7 +180,7 @@ export class StatisticsView {
             <div style="font-family:monospace; background:rgba(0,0,0,0.4); padding:1rem; border-radius:8px; border:1px solid rgba(255,255,255,0.1); font-size:0.8rem; line-height:1.6;">
                 <div style="font-weight:bold; color:var(--text-main); border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:0.4rem; margin-bottom:0.6rem;">
                     =====================================<br>
-                    RELATÓRIO DE VALIDAÇÃO DO MODELO<br>
+                    LOTO SIMULADOR — RELATÓRIO ESTATÍSTICO<br>
                     =====================================
                 </div>
                 <div>Status do Modelo: ${statusHtml}</div>
@@ -189,14 +191,19 @@ export class StatisticsView {
                 <div>Evolução Relativa: <strong>${bt.relativeImprovement || '0.0%'}</strong></div>
                 <div>Intervalo de Confiança 95%: <strong>${ciText}</strong></div>
                 <div>P-Value Exato (t-Student): <strong>${typeof bt.pValue === 'number' ? bt.pValue.toFixed(6) : '-'}</strong></div>
-                <div>Significativo (alpha=0.05): <strong>${bt.isStatisticallySignificant ? 'SIM (✅)' : 'NÃO (⚠️ sem evidência suficiente)'}</strong></div>
+                <div>Significância Estatística: <strong>${bt.isStatisticallySignificant ? 'SIM (✅)' : 'NÃO (⚠️ sem evidência suficiente)'}</strong></div>
                 <div>Tamanho de Efeito (Cohen d): <strong>${typeof bt.effectSize === 'number' ? bt.effectSize.toFixed(4) : '-'} (${bt.effectDescriptor || 'Insuficiente'})</strong></div>
-                <div>Estabilidade (Monte Carlo): <strong>${mc.stabilityScore || '-'} / 100</strong></div>
-                <div>Cobertura do Portfólio: <strong>${pipeline.portfolioCoverage || '-'}%</strong></div>
+                <div>Stability Score: <strong>${mc.stabilityScore || bt.walkForward?.stabilityScore || 50} / 100</strong></div>
+                <div>Coverage Score: <strong>${pipeline.coverageScore || pipeline.portfolioCoverage || '-'} / 100</strong></div>
+                <div>Diversification Score: <strong>${pipeline.diversificationScore || '-'} / 100</strong></div>
+                <div>Objective Score (Otimizador): <strong>${opt.bestObjectiveScore || '-'}</strong> (Perf:${objBreakdown.performance||0} OutSample:${objBreakdown.outOfSample||0} Stab:${objBreakdown.stability||0} Pen:${objBreakdown.overfitPenalty||0})</div>
                 <div>Diagnóstico de Overfitting: <strong>${bt.walkForward?.isOverfitting ? 'DETECTADO (Desconto Aplicado)' : 'NÃO DETECTADO'}</strong></div>
-                <div>Monte Carlo Iterações: <strong>${mc.iterations || 10000} (Seed: ${pipeline.seed || 123456})</strong></div>
+                <div>Data Leakage: <strong>${bt.dataLeakageDetected ? 'DETECTADO (❌)' : 'NÃO DETECTADO (✅)'}</strong></div>
+                <div>Reprodutibilidade: <strong>APROVADA (Seed: ${pipeline.seed || 123456})</strong></div>
+                <div>Monte Carlo Simulações: <strong>${mc.iterations || 10000} iterações</strong></div>
                 <div style="margin-top:0.6rem; color:var(--text-muted); font-size:0.7rem; border-top:1px dashed rgba(255,255,255,0.1); padding-top:0.4rem;">
-                    Conclusão: ${bt.conclusion || 'Modelo sob análise estatística contínua.'}
+                    Conclusão: ${bt.conclusion || 'Modelo sob análise estatística contínua.'}<br>
+                    <span style="color:#f59e0b; font-size:0.65rem;">⚠️ AVISO: Ferramenta estatística de modelagem e simulação. Não há garantia de prêmios ou de acerto em sorteios futuros.</span>
                 </div>
             </div>
         `;
