@@ -205,9 +205,32 @@
                     <div class="data-status-item"><span id="dataCount">0 concursos</span></div>
                     <div class="data-status-item"><span id="lastFetchTime">-</span></div>
                 </div>
-                <div class="section-title" style="font-size:0.85rem; margin-top:1.5rem;"><span>🧠</span> Estratégia de Geração</div>
+
+                <div class="section-title" style="font-size:0.85rem; margin-top:1.5rem;"><span>🗓️</span> Janela Temporal de Análise</div>
+                <div class="time-window-selector">
+                    <button class="window-btn" data-window="20">20 concursos</button>
+                    <button class="window-btn" data-window="50">50 concursos</button>
+                    <button class="window-btn active" data-window="100">100 concursos</button>
+                    <button class="window-btn" data-window="200">200 concursos</button>
+                    <button class="window-btn" data-window="500">500 concursos</button>
+                    <button class="window-btn" data-window="full">Completo</button>
+                </div>
+
+                <div class="section-title" style="font-size:0.85rem; margin-top:1.5rem;"><span>🧠</span> Estratégia de Geração Estatística</div>
                 <div class="strategy-options">
-                    <div class="strategy-option selected" data-strategy="weighted">
+                    <div class="strategy-option selected" data-strategy="adaptive">
+                        <div class="strategy-option-name">🤖 Modelo Adaptativo</div>
+                        <div class="strategy-option-desc">Multifatorial calibrado</div>
+                    </div>
+                    <div class="strategy-option" data-strategy="best_game">
+                        <div class="strategy-option-name">🏆 MELHOR JOGO</div>
+                        <div class="strategy-option-desc">Backtest auto-otimizado</div>
+                    </div>
+                    <div class="strategy-option" data-strategy="maximum_precision">
+                        <div class="strategy-option-name">🛡️ MÁXIMA PRECISÃO</div>
+                        <div class="strategy-option-desc">Anti-overfitting estrito</div>
+                    </div>
+                    <div class="strategy-option" data-strategy="weighted">
                         <div class="strategy-option-name">⚖️ Ponderado</div>
                         <div class="strategy-option-desc">Frequência histórica</div>
                     </div>
@@ -217,11 +240,7 @@
                     </div>
                     <div class="strategy-option" data-strategy="cold">
                         <div class="strategy-option-name">🧊 Frios</div>
-                        <div class="strategy-option-desc">Menor saída recente</div>
-                    </div>
-                    <div class="strategy-option" data-strategy="ai">
-                        <div class="strategy-option-name">🧬 Redes Neurais</div>
-                        <div class="strategy-option-desc">Probabilidade IA</div>
+                        <div class="strategy-option-desc">Retorno de atrasos</div>
                     </div>
                 </div>
 
@@ -325,22 +344,29 @@
 
             <div id="stat-patterns" style="display:none;">
                 <div id="patternsNoData" class="empty-state">
-                    <div class="empty-state-icon">🧩</div><div class="empty-state-text">Gere simulações para ver análises de probabilidade</div>
+                    <div class="empty-state-icon">🧩</div><div class="empty-state-text">Gere simulações para ver análises e validações de estatísticas</div>
                 </div>
                 <div id="patternsContent" style="display:none;">
                     <div class="stats-section">
+                        <div class="stat-card" style="grid-column:1/-1;">
+                            <div class="stat-card-title"><span>🎯</span> Ranking de Estratégias vs Baseline Aleatória (Backtest Histórico)</div>
+                            <table class="history-table">
+                                <thead><tr><th>Estratégia</th><th>Média de Acertos</th><th>Baseline Aleatória</th><th>Diferença ($\Delta$)</th><th>Evolução Relativa</th></tr></thead>
+                                <tbody id="strategyBenchmarkBody"></tbody>
+                            </table>
+                        </div>
                         <div class="stat-card">
-                            <div class="stat-card-title"><span>🎲</span> Nível de Probabilidade</div>
+                            <div class="stat-card-title"><span>📊</span> Distribuição de Score dos Jogos</div>
                             <div class="chart-container"><canvas id="probChart"></canvas></div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-card-title"><span>📉</span> Radar de Eficiência</div>
+                            <div class="stat-card-title"><span>📉</span> Radar de Desempenho Multifatorial</div>
                             <div class="chart-container"><canvas id="comparisonChart"></canvas></div>
                         </div>
                         <div class="stat-card" style="grid-column:1/-1;">
-                            <div class="stat-card-title"><span>🏆</span> Ranking de Jogos Gerados</div>
+                            <div class="stat-card-title"><span>🏆</span> Ranking e Métricas Transparentes dos Jogos Gerados</div>
                             <table class="history-table">
-                                <thead><tr><th>#</th><th>Jogo</th><th>Dezenas</th><th>Confiança</th><th>Score</th></tr></thead>
+                                <thead><tr><th>#</th><th>Identificador</th><th>Dezenas</th><th>Score do Modelo</th><th>Acertos Esperados</th><th>Desempenho Histórico</th></tr></thead>
                                 <tbody id="rankingBody"></tbody>
                             </table>
                         </div>

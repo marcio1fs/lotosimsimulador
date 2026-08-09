@@ -2,11 +2,13 @@
   "name": "lotosimsimulador",
   "version": "1.0.0",
   "description": "Inteligência Artificial para Loterias",
+  "type": "module",
   "main": "index.html",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test tests/*.test.js"
   },
   "keywords": [],
   "author": "",

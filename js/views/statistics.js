@@ -61,25 +61,45 @@ export class StatisticsView {
         }).join('');
     }
 
+    static renderStrategyBenchmark(benchmarkList) {
+        const tbody = document.getElementById('strategyBenchmarkBody');
+        if (!tbody || !benchmarkList) return;
+
+        tbody.innerHTML = benchmarkList.map(item => {
+            const isDiffPos = item.diff > 0;
+            const diffText = isDiffPos ? `+${item.diff}` : `${item.diff}`;
+            const badgeCls = isDiffPos ? 'badge-green' : item.diff === 0 ? 'badge-purple' : 'badge-red';
+            return `
+                <tr>
+                    <td><strong>${item.strategy}</strong></td>
+                    <td>${item.meanHits.toFixed(2)} acertos</td>
+                    <td>${item.baselineMean.toFixed(2)} acertos</td>
+                    <td><span class="badge ${badgeCls}">${diffText}</span></td>
+                    <td><strong>${item.relativeImprovement}</strong></td>
+                </tr>
+            `;
+        }).join('');
+    }
+
     static renderProbChart(games) {
-        const sorted = [...games].sort((a, b) => parseFloat(b.probability) - parseFloat(a.probability));
-        this._renderBar('probChart', sorted.map(g => `Jogo #${g.id}`), sorted.map(g => parseFloat(g.probability)), sorted.map((_, i) => `rgba(139,92,246,${0.3+(i/sorted.length)*0.7})`), true);
+        const sorted = [...games].sort((a, b) => (b.modelScore || b.probability) - (a.modelScore || a.probability));
+        this._renderBar('probChart', sorted.map((g, i) => `Jogo #${i+1}`), sorted.map(g => parseFloat(g.modelScore || g.probability)), sorted.map((_, i) => `rgba(139,92,246,${0.3+(i/sorted.length)*0.7})`), true);
     }
 
     static renderComparisonChart(games, type, resultsData) {
         const cfg = LotteryModel.CONFIG[type];
-        const freq = resultsData.analysis.freq;
+        const freq = resultsData.freq || {};
         const avg = games.map(g => g.numbers.reduce((s, n) => s + (freq[n]||0), 0) / cfg.pick);
-        this._renderRadar('comparisonChart', games.map(g => `J${g.id}`), avg);
+        this._renderRadar('comparisonChart', games.map((g, i) => `J#${i+1}`), avg);
     }
 
     static renderRanking(games) {
-        const sorted = [...games].sort((a, b) => parseFloat(b.probability) - parseFloat(a.probability));
-        const maxP = parseFloat(sorted[0]?.probability) || 1;
+        const sorted = [...games].sort((a, b) => (b.modelScore || b.probability) - (a.modelScore || a.probability));
         document.getElementById('rankingBody').innerHTML = sorted.map((g, i) => {
-            const perf = (parseFloat(g.probability) / maxP * 100).toFixed(0);
-            const cls = perf > 80 ? 'badge-green' : perf > 50 ? 'badge-gold' : 'badge-red';
-            return `<tr><td>${i+1}</td><td><span class="badge badge-purple">#${g.id}</span></td><td style="font-size:0.75rem;">${g.numbers.map(n => String(n).padStart(2,'0')).join(' ')}</td><td><span class="badge badge-gold">${g.probability}%</span></td><td><span class="badge ${cls}">${perf}%</span></td></tr>`;
+            const score = g.modelScore || g.probability;
+            const perf = g.historicalPerformance || '+0.0%';
+            const expected = g.expectedHits || '-';
+            return `<tr><td>${i+1}</td><td><span class="badge badge-purple">#${g.id}</span></td><td style="font-size:0.75rem;">${g.numbers.map(n => String(n).padStart(2,'0')).join(' ')}</td><td><span class="badge badge-gold">${score}</span></td><td>${expected} acertos</td><td><span class="badge badge-green">${perf}</span></td></tr>`;
         }).join('');
     }
 

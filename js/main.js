@@ -13,7 +13,8 @@ let currentUser = null;
 let currentSession = null;
 const appState = { 
     currentLottery: 'lotofacil', 
-    currentStrategy: 'weighted', 
+    currentStrategy: 'adaptive', 
+    currentTimeWindow: 100,
     generatedGames: [], 
     simulationHistory: [], 
     resultsData: {}, 
@@ -238,6 +239,17 @@ class AppController {
             AppView.renderStrategies(opt.dataset.strategy);
         }));
 
+        // Time Windows
+        document.querySelectorAll('.window-btn').forEach(btn => btn.addEventListener('click', () => {
+            document.querySelectorAll('.window-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const winVal = btn.dataset.window;
+            appState.currentTimeWindow = winVal === 'full' ? 'full' : parseInt(winVal, 10);
+            if (appState.resultsData[appState.currentLottery]) {
+                this.fetchResults();
+            }
+        }));
+
         // Fetch button
         document.getElementById('fetchBtn').addEventListener('click', () => this.fetchResults());
 
@@ -329,7 +341,6 @@ class AppController {
                 if (AutomationModel.state.active) {
                     AutomationController.start(() => this.runAutoCycle());
                 }
-                
                 AutomationModel.save(currentUser.id);
                 AppView.updateAutoUI(AutomationModel.state);
                 AutomationModel.addLog('info', `Intervalo alterado para ${minutes}min`);
@@ -345,7 +356,11 @@ class AppController {
         AppView.setLoading(true, 'Consultando base de dados oficial...');
         
         try {
-            const results = await LotteryController.fetchAllResults(currentUser.id, ['lotofacil','mega','lotomania','quina']);
+            const results = await LotteryController.fetchAllResults(
+                currentUser.id, 
+                ['lotofacil','mega','lotomania','quina'],
+                appState.currentTimeWindow
+            );
             Object.assign(appState.resultsData, results);
             appState.dataReady = true;
             
@@ -378,7 +393,7 @@ class AppController {
     }
 
     static async generateGames() {
-        AppView.setLoading(true, 'Agente IA analisando padrões...');
+        AppView.setLoading(true, 'Agente IA analisando padrões estatísticos...');
         const type = appState.currentLottery;
         const rd = appState.resultsData[type];
         if (!rd) { AppView.setLoading(false); return; }
@@ -390,7 +405,8 @@ class AppController {
                 appState.currentStrategy, 
                 rd, 
                 appState.fixedNumbers, 
-                appState.excludedNumbers
+                appState.excludedNumbers,
+                appState.currentTimeWindow
             );
             appState.generatedGames = games;
             
@@ -412,12 +428,41 @@ class AppController {
                 resultsAnalyzed: rd.data.length 
             });
             AppView.renderHistory(appState.simulationHistory);
-            AppView.showToast(`✅ 10 novos jogos inteligentes gerados!`, 'success');
+            AppView.showToast(`✅ 10 novos jogos estatísticos gerados!`, 'success');
         } catch (e) {
             console.error('Generation error:', e);
             AppView.showToast('❌ Erro ao gerar jogos', 'error');
         } finally {
             AppView.setLoading(false);
+        }
+    }
+
+    static updateStats() {
+        const type = appState.currentLottery;
+        const rd = appState.resultsData[type];
+        if (!rd || !rd.analysis) { 
+            StatisticsView.showStats(false); 
+            StatisticsView.showPatterns(false); 
+            return; 
+        }
+        
+        StatisticsView.showStats(true);
+        StatisticsView.renderFrequency(type, rd);
+        StatisticsView.renderParity(rd, type);
+        StatisticsView.renderRange(type, rd);
+        StatisticsView.renderFreqGrid(type, rd);
+        
+        // Executa benchmark de estratégias vs baseline aleatória
+        if (rd.data && rd.data.length > 0) {
+            const benchmark = LotteryController.runStrategyBenchmark(rd.data, LotteryModel.CONFIG[type]);
+            StatisticsView.renderStrategyBenchmark(benchmark);
+        }
+
+        if (appState.generatedGames.length > 0) {
+            StatisticsView.showPatterns(true);
+            StatisticsView.renderProbChart(appState.generatedGames);
+            StatisticsView.renderComparisonChart(appState.generatedGames, type, rd);
+            StatisticsView.renderRanking(appState.generatedGames);
         }
     }
 

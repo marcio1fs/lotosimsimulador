@@ -962,3 +962,36 @@ body {
     background: var(--border);
     border-radius: 2px;
 }
+
+/* Time Window Selector */
+.time-window-selector {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+}
+
+.window-btn {
+    padding: 0.4rem 0.8rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.window-btn:hover {
+    border-color: var(--accent-purple);
+    color: var(--text-primary);
+}
+
+.window-btn.active {
+    background: rgba(147, 51, 234, 0.15);
+    border-color: var(--accent-purple);
+    color: var(--accent-purple);
+    font-weight: 600;
+}
+

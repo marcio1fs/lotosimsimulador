@@ -1,13 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
 // ======================================================================
-// CONFIGURAÇÃO SUPABASE (BANCO DE DADOS EM NUVEM)
+// CONFIGURAÇÃO BANCO DE DADOS (MODO 100% LOCAL - INDEXEDDB)
 // ======================================================================
-// 1. Crie seu projeto em supabase.com
-// 2. Rode o script SQL que está no arquivo supabase_setup.md
-// 3. Cole suas chaves abaixo:
-const SUPABASE_URL = 'https://xzwoohfebuieomyjmsft.supabase.co'; // Ex: 'https://xxxx.supabase.co'
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh6d29vaGZlYnVpZW9teWptc2Z0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0MTI3MTQsImV4cCI6MjA5Mjk4ODcxNH0.1Mb6EjHZDPOqXTOIOMeB8kumzmge3foT_yO8Ymzcy-8'; // Ex: 'eyJhbGci...'
+// Para ativar a nuvem Supabase, preencha as chaves abaixo:
+const SUPABASE_URL = ''; // Ex: 'https://xxxx.supabase.co'
+const SUPABASE_ANON_KEY = ''; // Ex: 'eyJhbGci...'
 
 const supabase = (SUPABASE_URL && SUPABASE_ANON_KEY)
     ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -20,7 +18,7 @@ export class Database {
     static DB_NAME = 'LotoMaisDB';
     static DB_VERSION = 1;
     static db = null;
-    static useSupabase = !!supabase;
+    static useSupabase = false; // Força execução 100% Local no IndexedDB do navegador
 
     static async init() {
         if (this.useSupabase) {

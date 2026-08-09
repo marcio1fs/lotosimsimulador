@@ -130,7 +130,7 @@ export class AppView {
         const cfg = LotteryModel.CONFIG[type];
         const exportActions = document.getElementById('exportActions');
         
-        if (!games.length) { 
+        if (!games || !games.length) { 
             this.renderEmptyGames(); 
             if (exportActions) exportActions.style.display = 'none';
             return; 
@@ -140,15 +140,27 @@ export class AppView {
 
         document.getElementById('gamesGrid').innerHTML = games.map((g, i) => {
             const stats = typeof g.stats === 'string' ? JSON.parse(g.stats) : g.stats;
+            const explanations = typeof g.explanations === 'string' ? JSON.parse(g.explanations) : (g.explanations || []);
+            const modelScore = g.modelScore || g.probability || 80.0;
+            const perf = g.historicalPerformance || '+0.0%';
+            const expectedHits = g.expectedHits || (cfg.drawn * 0.6).toFixed(1);
+
             return `
             <div class="game-card animate-in" style="animation-delay:${i*0.05}s">
                 <div class="game-card-header">
                     <span class="game-number">${cfg.icon} Jogo #${i+1}</span>
-                    <span class="game-prob">Confiança: ${g.probability}%</span>
+                    <span class="game-prob badge-purple">Score do Modelo: ${modelScore}</span>
                 </div>
+                
+                <div class="game-metrics-row" style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.75rem; background:rgba(255,255,255,0.03); padding:0.4rem 0.6rem; border-radius:6px;">
+                    <div>Desempenho Histórico: <strong style="color:var(--accent-green);">${perf}</strong></div>
+                    <div>Média Esperada: <strong>${expectedHits} acertos</strong></div>
+                </div>
+
                 <div class="game-balls">
                     ${g.numbers.map((n, ni) => `<div class="ball ${cfg.color} ball-animate" style="animation-delay:${(i*0.05)+(ni*0.03)}s">${String(n).padStart(2,'0')}</div>`).join('')}
                 </div>
+
                 ${stats ? `
                 <div class="game-stats">
                     <div class="game-stat-item">
@@ -165,12 +177,19 @@ export class AppView {
                     </div>
                 </div>
                 ` : ''}
+
+                ${explanations && explanations.length > 0 ? `
+                <div class="game-explanations" style="margin-top:0.75rem; font-size:0.72rem; color:var(--text-muted); border-top:1px dashed rgba(255,255,255,0.1); padding-top:0.5rem;">
+                    <div style="font-weight:600; color:var(--text-main); margin-bottom:0.25rem;">🔍 Motivos da Seleção:</div>
+                    ${explanations.slice(0, 3).map(exp => `<div style="margin-bottom:0.15rem;">${exp}</div>`).join('')}
+                </div>
+                ` : ''}
             </div>`;
         }).join('');
     }
 
     static renderEmptyGames() {
-        document.getElementById('gamesGrid').innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">🤖</div><div class="empty-state-text">Sincronize os dados e clique em "Gerar Jogos"</div></div>';
+        document.getElementById('gamesGrid').innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">🤖</div><div class="empty-state-text">Sincronize os dados e clique em "Gerar Jogos Inteligentes"</div></div>';
     }
 
     static renderConferenceInputs(type) {
