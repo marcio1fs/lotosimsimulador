@@ -225,8 +225,11 @@ export class ScoringEngine {
     }
 
     /**
-     * Calcula o score de Evidência Estatística (0-100) reutilizando a inferência estatística exata.
-     * Retorna null se não houver p-value ou se os dados forem insuficientes (Req 3, 4, 5 de 4.1).
+     * Calcula o score de Evidência Estatística (índice interno de 0 a 100).
+     * Reutiliza a inferência estatística exata (p-value, IC 95% e Cohen's d).
+     * NOTA: Trata-se de um índice de força de evidência relativa contra a baseline aleatória,
+     * e NÃO de uma probabilidade de acerto ou garantia de prêmios futuros.
+     * Retorna null se não houver p-value ou se os dados forem insuficientes.
      */
     static calculateStatisticalEvidence(backtestSummary) {
         if (!backtestSummary || typeof backtestSummary.pValue !== 'number' || !Number.isFinite(backtestSummary.pValue)) {
