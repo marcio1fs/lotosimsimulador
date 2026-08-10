@@ -23,9 +23,25 @@ export class StatisticsView {
         } 
     }
 
+    static _getFrequency(resultsData) {
+        const candidates = [
+            resultsData?.freq,
+            resultsData?.analysis?.freqAbsolute,
+            resultsData?.analysis?.freq
+        ];
+
+        const freq = candidates.find(
+            value => value &&
+            typeof value === 'object' &&
+            !Array.isArray(value)
+        );
+
+        return freq || {};
+    }
+
     static renderFrequency(type, resultsData) {
         const cfg = LotteryModel.CONFIG[type];
-        const freq = resultsData.analysis.freq;
+        const freq = this._getFrequency(resultsData);
         const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 15);
         this._renderBar('freqChart', sorted.map(s => String(s[0]).padStart(2,'0')), sorted.map(s => s[1]), this.getGradient(cfg.color));
     }
@@ -53,8 +69,8 @@ export class StatisticsView {
 
     static renderFreqGrid(type, resultsData) {
         const cfg = LotteryModel.CONFIG[type];
-        const freq = resultsData.analysis.freq;
-        const maxF = Math.max(...Object.values(freq));
+        const freq = this._getFrequency(resultsData);
+        const maxF = Math.max(1, ...Object.values(freq));
         document.getElementById('freqGrid').innerHTML = Array.from({length: cfg.total}, (_, i) => {
             const f = freq[i+1] || 0; const intensity = f / maxF;
             return `<div class="freq-cell" style="background:hsla(220,60%,${15+intensity*35}%,${0.5+intensity*0.5});color:${intensity>0.5?'#fff':'var(--text-muted)'};">${String(i+1).padStart(2,'0')}<div class="freq-tooltip">${i+1}: ${f}x</div></div>`;
@@ -95,7 +111,7 @@ export class StatisticsView {
 
     static renderComparisonChart(games, type, resultsData) {
         const cfg = LotteryModel.CONFIG[type];
-        const freq = resultsData.freq || {};
+        const freq = this._getFrequency(resultsData);
         const avg = games.map(g => g.numbers.reduce((s, n) => s + (freq[n]||0), 0) / cfg.pick);
         this._renderRadar('comparisonChart', games.map((g, i) => `J#${i+1}`), avg);
     }
