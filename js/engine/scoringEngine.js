@@ -225,12 +225,47 @@ export class ScoringEngine {
     }
 
     /**
+     * Calcula o score de Evidência Estatística (0-100) reutilizando a inferência estatística exata.
+     * Retorna null se não houver p-value ou se os dados forem insuficientes (Req 3, 4, 5 de 4.1).
+     */
+    static calculateStatisticalEvidence(backtestSummary) {
+        if (!backtestSummary || typeof backtestSummary.pValue !== 'number' || !Number.isFinite(backtestSummary.pValue)) {
+            return null;
+        }
+
+        const pValue = backtestSummary.pValue;
+        const effectSize = Number.isFinite(backtestSummary.effectSize) ? backtestSummary.effectSize : 0;
+        const ci = backtestSummary.confidenceInterval;
+        const diffMean = Number.isFinite(backtestSummary.diffMean) ? backtestSummary.diffMean : 0;
+
+        // Se o modelo teve desempenho inferior à baseline
+        if (diffMean < 0 || effectSize < 0) {
+            const lowScore = Math.max(0, 20 + diffMean * 10);
+            return Number(lowScore.toFixed(1));
+        }
+
+        // Verifica se o IC 95% da diferença inclui zero
+        const ciIncludesZero = ci && typeof ci.lower === 'number' && typeof ci.upper === 'number'
+            ? (ci.lower <= 0 && ci.upper >= 0)
+            : true;
+
+        if (pValue < 0.05 && !ciIncludesZero) {
+            // Evidência estatística forte
+            const strongScore = Math.min(100, 80 + Math.min(20, effectSize * 20));
+            return Number(strongScore.toFixed(1));
+        } else if (pValue < 0.10) {
+            // Evidência moderada / marginal
+            return Number((50 + (1 - pValue) * 20).toFixed(1));
+        } else {
+            // Sem significância estatística (p >= 0.10 ou IC inclui 0)
+            const inconclusiveScore = Math.max(20, 50 - (pValue - 0.05) * 40);
+            return Number(inconclusiveScore.toFixed(1));
+        }
+    }
+
+    /**
      * Otimiza pesos usando divisão de Treino (70%) vs Validação (30%) e penalização de Overfitting
-     * Usa SeededRandom para reprodutibilidade 100% determinística sem Math.random()
-     * @param {Array} fullHistory - Histórico de concursos
-     * @param {Object} config - Configuração da loteria
-     * @param {Object} options - { iterations: 20, seed: 123456 }
-     * @returns {{ optimizedWeights: Object, bestObjectiveScore: number, trainMean: number, valMean: number, overfitGap: number, isOverfit: boolean, method: string }}
+     * Suporta métricas ausentes (null) sem favorecê-las ou usar substitutos arbitrários (Req 11, 12).
      */
     static optimizeWeights(fullHistory, config, options = {}) {
         const seed = options.seed ?? 123456;
@@ -240,10 +275,18 @@ export class ScoringEngine {
         if (!fullHistory || fullHistory.length < 30) {
             return {
                 optimizedWeights: baseWeights,
-                bestObjectiveScore: 0,
+                bestObjectiveScore: null,
                 trainMean: null,
                 valMean: null,
                 overfitGap: 0,
+                objectiveBreakdown: {
+                    performance: null,
+                    outOfSample: null,
+                    stability: null,
+                    statisticalEvidence: null,
+                    overfitPenalty: 0,
+                    finalObjective: null
+                },
                 isOverfit: false,
                 method: 'Dados insuficientes para otimização - Utilizando pesos base'
             };
@@ -291,17 +334,33 @@ export class ScoringEngine {
             const valMean = valHitsSum / Math.max(1, valHistory.length - 5);
 
             const overfitGap = Math.max(0, trainMean - valMean);
-            
-            // Função objetivo transparente (Requirement 8):
-            // Objective = 0.30 * performance + 0.35 * outOfSample + 0.20 * stability + 0.15 * statisticalEvidence - overfitPenalty
             const expectedMean = (config.pick * (config.drawn || config.pick)) / config.total;
+            
             const perfScore = Math.min(100, (trainMean / (expectedMean || 1)) * 50);
             const outOfSampleScore = Math.min(100, (valMean / (expectedMean || 1)) * 50);
-            const stabilityComponent = Math.max(0, 100 - overfitGap * 30);
-            const statEvidence = Math.min(100, Math.max(0, (valMean - expectedMean) * 40 + 50));
+            
+            const stabilityComponent = options.stabilityScore !== undefined ? options.stabilityScore : null;
+            const statEvidence = this.calculateStatisticalEvidence(options.backtestSummary);
             const overfitPenalty = overfitGap * 25;
 
-            const compositeObjectiveScore = (0.30 * perfScore) + (0.35 * outOfSampleScore) + (0.20 * stabilityComponent) + (0.15 * statEvidence) - overfitPenalty;
+            // Renormalização dinâmica de pesos entre componentes válidos (não-null) (Req 11, 12 de 4.1)
+            const components = [
+                { name: 'performance', weight: 0.30, val: perfScore },
+                { name: 'outOfSample', weight: 0.35, val: outOfSampleScore },
+                { name: 'stability', weight: 0.20, val: stabilityComponent },
+                { name: 'statisticalEvidence', weight: 0.15, val: statEvidence }
+            ];
+
+            const validComponents = components.filter(c => typeof c.val === 'number' && Number.isFinite(c.val));
+            const totalValidWeight = validComponents.reduce((sum, c) => sum + c.weight, 0) || 1;
+
+            let weightedSum = 0;
+            validComponents.forEach(c => {
+                const normWeight = c.weight / totalValidWeight;
+                weightedSum += normWeight * c.val;
+            });
+
+            const compositeObjectiveScore = weightedSum - overfitPenalty;
 
             if (compositeObjectiveScore > bestObjectiveScore) {
                 bestObjectiveScore = compositeObjectiveScore;
@@ -312,8 +371,8 @@ export class ScoringEngine {
                 bestBreakdown = {
                     performance: Number(perfScore.toFixed(1)),
                     outOfSample: Number(outOfSampleScore.toFixed(1)),
-                    stability: Number(stabilityComponent.toFixed(1)),
-                    statisticalEvidence: Number(statEvidence.toFixed(1)),
+                    stability: stabilityComponent !== null ? Number(stabilityComponent.toFixed(1)) : null,
+                    statisticalEvidence: statEvidence !== null ? Number(statEvidence.toFixed(1)) : null,
                     overfitPenalty: Number(overfitPenalty.toFixed(1)),
                     finalObjective: Number(compositeObjectiveScore.toFixed(1))
                 };
@@ -324,20 +383,19 @@ export class ScoringEngine {
 
         return {
             optimizedWeights: bestWeights,
-            bestObjectiveScore: Number(Number.isFinite(bestObjectiveScore) ? bestObjectiveScore.toFixed(2) : 0),
+            bestObjectiveScore: Number.isFinite(bestObjectiveScore) ? Number(bestObjectiveScore.toFixed(2)) : null,
             trainMean: Number.isFinite(bestTrainMean) ? bestTrainMean : null,
             valMean: Number.isFinite(bestValMean) ? bestValMean : null,
             overfitGap: Number.isFinite(bestOverfitGap) ? bestOverfitGap : 0,
             objectiveBreakdown: bestBreakdown || {
-                performance: 0,
-                outOfSample: 0,
-                stability: 0,
-                statisticalEvidence: 0,
+                performance: null,
+                outOfSample: null,
+                stability: null,
+                statisticalEvidence: null,
                 overfitPenalty: 0,
-                finalObjective: 0
+                finalObjective: null
             },
             isOverfit,
-            method: 'Otimização Determinística Grid/Random (Treino 70% / Validação 30%)'
         };
     }
 

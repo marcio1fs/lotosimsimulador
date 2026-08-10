@@ -187,22 +187,30 @@ export class BacktestEngine {
         // Se a performance despencar bruscamente na amostra nova, há overfitting
         const isOverfitting = (inStats.mean - outStats.mean) > ((inStats.stdDev || 1) * 0.8);
 
-        // Estabilidade entre folds (0 a 100)
-        const foldMeans = foldResults.map(f => f.mean);
-        const foldMeanAvg = foldMeans.length > 0 ? (foldMeans.reduce((a, b) => a + b, 0) / foldMeans.length) : 0;
-        const foldVar = foldMeans.length > 0 ? (foldMeans.reduce((s, m) => s + Math.pow(m - foldMeanAvg, 2), 0) / foldMeans.length) : 0;
-        const foldStd = Math.sqrt(foldVar);
-        const overfitGap = Math.max(0, inStats.mean - outStats.mean);
-        
-        const rawStability = 100 - (foldStd * 40 + overfitGap * 30);
-        const stabilityScore = Number(Math.max(0, Math.min(100, rawStability)).toFixed(1));
+        // Estabilidade entre folds (0 a 100) — exige ao menos 2 folds válidos (Req 8, 9, 10 de 4.1)
+        let stabilityScore = null;
+        if (foldResults.length >= 2) {
+            const foldMeans = foldResults.map(f => f.mean);
+            const foldMeanAvg = foldMeans.reduce((a, b) => a + b, 0) / foldMeans.length;
+            const foldVar = foldMeans.reduce((s, m) => s + Math.pow(m - foldMeanAvg, 2), 0) / foldMeans.length;
+            const foldStd = Math.sqrt(foldVar);
+            
+            // Coeficiente de Variação (escala independente da loteria)
+            const cv = foldMeanAvg > 0 ? (foldStd / foldMeanAvg) : 0;
+            const overfitGap = Math.max(0, inStats.mean - outStats.mean);
+            const overfitRatio = foldMeanAvg > 0 ? (overfitGap / foldMeanAvg) : 0;
+
+            const rawStability = 100 * Math.max(0, 1 - (cv * 1.5 + overfitRatio * 1.0));
+            const calculatedScore = Number(rawStability.toFixed(1));
+            stabilityScore = Number.isFinite(calculatedScore) ? calculatedScore : null;
+        }
 
         return {
             isOverfitting,
             inSampleMean: inStats.mean,
             outSampleMean: outStats.mean,
             diff: Number((outStats.mean - inStats.mean).toFixed(2)),
-            stabilityScore: Number.isFinite(stabilityScore) ? stabilityScore : 50,
+            stabilityScore,
             foldResults
         };
     }
@@ -219,11 +227,11 @@ export class BacktestEngine {
             baselineMean: 0,
             diffMean: 0,
             relativeImprovement: '0.0%',
-            confidenceInterval: { lower: 0, upper: 0, margin: 0, mean: 0 },
-            pValue: 1,
+            confidenceInterval: null,
+            pValue: null,
             isStatisticallySignificant: false,
-            tTestResult: { tStatistic: 0, pValue: 1, isSignificant: false },
-            walkForward: { isOverfitting: false, inSampleMean: 0, outSampleMean: 0, diff: 0, stabilityScore: 50, foldResults: [] },
+            tTestResult: { tStatistic: 0, pValue: null, isSignificant: false },
+            walkForward: { isOverfitting: false, inSampleMean: 0, outSampleMean: 0, diff: 0, stabilityScore: null, foldResults: [] },
             dataLeakageDetected: false
         };
     }

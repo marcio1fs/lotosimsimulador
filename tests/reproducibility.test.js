@@ -54,7 +54,9 @@ describe('Reproducibility Suite', () => {
         assert.equal(pipeA.status, pipeB.status, 'Status do modelo deve ser idêntico');
         assert.equal(pipeA.backtestResult.meanHits, pipeB.backtestResult.meanHits, 'Média do backtest deve ser idêntica');
         assert.equal(pipeA.backtestResult.pValue, pipeB.backtestResult.pValue, 'p-value deve ser idêntico');
-        assert.equal(pipeA.portfolioCoverage, pipeB.portfolioCoverage, 'Coverage deve ser idêntico');
+        assert.equal(pipeA.coverageScore, pipeB.coverageScore, 'Coverage score deve ser idêntico');
+        assert.equal(pipeA.diversificationScore, pipeB.diversificationScore, 'Diversification score deve ser idêntico');
+        assert.deepStrictEqual(pipeA.optWeightsResult.objectiveBreakdown, pipeB.optWeightsResult.objectiveBreakdown, 'Objective score breakdown deve ser idêntico');
         assert.deepStrictEqual(pipeA.optWeightsResult.optimizedWeights, pipeB.optWeightsResult.optimizedWeights, 'Pesos otimizados devem ser idênticos');
     });
 

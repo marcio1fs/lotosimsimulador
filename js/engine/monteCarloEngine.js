@@ -89,13 +89,19 @@ export class MonteCarloEngine {
     /**
      * Calcula o Coverage Score (0-100) para um portfólio de jogos gerados
      * Avalia quantidade de jogos, dezenas únicas, ocupação do volante e desvio de concentração.
+     * Retorna null quando o universo da loteria não for fornecido explicitamente.
      */
     static calculateCoverageScore(games, config) {
         if (!games || !Array.isArray(games) || games.length === 0) return 0;
-        const total = config?.total || 25;
-        const pick = config?.pick || 15;
-        const totalPositions = games.length * pick;
+        
+        // Exige obrigatoriamente configuração válida da loteria (sem fallback silencioso para 25)
+        const total = config?.total;
+        const pick = config?.pick;
+        if (!Number.isFinite(total) || !Number.isFinite(pick) || total <= 0 || pick <= 0) {
+            return null;
+        }
 
+        const totalPositions = games.length * pick;
         const uniqueNumbers = new Set();
         const numberCounts = {};
 
@@ -140,12 +146,13 @@ export class MonteCarloEngine {
 
     /**
      * Calcula o Diversification Score (0-100) para um portfólio de jogos
-     * Baseia-se no complemento da distância média de Jaccard entre todos os pares do lote.
+     * Regra estrita: 0 jogos -> 0; 1 jogo -> 100; 2+ jogos -> média da distância Jaccard (1 - Jaccard).
      */
     static calculateDiversificationScore(games, config) {
-        if (!games || !Array.isArray(games) || games.length <= 1) return 100;
+        if (!games || !Array.isArray(games) || games.length === 0) return 0;
+        if (games.length === 1) return 100;
 
-        let totalSimilarity = 0;
+        let totalDistance = 0;
         let pairCount = 0;
 
         for (let i = 0; i < games.length; i++) {
@@ -161,17 +168,17 @@ export class MonteCarloEngine {
                 const union = new Set([...gameA.map(Number), ...gameB.map(Number)]).size;
                 const similarity = union > 0 ? intersection / union : 0;
 
-                totalSimilarity += similarity;
+                totalDistance += (1 - similarity);
                 pairCount++;
             }
         }
 
-        if (pairCount === 0) return 100;
+        if (pairCount === 0) return 0;
 
-        const avgSimilarity = totalSimilarity / pairCount;
-        // Quanto menor a similaridade média entre os pares, maior a diversificação (0-100)
-        const divScore = Number(((1 - avgSimilarity) * 100).toFixed(1));
-        return Number.isFinite(divScore) ? Math.max(0, Math.min(100, divScore)) : 100;
+        const avgDistance = totalDistance / pairCount;
+        // Distância média normalizada para 0 a 100
+        const divScore = Number((avgDistance * 100).toFixed(1));
+        return Number.isFinite(divScore) ? Math.max(0, Math.min(100, divScore)) : 0;
     }
 }
 

@@ -302,7 +302,12 @@ export class GameGenerator {
         const backtestResult = BacktestEngine.runBacktest(recentHistory, config, generatorFn, { windowSize: 30, seed });
 
         // 7. Otimização Determinística de Pesos (Treino 70% / Validação 30%)
-        const optWeightsResult = ScoringEngine.optimizeWeights(recentHistory, config, { seed });
+        const stabilityScore = backtestResult.walkForward ? backtestResult.walkForward.stabilityScore : null;
+        const optWeightsResult = ScoringEngine.optimizeWeights(recentHistory, config, { 
+            seed, 
+            stabilityScore, 
+            backtestSummary: backtestResult 
+        });
         const finalWeights = optWeightsResult.optimizedWeights;
 
         // 10. Monte Carlo (10.000 iterações determinísticas)

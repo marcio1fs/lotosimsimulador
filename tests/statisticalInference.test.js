@@ -12,6 +12,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { StatisticalInference } from '../js/engine/statisticalInference.js';
+import { ScoringEngine } from '../js/engine/scoringEngine.js';
 
 describe('StatisticalInference - Funções Matemáticas Especiais', () => {
     it('logGamma deve retornar valores exatos', () => {
@@ -103,5 +104,35 @@ describe('StatisticalInference - Bootstrap Determinístico', () => {
         assert.equal(res1.ciLower, res2.ciLower);
         assert.equal(res1.ciUpper, res2.ciUpper);
         assert.equal(res1.pValue, res2.pValue);
+    });
+});
+
+describe('ScoringEngine - calculateStatisticalEvidence (Fase 4.1)', () => {
+    it('deve retornar null se pValue não estiver disponível', () => {
+        assert.equal(ScoringEngine.calculateStatisticalEvidence(null), null);
+        assert.equal(ScoringEngine.calculateStatisticalEvidence({ pValue: null }), null);
+        assert.equal(ScoringEngine.calculateStatisticalEvidence({ pValue: undefined }), null);
+    });
+
+    it('deve retornar score elevado (> 80) para pValue < 0.05 e IC excluindo zero', () => {
+        const summary = {
+            pValue: 0.005,
+            effectSize: 1.2,
+            confidenceInterval: { lower: 0.4, upper: 1.2 },
+            diffMean: 0.8
+        };
+        const score = ScoringEngine.calculateStatisticalEvidence(summary);
+        assert.ok(score !== null && score >= 80, `Evidência estatística forte deve ser >= 80, obteve ${score}`);
+    });
+
+    it('deve retornar score baixo (< 30) se o modelo teve desempenho inferior à baseline (diffMean < 0)', () => {
+        const summary = {
+            pValue: 0.45,
+            effectSize: -0.3,
+            confidenceInterval: { lower: -0.8, upper: 0.2 },
+            diffMean: -0.3
+        };
+        const score = ScoringEngine.calculateStatisticalEvidence(summary);
+        assert.ok(score !== null && score < 30, `Evidência contrária deve ser < 30, obteve ${score}`);
     });
 });
