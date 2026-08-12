@@ -146,7 +146,7 @@ export class AppView {
             <div style="grid-column:1/-1;padding:0.9rem 1rem;border-radius:10px;background:rgba(245,158,11,0.10);border:1px solid rgba(245,158,11,0.35);font-size:0.78rem;line-height:1.45;color:var(--text-main);">
                 <strong>Uso responsável — ${policy.label}</strong><br>
                 ${policy.detail}<br>
-                <span style="color:var(--text-muted)">Chance por combinação: ${policy.probabilityPerCombination}. ${policy.disclaimer}</span>
+                <span style="color:var(--text-muted)">${policy.probabilityLabel || 'Chance por combinacao'}: ${policy.probabilityPerCombination}. ${policy.disclaimer}</span>
             </div>` : '';
 
         document.getElementById('gamesGrid').innerHTML = policyNotice + games.map((g, i) => {
@@ -159,6 +159,7 @@ export class AppView {
             const seed = g.seed;
             const mc = g.monteCarlo;
             const coverage = g.portfolioCoverage;
+            const projection = g.futureProjection;
 
             // Badge de significância
             const sigBadge = g.statisticallySignificant === true || g.isStatisticallySignificant === true 
@@ -208,6 +209,14 @@ export class AppView {
                 ${mc ? `
                 <div style="margin-top:0.5rem; font-size:0.7rem; color:var(--text-muted); background:rgba(139,92,246,0.05); padding:0.4rem 0.6rem; border-radius:6px; border:1px solid rgba(139,92,246,0.1);">
                     <span style="font-weight:600;">🎲 Monte Carlo:</span> Estabilidade ${mc.stabilityScore}/100 · ${mc.iterations} sims
+                </div>
+                ` : ''}
+
+                ${projection ? `
+                <div style="margin-top:0.5rem; font-size:0.7rem; color:var(--text-muted); background:rgba(59,130,246,0.06); padding:0.45rem 0.6rem; border-radius:6px; border:1px solid rgba(59,130,246,0.18);">
+                    <span style="font-weight:600;">Proximo sorteio (calculo exato):</span>
+                    media de ${projection.expectedHits} acertos · faixa central de 95%: ${projection.predictionInterval.lower}-${projection.predictionInterval.upper} · acerto maximo: ${projection.fullHitOdds}<br>
+                    <span style="font-size:0.64rem;">${projection.disclaimer}</span>
                 </div>
                 ` : ''}
 

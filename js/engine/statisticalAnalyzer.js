@@ -250,6 +250,10 @@ export class StatisticalAnalyzer {
 
         return {
             drawCount,
+            // The analyzer receives history from newest to oldest. Keeping the
+            // latest draw here makes repetition diagnostics available to every
+            // generation mode, including the advanced pipeline.
+            lastDrawNumbers: Array.isArray(history[0]?.dezenas) ? history[0].dezenas.map(Number) : [],
             freqAbsolute,
             freqRelative,
             freqWeighted,

@@ -5,6 +5,7 @@
 
 import { StatisticalAnalyzer } from './statisticalAnalyzer.js';
 import { SeededRandom } from './prng.js';
+import { ProbabilityEngine } from './probabilityEngine.js';
 
 export class MonteCarloEngine {
     /**
@@ -57,6 +58,7 @@ export class MonteCarloEngine {
         }
 
         const stats = StatisticalAnalyzer.calculateDistributionStats(hitsList);
+        const theoretical = ProbabilityEngine.hypergeometric(config, candidateSet.size);
         
         // P(hits >= K)
         const cumulativeProbabilities = {};
@@ -81,7 +83,9 @@ export class MonteCarloEngine {
             variance: stats.variance,
             stabilityScore,
             empiricalDistribution: stats.distribution,
-            cumulativeProbabilities,
+            empiricalCumulativeProbabilities: cumulativeProbabilities,
+            cumulativeProbabilities: theoretical.cumulativeProbabilities,
+            theoretical,
             disclaimer: 'Simulação Monte Carlo avalia a estabilidade estatística.'
         };
     }

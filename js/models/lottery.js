@@ -4,6 +4,7 @@ import { GameGenerator } from '../engine/gameGenerator.js';
 import { BacktestEngine } from '../engine/backtestEngine.js';
 import { MonteCarloEngine } from '../engine/monteCarloEngine.js';
 import { ForecastPolicy } from '../engine/forecastPolicy.js';
+import { ProbabilityEngine } from '../engine/probabilityEngine.js';
 
 /**
  * Model: Lottery - Configurações, Regras de Negócio e Pontuação Estatística
@@ -106,7 +107,19 @@ export class LotteryModel {
             strategy,
             config
         });
-        games.forEach(game => { game.forecastPolicy = policy; });
+        games.forEach(game => {
+            const theoretical = ProbabilityEngine.hypergeometric(config, game.numbers?.length || config.pick);
+            game.forecastPolicy = policy;
+            game.futureProjection = {
+                method: theoretical.method,
+                expectedHits: theoretical.expectedHits,
+                predictionInterval: theoretical.predictionInterval,
+                fullHitOdds: theoretical.fullHitOdds,
+                cumulativeProbabilities: theoretical.cumulativeProbabilities,
+                historicalValidation: backtest || games.modelPipeline?.backtestResult || null,
+                disclaimer: 'Projecao estatistica do proximo sorteio, nao previsao de dezenas nem garantia de premio.'
+            };
+        });
         games.forecastPolicy = policy;
         if (games.modelPipeline) games.modelPipeline.forecastPolicy = policy;
         return games;

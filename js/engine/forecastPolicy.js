@@ -5,6 +5,8 @@
  * idôneas, o histórico não altera a chance matemática de uma combinação
  * específica; por isso este módulo nunca autoriza promessas de ganho.
  */
+import { ProbabilityEngine } from './probabilityEngine.js';
+
 export class ForecastPolicy {
     static combinationCount(total, pick) {
         let result = 1n;
@@ -17,13 +19,14 @@ export class ForecastPolicy {
     static evaluate({ historySize = 0, backtest = null, strategy = 'adaptive', config }) {
         const minimumHistory = 100;
         const minimumEvaluatedDraws = 30;
-        const combinationCount = this.combinationCount(config.total, config.pick);
+        const exactOdds = ProbabilityEngine.hypergeometric(config, config.pick);
         const base = {
             strategy,
             historySize,
             minimumHistory,
             evaluatedDraws: backtest?.evaluatedDraws ?? 0,
-            probabilityPerCombination: `1 em ${combinationCount.toLocaleString('pt-BR')}`,
+            probabilityPerCombination: exactOdds.fullHitOdds,
+            probabilityLabel: `Chance de acertar todas as ${exactOdds.maxHits} dezenas sorteadas`,
             guarantee: false,
             canClaimPositiveReturn: false,
             disclaimer: 'Nenhuma combinação é previsão de resultado ou garantia de prêmio. Em sorteios idôneos, todas as combinações válidas têm a mesma chance matemática.'
