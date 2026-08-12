@@ -3,6 +3,7 @@ import { ScoringEngine, DEFAULT_WEIGHTS } from '../engine/scoringEngine.js';
 import { GameGenerator } from '../engine/gameGenerator.js';
 import { BacktestEngine } from '../engine/backtestEngine.js';
 import { MonteCarloEngine } from '../engine/monteCarloEngine.js';
+import { ForecastPolicy } from '../engine/forecastPolicy.js';
 
 /**
  * Model: Lottery - Configurações, Regras de Negócio e Pontuação Estatística
@@ -66,11 +67,13 @@ export class LotteryModel {
         if (!cfg) return [];
 
         if (strategy === 'best_game') {
-            return GameGenerator.runBestGameMode(fullHistory, cfg, fixed, excluded, count, seed);
+            const games = GameGenerator.runBestGameMode(fullHistory, cfg, fixed, excluded, count, seed);
+            return this.attachForecastPolicy(games, fullHistory, strategy, cfg);
         }
 
         if (strategy === 'maximum_precision') {
-            return GameGenerator.runMaximumPrecisionMode(fullHistory, cfg, fixed, excluded, count, seed);
+            const games = GameGenerator.runMaximumPrecisionMode(fullHistory, cfg, fixed, excluded, count, seed);
+            return this.attachForecastPolicy(games, fullHistory, strategy, cfg);
         }
 
         const windowData = StatisticalAnalyzer.getWindow(fullHistory, timeWindow);
@@ -93,6 +96,19 @@ export class LotteryModel {
             topGame.monteCarlo = mcResult;
         }
 
+        return this.attachForecastPolicy(games, fullHistory, strategy, cfg, backtestSummary);
+    }
+
+    static attachForecastPolicy(games, fullHistory, strategy, config, backtest = null) {
+        const policy = ForecastPolicy.evaluate({
+            historySize: fullHistory?.length || 0,
+            backtest: backtest || games.modelPipeline?.backtestResult || null,
+            strategy,
+            config
+        });
+        games.forEach(game => { game.forecastPolicy = policy; });
+        games.forecastPolicy = policy;
+        if (games.modelPipeline) games.modelPipeline.forecastPolicy = policy;
         return games;
     }
 }

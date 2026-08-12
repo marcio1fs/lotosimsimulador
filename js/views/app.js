@@ -141,7 +141,15 @@ export class AppView {
 
         if (exportActions) exportActions.style.display = 'flex';
 
-        document.getElementById('gamesGrid').innerHTML = games.map((g, i) => {
+        const policy = games.forecastPolicy || games[0]?.forecastPolicy;
+        const policyNotice = policy ? `
+            <div style="grid-column:1/-1;padding:0.9rem 1rem;border-radius:10px;background:rgba(245,158,11,0.10);border:1px solid rgba(245,158,11,0.35);font-size:0.78rem;line-height:1.45;color:var(--text-main);">
+                <strong>Uso responsável — ${policy.label}</strong><br>
+                ${policy.detail}<br>
+                <span style="color:var(--text-muted)">Chance por combinação: ${policy.probabilityPerCombination}. ${policy.disclaimer}</span>
+            </div>` : '';
+
+        document.getElementById('gamesGrid').innerHTML = policyNotice + games.map((g, i) => {
             const stats = typeof g.stats === 'string' ? JSON.parse(g.stats) : g.stats;
             const explanations = typeof g.explanations === 'string' ? JSON.parse(g.explanations) : (g.explanations || []);
             const modelScore = g.modelScore || 0;
