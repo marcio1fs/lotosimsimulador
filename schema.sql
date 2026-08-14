@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS games (
     numbers JSONB NOT NULL,
     strategy VARCHAR(100),
     model_score NUMERIC(6,2),
+    historical_performance TEXT,
+    expected_hits NUMERIC(6,2),
+    confidence_level VARCHAR(50),
+    probability_type VARCHAR(50),
+    explanations JSONB,
+    stats JSONB,
     status VARCHAR(50) DEFAULT 'generated',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );

@@ -67,13 +67,32 @@ class AppController {
         AppView.renderHistory(appState.simulationHistory);
 
         const games = await Database.getAllByIndex('games', 'userId', user.id);
-        if (games.length > 0) {
-            appState.generatedGames = games.slice(-10).map(x => ({ 
-                numbers: JSON.parse(x.numbers), 
-                probability: x.probability, 
-                stats: x.stats ? JSON.parse(x.stats) : null,
-                id: x.id 
-            }));
+        if (games && games.length > 0) {
+            appState.generatedGames = games.slice(-10).map(x => {
+                let numbers = x.numbers;
+                if (typeof numbers === 'string') {
+                    try { numbers = JSON.parse(numbers); } catch (_) {}
+                }
+                let stats = x.stats;
+                if (typeof stats === 'string') {
+                    try { stats = JSON.parse(stats); } catch (_) {}
+                }
+                let explanations = x.explanations;
+                if (typeof explanations === 'string') {
+                    try { explanations = JSON.parse(explanations); } catch (_) {}
+                }
+                return { 
+                    numbers: Array.isArray(numbers) ? numbers : [], 
+                    modelScore: x.modelScore || x.model_score,
+                    historicalPerformance: x.historicalPerformance || x.historical_performance,
+                    expectedHits: x.expectedHits || x.expected_hits,
+                    confidenceLevel: x.confidenceLevel || x.confidence_level,
+                    probabilityType: x.probabilityType || x.probability_type,
+                    explanations: Array.isArray(explanations) ? explanations : [],
+                    stats: stats || null,
+                    id: x.id 
+                };
+            });
             AppView.renderGames(appState.generatedGames, appState.currentLottery);
         }
 
