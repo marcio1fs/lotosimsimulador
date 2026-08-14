@@ -1,32 +1,73 @@
-import { createClient } from '@supabase/supabase-js';
+import { neon } from '@neondatabase/serverless';
 
 // ======================================================================
-// CONFIGURAÇÃO BANCO DE DADOS (MODO 100% LOCAL - INDEXEDDB)
+// CONFIGURAÇÃO BANCO DE DADOS (HÍBRIDO: NEON POSTGRESQL / INDEXEDDB LOCAL)
 // ======================================================================
-// Para ativar a nuvem Supabase, preencha as chaves abaixo:
-const SUPABASE_URL = ''; // Ex: 'https://xxxx.supabase.co'
-const SUPABASE_ANON_KEY = ''; // Ex: 'eyJhbGci...'
+// Para conectar ao Neon na nuvem, adicione VITE_NEON_DATABASE_URL no seu .env
+// ou preencha a constante NEON_URL abaixo:
+const NEON_URL = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_NEON_DATABASE_URL)
+    ? import.meta.env.VITE_NEON_DATABASE_URL
+    : 'postgresql://neondb_owner:npg_tVidcF3Xq5bH@ep-wispy-sunset-avmm8hw8.c-11.us-east-1.aws.neon.tech/neondb?sslmode=require';
 
-const supabase = (SUPABASE_URL && SUPABASE_ANON_KEY)
-    ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-    : null;
+let sqlClient = null;
+
+function getSqlClient() {
+    if (!sqlClient && NEON_URL) {
+        sqlClient = neon(NEON_URL);
+    }
+    return sqlClient;
+}
+
+// Helpers para conversão de camelCase <-> snake_case
+function toSnakeCase(str) {
+    return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+}
+
+function toCamelCase(str) {
+    return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+}
+
+function mapObjectToSnake(obj) {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+    const mapped = {};
+    for (const [k, v] of Object.entries(obj)) {
+        mapped[toSnakeCase(k)] = v;
+    }
+    return mapped;
+}
+
+function mapObjectToCamel(obj) {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+    const mapped = {};
+    for (const [k, v] of Object.entries(obj)) {
+        mapped[toCamelCase(k)] = v;
+    }
+    return mapped;
+}
 
 /**
- * Model: Database - Híbrido (Supabase / IndexedDB)
+ * Model: Database - Híbrido (Neon PostgreSQL / IndexedDB Local)
  */
 export class Database {
     static DB_NAME = 'LotoMaisDB';
     static DB_VERSION = 1;
     static db = null;
-    static useSupabase = false; // Força execução 100% Local no IndexedDB do navegador
+    static useNeon = Boolean(NEON_URL && NEON_URL.startsWith('postgres'));
 
     static async init() {
-        if (this.useSupabase) {
-            console.log("🔥 Backend Nuvem (Supabase) Ativado!");
-            return true;
+        if (this.useNeon) {
+            try {
+                const sql = getSqlClient();
+                const testResult = await sql`SELECT NOW() as now`;
+                console.log("🔥 Backend Nuvem (Neon PostgreSQL) Conectado com Sucesso!", testResult[0]?.now);
+                return true;
+            } catch (err) {
+                console.error("⚠️ Falha ao conectar no Neon PostgreSQL. Alternando para IndexedDB local:", err);
+                this.useNeon = false;
+            }
         }
 
-        console.warn("💾 Backend Local (IndexedDB) Ativado. Dados não são persistidos na nuvem.");
+        console.log("💾 Backend Local (IndexedDB) Ativado.");
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
             request.onupgradeneeded = (e) => {
@@ -49,34 +90,26 @@ export class Database {
                 }
             };
             request.onsuccess = (e) => { this.db = e.target.result; resolve(this.db); };
-            request.onerror = () => reject(new Error('Erro ao abrir banco de dados'));
+            request.onerror = () => reject(new Error('Erro ao abrir banco de dados local'));
         });
     }
 
     static async add(store, data) {
-        if (this.useSupabase) {
-            // Em Supabase, IDs auto_increment devem ser gerados pelo banco
-            const payload = { ...data };
-            if (store !== 'users' && store !== 'sessions' && payload.id && typeof payload.id === 'number') delete payload.id;
-            
-            // Corrige pequenas diferenças de nomenclatura entre IndexedDB e o script SQL
-            if (store === 'users' && payload.createdAt) {
-                payload.created_at = payload.createdAt;
-                delete payload.createdAt;
-            }
-            if (store === 'sessions' && payload.createdAt) {
-                delete payload.createdAt; // A tabela sessions no SQL não tem createdAt
-            }
-            if (store === 'auto_settings' && payload.intervalMinutes !== undefined) {
-                delete payload.intervalMinutes; // Coluna ausente no SQL
-            }
-            
-            const { data: result, error } = await supabase.from(store).insert(payload).select().single();
-            if (error) {
-                console.error('SUPABASE INSERT ERROR no store ' + store + ':', error, payload);
-                throw error;
-            }
-            return result.id || result.userId;
+        if (this.useNeon) {
+            const sql = getSqlClient();
+            const payload = mapObjectToSnake(data);
+            if (payload.id && typeof payload.id === 'number') delete payload.id;
+
+            const cols = Object.keys(payload);
+            const values = Object.values(payload).map(v => (typeof v === 'object' && v !== null) ? JSON.stringify(v) : v);
+
+            const colNames = cols.map(c => `"${c}"`).join(', ');
+            const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
+
+            const query = `INSERT INTO "${store}" (${colNames}) VALUES (${placeholders}) RETURNING *;`;
+            const rows = await sql.query(query, values);
+            const res = mapObjectToCamel(rows[0]);
+            return res.id || res.userId;
         }
 
         return new Promise((res, rej) => {
@@ -88,11 +121,12 @@ export class Database {
     }
 
     static async get(store, id) {
-        if (this.useSupabase) {
-            const primaryKey = (store === 'user_stats' || store === 'auto_settings') ? 'userId' : 'id';
-            const { data, error } = await supabase.from(store).select('*').eq(primaryKey, id).single();
-            if (error && error.code !== 'PGRST116') throw error; // PGRST116 é no rows found
-            return data || undefined;
+        if (this.useNeon) {
+            const sql = getSqlClient();
+            const pk = (store === 'user_stats' || store === 'auto_settings') ? 'user_id' : 'id';
+            const query = `SELECT * FROM "${store}" WHERE "${pk}" = $1 LIMIT 1;`;
+            const rows = await sql.query(query, [id]);
+            return rows.length > 0 ? mapObjectToCamel(rows[0]) : undefined;
         }
 
         return new Promise((res, rej) => {
@@ -104,15 +138,12 @@ export class Database {
     }
 
     static async getByIndex(store, indexName, value) {
-        if (this.useSupabase) {
-            let col = indexName;
-            // Adaptação caso o indexName seja camelCase mas no DB esteja com aspas
-            const { data, error } = await supabase.from(store).select('*').eq(col, value).single();
-            if (error && error.code !== 'PGRST116') {
-                console.error('SUPABASE SELECT ERROR:', error);
-                throw error;
-            }
-            return data || undefined;
+        if (this.useNeon) {
+            const sql = getSqlClient();
+            const col = toSnakeCase(indexName);
+            const query = `SELECT * FROM "${store}" WHERE "${col}" = $1 LIMIT 1;`;
+            const rows = await sql.query(query, [value]);
+            return rows.length > 0 ? mapObjectToCamel(rows[0]) : undefined;
         }
 
         return new Promise((res, rej) => {
@@ -124,11 +155,12 @@ export class Database {
     }
 
     static async getAllByIndex(store, indexName, value) {
-        if (this.useSupabase) {
-            let col = indexName;
-            const { data, error } = await supabase.from(store).select('*').eq(col, value);
-            if (error) throw error;
-            return data || [];
+        if (this.useNeon) {
+            const sql = getSqlClient();
+            const col = toSnakeCase(indexName);
+            const query = `SELECT * FROM "${store}" WHERE "${col}" = $1 ORDER BY id DESC;`;
+            const rows = await sql.query(query, [value]);
+            return rows.map(r => mapObjectToCamel(r));
         }
 
         return new Promise((res, rej) => {
@@ -140,28 +172,27 @@ export class Database {
     }
 
     static async update(store, data) {
-        if (this.useSupabase) {
-            const payload = { ...data };
-            
-            // Corrige nomenclatura
-            if (store === 'users' && payload.createdAt) {
-                payload.created_at = payload.createdAt;
-                delete payload.createdAt;
-            }
-            if (store === 'sessions' && payload.createdAt) delete payload.createdAt;
-            if (store === 'auto_settings' && payload.intervalMinutes !== undefined) delete payload.intervalMinutes;
+        if (this.useNeon) {
+            const sql = getSqlClient();
+            const payload = mapObjectToSnake(data);
+            const pk = (store === 'user_stats' || store === 'auto_settings') ? 'user_id' : 'id';
+            const pkVal = payload[pk];
 
-            const primaryKey = (store === 'user_stats' || store === 'auto_settings') ? 'userId' : 'id';
-            
-            if (!payload[primaryKey]) {
-                const { data: result, error } = await supabase.from(store).insert(payload).select().single();
-                if (error) throw error;
-                return result;
-            } else {
-                const { data: result, error } = await supabase.from(store).update(payload).eq(primaryKey, payload[primaryKey]).select().single();
-                if (error) throw error;
-                return result;
+            if (!pkVal) {
+                return await this.add(store, data);
             }
+
+            const cols = Object.keys(payload).filter(c => c !== pk);
+            const values = cols.map(c => {
+                const v = payload[c];
+                return (typeof v === 'object' && v !== null) ? JSON.stringify(v) : v;
+            });
+            values.push(pkVal);
+
+            const setClause = cols.map((c, i) => `"${c}" = $${i + 1}`).join(', ');
+            const query = `UPDATE "${store}" SET ${setClause} WHERE "${pk}" = $${values.length} RETURNING *;`;
+            const rows = await sql.query(query, values);
+            return rows.length > 0 ? mapObjectToCamel(rows[0]) : undefined;
         }
 
         return new Promise((res, rej) => {
@@ -173,10 +204,11 @@ export class Database {
     }
 
     static async delete(store, id) {
-        if (this.useSupabase) {
-            const primaryKey = (store === 'user_stats' || store === 'auto_settings') ? 'userId' : 'id';
-            const { error } = await supabase.from(store).delete().eq(primaryKey, id);
-            if (error) throw error;
+        if (this.useNeon) {
+            const sql = getSqlClient();
+            const pk = (store === 'user_stats' || store === 'auto_settings') ? 'user_id' : 'id';
+            const query = `DELETE FROM "${store}" WHERE "${pk}" = $1;`;
+            await sql.query(query, [id]);
             return;
         }
 
@@ -189,10 +221,11 @@ export class Database {
     }
 
     static async count(store) {
-        if (this.useSupabase) {
-            const { count, error } = await supabase.from(store).select('*', { count: 'exact', head: true });
-            if (error) throw error;
-            return count;
+        if (this.useNeon) {
+            const sql = getSqlClient();
+            const query = `SELECT COUNT(*)::int as count FROM "${store}";`;
+            const rows = await sql.query(query);
+            return rows[0]?.count || 0;
         }
 
         return new Promise((res, rej) => {
@@ -203,4 +236,3 @@ export class Database {
         });
     }
 }
-

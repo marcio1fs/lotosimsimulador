@@ -16,5 +16,8 @@
   "devDependencies": {
     "@supabase/supabase-js": "^2.112.2",
     "vite": "^8.2.1"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0"
   }
 }
