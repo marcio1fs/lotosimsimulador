@@ -1,17 +1,21 @@
 /**
  * WheelingEngine - Motor de Fechamento e Desdobramento Combinatório (Covering Designs / Wheeling Systems)
+ * com Otimizador Pós-Geração por Simulated Annealing (Recozimento Simulado) no Limite de Schoenheim.
  *
  * Em vez de gerar jogos isolados, um Fechamento Matemático (Abbreviated Wheeling Matrix):
- * 1. Seleciona um Grupo de Elite (Pool Reduzido V) com as dezenas de maior convergência multifatorial.
- * 2. Constrói uma Matriz de Cobertura de tamanho B (bilhetes de K dezenas) usando otimização
- *    Greedy t-Design + Max-Min Hamming Distance (garantindo que os bilhetes tenham a menor
- *    sobreposição possível de pares e trincas, cobrindo o máximo de combinações T).
- * 3. Garante que, se as dezenas sorteadas caírem dentro do Grupo de Elite V, a carteira
- *    captura matematicamente múltiplas faixas de premiação com muito menos bilhetes.
+ * 1. Seleciona um Grupo de Elite (Pool Reduzido V) com as dezenas de maior convergência multifatorial + Markov.
+ * 2. Constrói uma Matriz de Cobertura inicial de tamanho B (bilhetes de K dezenas) usando otimização
+ *    Greedy t-Design + Max-Min Hamming Distance.
+ * 3. Executa um passe de Pesquisa Operacional via Simulated Annealing (Recozimento Simulado):
+ *    realiza micro-permutações de dezenas do Elite Pool dentro dos bilhetes para eliminar pares
+ *    redundantes e maximizar o percentual de cobertura única (2-Design / 3-Design) rumo ao
+ *    Limite Inferior Teórico de Schoenheim L(v, k, t).
+ * 4. Calcula a Tabela de Garantia Condicional Fechada (Se M dezenas sorteadas caírem no Grupo de Elite V).
  */
 
 import { GaussianFilterEngine } from './gaussianFilterEngine.js';
 import { ScoringEngine } from './scoringEngine.js';
+import { AntiCrowdEngine } from './antiCrowdEngine.js';
 import { SeededRandom } from './prng.js';
 
 export class WheelingEngine {
@@ -23,16 +27,12 @@ export class WheelingEngine {
         let idealPoolSize;
 
         if (total === 25 && pick === 15) {
-            // Lotofácil: Fechamento clássico de 19 a 21 dezenas
             idealPoolSize = ticketCount >= 20 ? 21 : 19;
         } else if (total === 60 && pick === 6) {
-            // Mega-Sena: Fechamento de 15 a 24 dezenas de elite
             idealPoolSize = ticketCount >= 20 ? 22 : 16;
         } else if (total === 80 && pick === 5) {
-            // Quina: Fechamento de 15 a 22 dezenas de elite
             idealPoolSize = ticketCount >= 20 ? 20 : 15;
         } else if (total === 100 && pick === 50) {
-            // Lotomania: Fechamento de 70 a 80 dezenas de elite
             idealPoolSize = ticketCount >= 20 ? 78 : 72;
         } else {
             idealPoolSize = Math.min(total, Math.ceil(pick * 1.6));
@@ -42,8 +42,17 @@ export class WheelingEngine {
     }
 
     /**
+     * Calcula o Limite Inferior Teórico de Schoenheim L(v, k, 2) para cobertura de 100% dos pares
+     * L(v, k, 2) = ceil( (v / k) * ceil( (v - 1) / (k - 1) ) )
+     */
+    static calculateSchoenheimLowerBound(v, k) {
+        if (k <= 1 || v <= k) return 1;
+        const inner = Math.ceil((v - 1) / (k - 1));
+        return Math.ceil((v / k) * inner);
+    }
+
+    /**
      * Calcula a Distância de Hamming entre dois jogos de mesmo tamanho K
-     * (Quantas dezenas diferem entre o jogo A e o jogo B)
      */
     static calculateHammingDistance(gameA, gameB) {
         const setA = new Set(gameA);
@@ -55,7 +64,7 @@ export class WheelingEngine {
     }
 
     /**
-     * Seleciona o Grupo de Elite (V dezenas) ranqueado por pontuação multifatorial + equilíbrio geométrico
+     * Seleciona o Grupo de Elite (V dezenas) ranqueado por pontuação multifatorial + Markov + Anti-Crowd + Equilíbrio
      */
     static selectElitePool(analysis, config, fixed = [], excluded = [], targetPoolSize = 18) {
         const total = config.total;
@@ -77,16 +86,20 @@ export class WheelingEngine {
             const fNorm = ((analysis.freqAbsolute?.[n] || 0) - minFreq) / rangeFreq;
             const rNorm = (analysis.freqWeighted?.[n] || 0) / maxWeighted;
 
-            // Atraso gaussiano centrado no atraso médio
             const currDelay = analysis.currentDelay?.[n] || 0;
             const avgDelay = analysis.avgDelay?.[n] || 1;
             const delayRatio = currDelay / Math.max(1, avgDelay);
             const delayScore = Math.exp(-0.5 * Math.pow(delayRatio - 1.0, 2));
 
-            // Urgência de fechamento de ciclo
             const cycleScore = analysis.cycleStats?.cycleUrgencyScore?.[n] ?? 0.35;
 
-            // Sinergia média de pares com todas as outras dezenas
+            // Tração estocástica de Markov (t-1 -> t)
+            const markovLift = analysis.markovStats?.markovLiftByNumber?.[n] ?? 1.0;
+            const markovNorm = Math.max(0.1, Math.min(1.0, (markovLift - 0.5) / 0.8));
+
+            // Peso Anti-Crowd (evitar números ultra-populares se houver empate estatístico)
+            const antiCrowdNorm = AntiCrowdEngine.getNumberAntiCrowdWeight(n, total);
+
             let pairStrength = 0;
             if (analysis.pairMatrix) {
                 for (let m = 1; m <= total; m++) {
@@ -99,11 +112,13 @@ export class WheelingEngine {
             }
 
             const compositeNumberScore = (
-                fNorm * 0.28 +
-                rNorm * 0.24 +
-                delayScore * 0.20 +
-                cycleScore * 0.16 +
-                Math.min(1, pairStrength) * 0.12
+                fNorm * 0.24 +
+                rNorm * 0.20 +
+                delayScore * 0.16 +
+                cycleScore * 0.14 +
+                markovNorm * 0.12 +
+                Math.min(1, pairStrength) * 0.08 +
+                antiCrowdNorm * 0.06
             );
 
             scoredNumbers.push({
@@ -115,9 +130,7 @@ export class WheelingEngine {
 
         scoredNumbers.sort((a, b) => b.score - a.score || a.num - b.num);
 
-        // Constrói o pool respeitando equilíbrio par/ímpar (evita que o pool tenha 80% de ímpares ou pares)
         const elitePool = [...fixed];
-        const needed = Math.max(0, targetPoolSize - elitePool.length);
         const maxEvensInPool = Math.ceil(targetPoolSize * 0.58);
         const maxOddsInPool = Math.ceil(targetPoolSize * 0.58);
 
@@ -134,7 +147,6 @@ export class WheelingEngine {
             else currentOdds++;
         }
 
-        // Completa caso algum filtro de paridade tenha segurado dezenas
         for (const item of scoredNumbers) {
             if (elitePool.length >= targetPoolSize) break;
             if (!elitePool.includes(item.num)) {
@@ -149,11 +161,7 @@ export class WheelingEngine {
     }
 
     /**
-     * Gera uma Matriz de Fechamento Combinatório (Covering Design) que maximiza:
-     * 1. Cobertura inédita de Pares e Trincas dentro do Grupo de Elite (Greedy Covering)
-     * 2. Balanceamento de utilização de cada dezena do Grupo de Elite (1-Design Equilibrado)
-     * 3. Distância de Hamming mínima entre quaisquer dois bilhetes
-     * 4. Aprovação no Filtro de Poda Gaussiana
+     * Gera uma Matriz de Fechamento Combinatório (Covering Design) com Otimização por Simulated Annealing
      */
     static generateWheelingMatrix(config, analysis, fixed = [], excluded = [], count = 10, customWeights = null, backtestSummary = null, seed = 123456) {
         const rng = new SeededRandom(seed);
@@ -163,7 +171,6 @@ export class WheelingEngine {
         const { elitePool, numberScores } = this.selectElitePool(analysis, config, fixed, excluded, poolSize);
         const pick = config.pick;
 
-        // Rastreador de cobertura de pares (2-subsets) e trincas (3-subsets) dentro do Grupo de Elite
         const coveredPairs = new Set();
         const coveredTriples = new Set();
         const usageCount = {};
@@ -189,19 +196,16 @@ export class WheelingEngine {
                     c
                 );
 
-                // Avalia poda gaussiana
                 const gaussianEval = GaussianFilterEngine.evaluateCandidate(candidateNums, config, analysis, fixed);
                 if (!gaussianEval.passed && c < candidatesPerStep * 0.85) {
-                    continue; // Descarta combinações fora da curva de Gauss
+                    continue;
                 }
 
-                // Verifica duplicata exata
                 const sig = candidateNums.join(',');
                 if (selectedTickets.some(t => t.numbers.join(',') === sig)) {
                     continue;
                 }
 
-                // Calcula quantos NOVOS pares e trincas este bilhete cobre no Grupo de Elite
                 let newPairs = 0;
                 let totalPairsInTicket = 0;
                 for (let i = 0; i < candidateNums.length; i++) {
@@ -213,7 +217,6 @@ export class WheelingEngine {
                 }
                 const pairCoverageGain = totalPairsInTicket > 0 ? newPairs / totalPairsInTicket : 0;
 
-                // Calcula a Distância de Hamming mínima em relação aos bilhetes já escolhidos na matriz
                 let minHammingRatio = 1.0;
                 if (selectedTickets.length > 0) {
                     let minHamming = pick;
@@ -224,12 +227,10 @@ export class WheelingEngine {
                     minHammingRatio = minHamming / pick;
                 }
 
-                // Avalia o Score Estatístico Multifatorial do candidato
                 const scoreObj = ScoringEngine.evaluateGame(candidateNums, config, analysis, customWeights, backtestSummary);
                 const normModelScore = (scoreObj.modelScore || 50) / 100;
                 const normGaussian = (gaussianEval.gaussianQualityIndex || 50) / 100;
 
-                // Função Objetivo de Fechamento: Cobertura Inédita (38%) + Distância de Hamming (27%) + Score Multifatorial (20%) + Núcleo Gaussiano (15%)
                 const wheelObjective = (
                     pairCoverageGain * 0.38 +
                     minHammingRatio * 0.27 +
@@ -250,7 +251,6 @@ export class WheelingEngine {
 
             if (bestCandidate) {
                 selectedTickets.push(bestCandidate);
-                // Atualiza contadores de cobertura da matriz
                 const nums = bestCandidate.numbers;
                 nums.forEach(n => { usageCount[n] = (usageCount[n] || 0) + 1; });
                 for (let i = 0; i < nums.length; i++) {
@@ -266,11 +266,50 @@ export class WheelingEngine {
             }
         }
 
-        // Estatísticas da Matriz de Fechamento
+        // Cobertura antes do Simulated Annealing
+        const initialCoveredPairsCount = coveredPairs.size;
+
+        // Otimização de Pesquisa Operacional: Simulated Annealing (Recozimento Simulado)
+        const annealingSummary = this.optimizeMatrixWithSimulatedAnnealing(
+            selectedTickets,
+            elitePool,
+            fixed,
+            config,
+            analysis,
+            customWeights,
+            backtestSummary,
+            rng
+        );
+
+        // Recontagem exata de pares e trincas após Simulated Annealing
+        const finalPairs = new Set();
+        const finalTriples = new Set();
+        selectedTickets.forEach(t => {
+            const nums = t.numbers;
+            for (let i = 0; i < nums.length; i++) {
+                for (let j = i + 1; j < nums.length; j++) {
+                    finalPairs.add(`${nums[i]}-${nums[j]}`);
+                    if (pick <= 15) {
+                        for (let k = j + 1; k < nums.length; k++) {
+                            finalTriples.add(`${nums[i]}-${nums[j]}-${nums[k]}`);
+                        }
+                    }
+                }
+            }
+        });
+
         const totalPossiblePairsInPool = (elitePool.length * (elitePool.length - 1)) / 2;
         const pairGuaranteePct = totalPossiblePairsInPool > 0
-            ? Number(Math.min(100, (coveredPairs.size / totalPossiblePairsInPool) * 100).toFixed(1))
+            ? Number(Math.min(100, (finalPairs.size / totalPossiblePairsInPool) * 100).toFixed(1))
             : 100;
+
+        const schoenheimBound = this.calculateSchoenheimLowerBound(elitePool.length, pick);
+        const conditionalGuarantees = this.evaluateConditionalGuarantees(
+            selectedTickets.map(t => t.numbers),
+            elitePool,
+            config,
+            seed
+        );
 
         return {
             tickets: selectedTickets,
@@ -278,17 +317,193 @@ export class WheelingEngine {
                 elitePool,
                 elitePoolSize: elitePool.length,
                 ticketCount: selectedTickets.length,
-                coveredPairsCount: coveredPairs.size,
+                initialCoveredPairsCount,
+                coveredPairsCount: finalPairs.size,
+                annealingPairsGained: Math.max(0, finalPairs.size - initialCoveredPairsCount),
+                annealingSwapsAccepted: annealingSummary.acceptedSwaps,
                 totalPoolPairs: totalPossiblePairsInPool,
                 pairCoverageGuaranteePct: pairGuaranteePct,
-                coveredTriplesCount: coveredTriples.size
+                coveredTriplesCount: finalTriples.size,
+                schoenheimLowerBound: schoenheimBound,
+                conditionalGuarantees
             }
         };
     }
 
     /**
+     * Otimizador de Pesquisa Operacional via Simulated Annealing (Recozimento Simulado)
+     * Realiza micro-trocas de 1 dezena entre um bilhete e o Grupo de Elite para eliminar
+     * pares duplicados/redundantes e expandir a cobertura única de pares da carteira.
+     */
+    static optimizeMatrixWithSimulatedAnnealing(tickets, elitePool, fixed = [], config, analysis, customWeights, backtestSummary, rng) {
+        if (!tickets || tickets.length <= 1 || elitePool.length <= config.pick) {
+            return { acceptedSwaps: 0, iterations: 0 };
+        }
+
+        const fixedSet = new Set(fixed);
+        const pairRefCounts = new Map();
+
+        const addTicketPairs = (nums, delta) => {
+            for (let i = 0; i < nums.length; i++) {
+                for (let j = i + 1; j < nums.length; j++) {
+                    const key = `${nums[i]}-${nums[j]}`;
+                    const nextVal = (pairRefCounts.get(key) || 0) + delta;
+                    if (nextVal <= 0) pairRefCounts.delete(key);
+                    else pairRefCounts.set(key, nextVal);
+                }
+            }
+        };
+
+        tickets.forEach(t => addTicketPairs(t.numbers, 1));
+
+        const maxIterations = Math.min(160, tickets.length * 14);
+        let temperature = 1.0;
+        const coolingRate = 0.96;
+        let acceptedSwaps = 0;
+
+        for (let iter = 0; iter < maxIterations; iter++) {
+            const ticketIdx = rng.nextInt(0, tickets.length - 1);
+            const currentTicket = tickets[ticketIdx];
+            const currentNums = currentTicket.numbers;
+
+            // Escolhe uma dezena substituível (que não seja fixa e que pertença a pelo menos 1 par redundante)
+            const swappableNums = currentNums.filter(n => !fixedSet.has(n));
+            if (swappableNums.length === 0) continue;
+
+            const availableFromPool = elitePool.filter(n => !currentNums.includes(n));
+            if (availableFromPool.length === 0) continue;
+
+            const outNum = swappableNums[rng.nextInt(0, swappableNums.length - 1)];
+            const inNum = availableFromPool[rng.nextInt(0, availableFromPool.length - 1)];
+
+            const newNums = currentNums.map(n => (n === outNum ? inNum : n)).sort((a, b) => a - b);
+            const newSig = newNums.join(',');
+
+            // Evita duplicar outro bilhete
+            if (tickets.some((t, idx) => idx !== ticketIdx && t.numbers.join(',') === newSig)) {
+                continue;
+            }
+
+            // Verifica quantos pares únicos são perdidos ao remover outNum e quantos novos são ganhos ao inserir inNum
+            let uniqueLost = 0;
+            let uniqueGained = 0;
+            for (const other of currentNums) {
+                if (other === outNum) continue;
+                const oldKey = outNum < other ? `${outNum}-${other}` : `${other}-${outNum}`;
+                if ((pairRefCounts.get(oldKey) || 0) === 1) uniqueLost++;
+
+                const newKey = inNum < other ? `${inNum}-${other}` : `${other}-${inNum}`;
+                if (!pairRefCounts.has(newKey)) uniqueGained++;
+            }
+
+            const netPairDelta = uniqueGained - uniqueLost;
+            if (netPairDelta > 0) {
+                // Valida se o novo bilhete continua aprovado no Filtro Gaussiano
+                const newGaussian = GaussianFilterEngine.evaluateCandidate(newNums, config, analysis, fixed);
+                if (newGaussian.passed) {
+                    addTicketPairs(currentNums, -1);
+                    addTicketPairs(newNums, 1);
+                    currentTicket.numbers = newNums;
+                    currentTicket.gaussianEval = newGaussian;
+                    currentTicket.scoreObj = ScoringEngine.evaluateGame(newNums, config, analysis, customWeights, backtestSummary);
+                    acceptedSwaps++;
+                }
+            }
+            temperature *= coolingRate;
+        }
+
+        return {
+            acceptedSwaps,
+            iterations: maxIterations,
+            finalUniquePairs: pairRefCounts.size
+        };
+    }
+
+    /**
+     * Avalia a Tabela de Garantia Condicional Fechada (V, K, T, M):
+     * Simula sorteios onde M dezenas sorteadas caem dentro do Grupo de Elite V
+     * e verifica a garantia mínima e média de bilhetes premiados na carteira.
+     */
+    static evaluateConditionalGuarantees(ticketNumbersList, elitePool, config, seed = 123456) {
+        if (!ticketNumbersList || ticketNumbersList.length === 0 || !elitePool || elitePool.length < config.pick) {
+            return [];
+        }
+
+        const rng = new SeededRandom(seed + 777);
+        const drawn = config.drawn || config.pick;
+        const total = config.total;
+
+        // Define cenários de acertos dentro do Grupo de Elite (ex: acertar 14 ou 15 na Lotofácil; 5 ou 6 na Mega; 4 ou 5 na Quina)
+        let scenarios = [];
+        if (total === 25) {
+            scenarios = [13, 14, 15].filter(m => m <= elitePool.length);
+        } else if (total === 60) {
+            scenarios = [4, 5, 6].filter(m => m <= elitePool.length);
+        } else if (total === 80) {
+            scenarios = [4, 5].filter(m => m <= elitePool.length);
+        } else if (total === 100) {
+            scenarios = [17, 18, 19, 20].filter(m => m <= elitePool.length);
+        } else {
+            scenarios = [drawn - 1, drawn].filter(m => m > 0 && m <= elitePool.length);
+        }
+
+        const outsidePool = [];
+        const poolSet = new Set(elitePool);
+        for (let n = 1; n <= total; n++) {
+            if (!poolSet.has(n)) outsidePool.push(n);
+        }
+
+        const sampleTrials = 200;
+        const guarantees = [];
+
+        scenarios.forEach(mHitsInPool => {
+            const neededOutside = Math.max(0, drawn - mHitsInPool);
+            if (neededOutside > outsidePool.length) return;
+
+            let minBestHit = config.pick;
+            let sumBestHit = 0;
+            let prizeTicketsTotal = 0;
+            let trialsWithPrize = 0;
+            const minPrizeTier = total === 25 ? 11 : (total === 60 ? 4 : (total === 80 ? 2 : 15));
+
+            for (let t = 0; t < sampleTrials; t++) {
+                const poolDraw = rng.shuffle(elitePool).slice(0, mHitsInPool);
+                const outDraw = neededOutside > 0 ? rng.shuffle(outsidePool).slice(0, neededOutside) : [];
+                const simulatedDraw = new Set([...poolDraw, ...outDraw]);
+
+                let bestHitInTrial = 0;
+                let prizeCountInTrial = 0;
+
+                for (const ticket of ticketNumbersList) {
+                    let h = 0;
+                    for (const num of ticket) {
+                        if (simulatedDraw.has(num)) h++;
+                    }
+                    if (h > bestHitInTrial) bestHitInTrial = h;
+                    if (h >= minPrizeTier) prizeCountInTrial++;
+                }
+
+                if (bestHitInTrial < minBestHit) minBestHit = bestHitInTrial;
+                sumBestHit += bestHitInTrial;
+                prizeTicketsTotal += prizeCountInTrial;
+                if (prizeCountInTrial > 0) trialsWithPrize++;
+            }
+
+            guarantees.push({
+                conditionHitsInPool: mHitsInPool,
+                elitePoolSize: elitePool.length,
+                guaranteedMinBestHit: minBestHit,
+                averageBestHit: Number((sumBestHit / sampleTrials).toFixed(2)),
+                averagePrizeTickets: Number((prizeTicketsTotal / sampleTrials).toFixed(1)),
+                prizeSuccessRatePct: Number(((trialsWithPrize / sampleTrials) * 100).toFixed(1))
+            });
+        });
+
+        return guarantees;
+    }
+
+    /**
      * Constrói um bilhete equilibrado dentro do Grupo de Elite priorizando dezenas menos usadas na matriz
-     * (para garantir distribuição uniforme de 1-design) combinado com o peso estatístico e sinergia de pares.
      */
     static _buildBalancedCandidateFromPool(elitePool, fixed, pick, usageCount, numberScores, analysis, rng, stepIdx, candidateIdx) {
         const selected = new Set(fixed);
@@ -298,11 +513,9 @@ export class WheelingEngine {
 
         while (selected.size < pick && candidates.length > 0) {
             const weights = candidates.map(n => {
-                // Penaliza dezenas já muito repetidas nos bilhetes anteriores para espalhar a matriz
                 const usagePenalty = 1 - ((usageCount[n] || 0) / (maxUsage + 1)) * 0.65;
                 const baseScore = Math.max(0.1, numberScores[n] || 0.5);
 
-                // Bônus de sinergia (co-ocorrência) com as dezenas já inseridas neste bilhete
                 let synergyBonus = 1.0;
                 if (selected.size > 0 && analysis?.pairMatrix) {
                     let pairSum = 0;

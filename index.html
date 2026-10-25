@@ -223,15 +223,23 @@
                     </div>
                 </div>
 
-                <div class="section-title" style="font-size:0.85rem; margin-top:1.5rem;"><span>🧠</span> Estratégia de Geração Estatística e Combinatória</div>
+                <div class="section-title" style="font-size:0.85rem; margin-top:1.5rem;"><span>🧠</span> Estratégia de Geração Estatística, Combinatória e Teoria dos Jogos</div>
                 <div class="strategy-options">
                     <div class="strategy-option selected" data-strategy="wheeling">
-                        <div class="strategy-option-name">🎯 FECHAMENTO COMBINATÓRIO</div>
-                        <div class="strategy-option-desc">Matriz Elite + Poda Gaussiana</div>
+                        <div class="strategy-option-name">🎯 FECHAMENTO + ANNEALING</div>
+                        <div class="strategy-option-desc">Matriz Schoenheim + Poda Gauss</div>
                     </div>
                     <div class="strategy-option" data-strategy="maximum_precision">
                         <div class="strategy-option-name">🛡️ MÁXIMA PRECISÃO</div>
-                        <div class="strategy-option-desc">Anti-overfitting + Fechamento</div>
+                        <div class="strategy-option-desc">Walk-Forward + Markov + Fechamento</div>
+                    </div>
+                    <div class="strategy-option" data-strategy="anti_crowd">
+                        <div class="strategy-option-name">💎 PRÊMIO SOZINHO (EV+)</div>
+                        <div class="strategy-option-desc">Anti-Multidão (Evita Rateio)</div>
+                    </div>
+                    <div class="strategy-option" data-strategy="markov">
+                        <div class="strategy-option-name">⛓️ CADEIAS DE MARKOV</div>
+                        <div class="strategy-option-desc">Transição Temporal (t-1 → t)</div>
                     </div>
                     <div class="strategy-option" data-strategy="best_game">
                         <div class="strategy-option-name">🏆 MELHOR JOGO</div>
@@ -275,7 +283,7 @@
             <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>🎲 Jogos Sugeridos</span>
                 <div class="export-actions" id="exportActions" style="display:none;">
-                    <button class="btn btn-secondary btn-sm" id="exportPdfBtn">📄 Exportar PDF</button>
+                    <button class="btn btn-secondary btn-sm" id="exportPdfBtn">🖨️ Imprimir Volantes (PDF)</button>
                     <button class="btn btn-secondary btn-sm" id="exportTxtBtn">📝 TXT</button>
                 </div>
             </div>

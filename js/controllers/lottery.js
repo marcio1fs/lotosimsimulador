@@ -7,6 +7,61 @@ import { GameGenerator } from '../engine/gameGenerator.js';
 import { BaselineEngine } from '../engine/baselineEngine.js';
 
 export class LotteryController {
+    static _worker = null;
+    static _taskIdCounter = 0;
+
+    /**
+     * Executa a geração pesada em um Web Worker (se suportado pelo navegador) para manter a UI a 60fps
+     */
+    static async _runGenerationInWorkerOrFallback(payload) {
+        if (typeof Worker !== 'undefined' && typeof window !== 'undefined') {
+            try {
+                if (!this._worker) {
+                    this._worker = new Worker(new URL('../workers/engineWorker.js', import.meta.url), { type: 'module' });
+                }
+                const taskId = ++this._taskIdCounter;
+
+                return await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        reject(new Error('Worker timeout'));
+                    }, 25000);
+
+                    const handler = (e) => {
+                        if (e.data?.taskId !== taskId) return;
+                        this._worker.removeEventListener('message', handler);
+                        clearTimeout(timeout);
+                        if (e.data.success) {
+                            const { games, forecastPolicy, portfolioProjection, wheelMetadata, modelPipeline } = e.data.result;
+                            if (forecastPolicy) games.forecastPolicy = forecastPolicy;
+                            if (portfolioProjection) games.portfolioProjection = portfolioProjection;
+                            if (wheelMetadata) games.wheelMetadata = wheelMetadata;
+                            if (modelPipeline) games.modelPipeline = modelPipeline;
+                            resolve(games);
+                        } else {
+                            reject(new Error(e.data.error || 'Worker error'));
+                        }
+                    };
+
+                    this._worker.addEventListener('message', handler);
+                    this._worker.postMessage({ taskId, action: 'GENERATE_GAMES', payload });
+                });
+            } catch (workerErr) {
+                console.warn('Web Worker indisponível, executando na thread principal:', workerErr);
+            }
+        }
+
+        return LotteryModel.generateSmartGames(
+            payload.type,
+            payload.fullHistory,
+            payload.strategy,
+            payload.fixed,
+            payload.excluded,
+            payload.gamesCount,
+            payload.timeWindow,
+            payload.seed
+        );
+    }
+
     /**
      * Busca e sincroniza histórico de concursos oficiais (em lote ou incremental)
      */
@@ -14,12 +69,10 @@ export class LotteryController {
         const results = {};
 
         await Promise.all(types.map(async (type) => {
-            // Busca cache local primeiro
             let cachedData = await Database.getAllByIndex('lottery_results', 'lotteryType', type);
             let lastResult = null;
 
             try {
-                // Se o cache local tiver menos de 100 concursos, busca lote completo de histórico
                 if (cachedData.length < 100) {
                     const batch = await LotteryAPIService.fetchHistoryBatch(type, 150);
                     if (batch && batch.length > 0) {
@@ -62,12 +115,10 @@ export class LotteryController {
                 console.error(`Erro ao buscar ${type}:`, e);
             }
 
-            // Garante profundidade histórica mínima (>= 120 concursos) para calibração e backtest sem bloqueios
             if (cachedData.length < 120) {
                 cachedData = LotteryAPIService.ensureMinimumHistoryDepth(cachedData, type, 120);
             }
 
-            // Ordena histórico por concurso (mais recente primeiro)
             cachedData.sort((a, b) => b.concurso - a.concurso);
 
             const cfg = LotteryModel.CONFIG[type];
@@ -88,24 +139,24 @@ export class LotteryController {
     }
 
     /**
-     * Gera jogos estatísticos inteligentes
+     * Gera jogos estatísticos inteligentes via Web Worker (com fallback síncrono)
      */
     static async generateGames(userId, type, strategy, resultsData, fixed = [], excluded = [], timeWindow = 'full', gamesCount = 10) {
         const fullHistory = resultsData.data || [];
         const cfg = LotteryModel.CONFIG[type];
         if (!cfg || fullHistory.length === 0) return [];
 
-        const games = LotteryModel.generateSmartGames(
+        const games = await this._runGenerationInWorkerOrFallback({
             type,
             fullHistory,
             strategy,
             fixed,
             excluded,
             gamesCount,
-            timeWindow
-        );
+            timeWindow,
+            seed: 123456
+        });
 
-        // Salva jogos e simulação no banco
         for (const game of games) {
             await Database.add('games', {
                 userId,
@@ -140,8 +191,10 @@ export class LotteryController {
      */
     static runStrategyBenchmark(fullHistory, config, windowSize = 50) {
         const strategies = [
-            { id: 'wheeling', name: 'Fechamento Combinatório (Matriz)' },
-            { id: 'adaptive', name: 'Modelo Adaptativo (Estatístico)' },
+            { id: 'wheeling', name: 'Fechamento Combinatório + Annealing' },
+            { id: 'anti_crowd', name: 'Prêmio Sozinho (Anti-Multidão EV+)' },
+            { id: 'markov', name: 'Cadeias de Markov (Transição t-1 → t)' },
+            { id: 'adaptive', name: 'Modelo Adaptativo (Multifatorial)' },
             { id: 'weighted', name: 'Ponderado (Frequência)' },
             { id: 'hot', name: 'Quentes (Maior Saída)' },
             { id: 'cold', name: 'Frios (Atrasados)' },

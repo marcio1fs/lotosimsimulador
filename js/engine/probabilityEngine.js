@@ -2,9 +2,24 @@
  * ProbabilityEngine
  *
  * Calculates the theoretical hit distribution without simulation, as well as
- * Portfolio-Level Cumulative Odds, Gaussian Space Reduction Odds, and Multi-Tier Prize Probabilities.
+ * Portfolio-Level Cumulative Odds, Gaussian Space Reduction Odds, Multi-Tier Prize Probabilities,
+ * and Official Caixa Financial Cost / Expected Return (Bankroll & Bolão Management).
  */
 import { GaussianFilterEngine } from './gaussianFilterEngine.js';
+
+export const OFFICIAL_TICKET_PRICES = {
+    25: 3.50,  // Lotofácil (R$ 3,50 aposta simples de 15 dezenas)
+    60: 6.00,  // Mega-Sena (R$ 6,00 aposta simples de 6 dezenas)
+    80: 3.00,  // Quina (R$ 3,00 aposta simples de 5 dezenas)
+    100: 3.00  // Lotomania (R$ 3,00 aposta única de 50 dezenas)
+};
+
+export const ESTIMATED_PRIZE_PAYOUTS = {
+    25: { 11: 7.00, 12: 14.00, 13: 35.00, 14: 1850.00, 15: 1700000.00 },
+    60: { 4: 1150.00, 5: 52000.00, 6: 35000000.00 },
+    80: { 2: 4.50, 3: 140.00, 4: 8500.00, 5: 5000000.00 },
+    100: { 15: 9.00, 16: 45.00, 17: 320.00, 18: 2800.00, 19: 65000.00, 20: 4500000.00 }
+};
 
 export class ProbabilityEngine {
     static combinationCount(total, choose) {
@@ -35,6 +50,33 @@ export class ProbabilityEngine {
         if (total === 100) return [15, 16, 17, 18, 19, 20]; // Lotomania
         const drawn = Number(config?.drawn ?? config?.pick);
         return [Math.max(1, drawn - 2), Math.max(1, drawn - 1), drawn];
+    }
+
+    /**
+     * Calcula o custo financeiro oficial da carteira, divisão de cotas de Bolão e simulação de Teimosinha
+     */
+    static calculateFinancialSummary(config, ticketCount = 10, bolaoShares = 5) {
+        const total = Number(config?.total);
+        const unitPrice = OFFICIAL_TICKET_PRICES[total] || 3.50;
+        const tickets = Math.max(1, Number(ticketCount) || 1);
+        const totalInvestment = Number((unitPrice * tickets).toFixed(2));
+        const shares = Math.max(1, Number(bolaoShares) || 5);
+        const costPerShare = Number((totalInvestment / shares).toFixed(2));
+
+        const formatBRL = (val) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+        return {
+            unitPrice,
+            unitPriceFormatted: formatBRL(unitPrice),
+            ticketCount: tickets,
+            totalInvestment,
+            totalInvestmentFormatted: formatBRL(totalInvestment),
+            bolaoShares: shares,
+            costPerShare,
+            costPerShareFormatted: formatBRL(costPerShare),
+            teimosinha3DrawsFormatted: formatBRL(totalInvestment * 3),
+            teimosinha6DrawsFormatted: formatBRL(totalInvestment * 6)
+        };
     }
 
     /**
@@ -98,37 +140,27 @@ export class ProbabilityEngine {
     }
 
     /**
-     * Calcula a Projeção Combinatória da Carteira Completa (Portfólio de Jogos + Poda Gaussiana + Fechamento)
-     * Demonstra matematicamente:
-     * 1. Chance Bruta de 1 Bilhete
-     * 2. Chance Acumulada da Carteira (N bilhetes únicos ortogonais)
-     * 3. Chance Efetiva no Espaço Amostral Podado (após eliminação das caudas gaussianas mortas)
-     * 4. Probabilidade de Premiação em Qualquer Faixa (ex: Quadra/Quina/Sena ou 11..15 pontos)
+     * Calcula a Projeção Combinatória e Financeira da Carteira Completa
      */
     static calculatePortfolioProjection(config, ticketCount = 10, selectedCount = config?.pick, diversificationScore = 75) {
         const single = this.hypergeometric(config, selectedCount);
         const spaceReduction = GaussianFilterEngine.estimateSpaceReduction(config);
         const prizeTiers = this.getPrizeTiers(config);
         const minPrizeTier = prizeTiers[0];
+        const financial = this.calculateFinancialSummary(config, ticketCount);
 
         const tickets = Math.max(1, Number(ticketCount) || 1);
         const rawSingleProb = single.fullHitProbability || 0;
 
-        // Jogos distintos para o prêmio máximo são eventos mutuamente exclusivos (só 1 combinação é sorteada)
-        // Logo, para N jogos distintos, P(Acerto Máximo na Carteira) = N * P(1 jogo)
         const portfolioFullHitProb = Math.min(1, rawSingleProb * tickets);
 
-        // No espaço amostral filtrado (condicionado a o sorteio cair dentro do núcleo central Gaussiano ~85% dos casos):
         const effectiveFilteredSpaceCombinations = Math.max(1, Math.round((1 / (rawSingleProb || 1)) * spaceReduction.retentionRatio));
         const effectivePortfolioProbInGaussianCore = Math.min(1, tickets / effectiveFilteredSpaceCombinations);
 
-        // Probabilidade de acertar ao menos a faixa mínima de prêmio (ex: >= 11 na Lotofácil, >= 4 na Mega, >= 2 na Quina)
         const singleAnyPrizeProb = single.cumulativeProbabilities[minPrizeTier] || 0;
-        // Fator de ortogonalidade (diversificação por distância de Hamming aumenta cobertura sem sobreposição)
         const orthogonalityFactor = 0.65 + 0.35 * (Math.min(100, Math.max(0, diversificationScore || 75)) / 100);
         const portfolioAnyPrizeProb = 1 - Math.pow(Math.max(0, 1 - singleAnyPrizeProb), tickets * orthogonalityFactor);
 
-        // Detalhamento por faixa de prêmio na carteira
         const tierProbabilities = {};
         prizeTiers.forEach(tier => {
             const pSingle = single.cumulativeProbabilities[tier] || 0;
@@ -158,7 +190,8 @@ export class ProbabilityEngine {
             minPrizeTier,
             anyPrizePortfolioProbability: Number((portfolioAnyPrizeProb * 100).toFixed(2)),
             anyPrizePortfolioOdds: this.probabilityToOdds(portfolioAnyPrizeProb),
-            tierProbabilities
+            tierProbabilities,
+            financial
         };
     }
 

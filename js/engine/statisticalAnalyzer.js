@@ -1,7 +1,8 @@
 /**
  * StatisticalAnalyzer - Motor Avançado de Análise Estatística para Loterias
  * Analisa séries temporais, distribuições empíricas, atrasos, repetições, co-ocorrência,
- * ciclo das dezenas, geometria matricial (linhas/colunas/moldura/miolo), Fibonacci e padrões combinatórios.
+ * ciclo das dezenas, geometria matricial (linhas/colunas/moldura/miolo), Fibonacci,
+ * Cadeias de Markov de 1ª Ordem (Transição Temporal t-1 -> t) e padrões combinatórios.
  */
 
 export const PRIMES = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97];
@@ -78,6 +79,122 @@ export class StatisticalAnalyzer {
     }
 
     /**
+     * Constrói uma Matriz de Transição Estocástica de Cadeia de Markov de 1ª Ordem (t-1 -> t)
+     * Mede P(X_t = j | X_{t-1} = i): quando a dezena `i` sai em um sorteio, qual a probabilidade
+     * empírica de a dezena `j` ser "puxada" no sorteio imediatamente seguinte?
+     * Aplica suavização Bayesiana de Laplace-Dirichlet para evitar probabilidades zero em amostras curtas.
+     */
+    static analyzeMarkovTransitions(history, total, drawn) {
+        const nextDrawGivenPrev = {};
+        const prevOccurrences = {};
+
+        for (let i = 1; i <= total; i++) {
+            prevOccurrences[i] = 0;
+            nextDrawGivenPrev[i] = {};
+            for (let j = 1; j <= total; j++) {
+                nextDrawGivenPrev[i][j] = 0;
+            }
+        }
+
+        if (!history || history.length < 2) {
+            const uniformProb = drawn / Math.max(1, total);
+            const nextDrawProbabilities = {};
+            for (let j = 1; j <= total; j++) nextDrawProbabilities[j] = Number(uniformProb.toFixed(4));
+            return {
+                nextDrawProbabilities,
+                topTriggeredNumbers: [],
+                topTransitions: [],
+                markovLiftByNumber: nextDrawProbabilities
+            };
+        }
+
+        // history[0] é o mais recente, history[idx + 1] é o concurso imediatamente anterior (t-1)
+        for (let idx = 0; idx < history.length - 1; idx++) {
+            const currentDraw = Array.isArray(history[idx]?.dezenas) ? history[idx].dezenas.map(Number) : [];
+            const prevDraw = Array.isArray(history[idx + 1]?.dezenas) ? history[idx + 1].dezenas.map(Number) : [];
+
+            prevDraw.forEach(prevNum => {
+                if (prevNum >= 1 && prevNum <= total) {
+                    prevOccurrences[prevNum]++;
+                    currentDraw.forEach(currNum => {
+                        if (currNum >= 1 && currNum <= total) {
+                            nextDrawGivenPrev[prevNum][currNum]++;
+                        }
+                    });
+                }
+            });
+        }
+
+        // Condiciona ao ÚLTIMO sorteio real (history[0]) para projetar o próximo concurso (t+1)
+        const lastDraw = Array.isArray(history[0]?.dezenas) ? history[0].dezenas.map(Number) : [];
+        const baselineProb = drawn / Math.max(1, total);
+        const nextDrawProbabilities = {};
+        const markovLiftByNumber = {};
+        const topTransitions = [];
+
+        // Suavização Dirichlet-Laplace (prior alpha = 1)
+        const priorAlpha = 1.0;
+        const priorDenom = total * (priorAlpha / Math.max(1, drawn));
+
+        for (let j = 1; j <= total; j++) {
+            if (lastDraw.length === 0) {
+                nextDrawProbabilities[j] = Number(baselineProb.toFixed(4));
+                markovLiftByNumber[j] = 1.0;
+                continue;
+            }
+
+            let conditionalProbSum = 0;
+            let validTriggers = 0;
+
+            lastDraw.forEach(prevNum => {
+                if (prevNum >= 1 && prevNum <= total) {
+                    const countPrev = prevOccurrences[prevNum] || 0;
+                    const transCount = nextDrawGivenPrev[prevNum]?.[j] || 0;
+                    // P(j in t | prevNum in t-1) com suavização Bayesiana
+                    const smoothedProb = (transCount + priorAlpha * baselineProb) / (countPrev + priorAlpha);
+                    conditionalProbSum += smoothedProb;
+                    validTriggers++;
+
+                    if (countPrev >= 3 && transCount >= 2) {
+                        const lift = smoothedProb / Math.max(1e-6, baselineProb);
+                        if (lift > 1.15) {
+                            topTransitions.push({
+                                from: prevNum,
+                                to: j,
+                                count: transCount,
+                                probability: Number(smoothedProb.toFixed(4)),
+                                lift: Number(lift.toFixed(3))
+                            });
+                        }
+                    }
+                }
+            });
+
+            const avgCondProb = validTriggers > 0 ? conditionalProbSum / validTriggers : baselineProb;
+            nextDrawProbabilities[j] = Number(avgCondProb.toFixed(4));
+            markovLiftByNumber[j] = Number((avgCondProb / Math.max(1e-6, baselineProb)).toFixed(4));
+        }
+
+        topTransitions.sort((a, b) => b.lift - a.lift || b.count - a.count);
+
+        const topTriggeredNumbers = Object.entries(nextDrawProbabilities)
+            .map(([num, prob]) => ({
+                num: Number(num),
+                probability: prob,
+                lift: markovLiftByNumber[num]
+            }))
+            .sort((a, b) => b.probability - a.probability || a.num - b.num)
+            .slice(0, 10);
+
+        return {
+            nextDrawProbabilities,
+            markovLiftByNumber,
+            topTriggeredNumbers,
+            topTransitions: topTransitions.slice(0, 15)
+        };
+    }
+
+    /**
      * Analisa os Ciclos das Dezenas (quantos sorteios leva para todas as dezenas do universo saírem ao menos 1 vez)
      * e identifica quais dezenas faltam sair para fechar o ciclo atual.
      */
@@ -133,7 +250,6 @@ export class StatisticalAnalyzer {
         const cycleUrgencyScore = {};
         for (let n = 1; n <= total; n++) {
             if (!seenSet.has(n)) {
-                // Quanto mais perto de fechar o ciclo (poucas dezenas faltando), maior a pressão estatística de fechamento
                 const scarcityFactor = 1 - (missingInCurrentCycle.length / total);
                 cycleUrgencyScore[n] = Number(Math.min(1, 0.55 + 0.45 * Math.max(cycleProgress / 1.5, scarcityFactor)).toFixed(4));
             } else {
@@ -200,12 +316,11 @@ export class StatisticalAnalyzer {
         const frameList = [];
         const activeRowsList = [];
         const activeColsList = [];
-        const repetitionList = []; // Repetição em relação ao concurso anterior (história normalizada)
-        const rangeDistributions = [0, 0, 0, 0, 0]; // 5 faixas iguais
+        const repetitionList = [];
+        const rangeDistributions = [0, 0, 0, 0, 0];
         const rangeSize = Math.ceil(total / 5);
         const historicalDrawSignatures = new Set();
 
-        // Processa do concurso mais recente (índice 0) ao mais antigo
         let prevNumbersSet = null;
 
         history.forEach((draw, idx) => {
@@ -217,7 +332,6 @@ export class StatisticalAnalyzer {
                 historicalDrawSignatures.add(numbers.join(','));
             }
 
-            // Contagem de repetição em relação ao concurso anterior
             if (prevNumbersSet !== null) {
                 let repCount = 0;
                 numbers.forEach(n => {
@@ -227,7 +341,6 @@ export class StatisticalAnalyzer {
             }
             prevNumbersSet = currentSet;
 
-            // Estatísticas do concurso individual
             const evens = numbers.filter(n => n % 2 === 0).length;
             const primes = numbers.filter(n => PRIMES.includes(n)).length;
             const sum = numbers.reduce((a, b) => a + b, 0);
@@ -241,7 +354,6 @@ export class StatisticalAnalyzer {
             activeRowsList.push(geom.activeRows);
             activeColsList.push(geom.activeCols);
 
-            // Frequência, Atraso e Faixas
             numbers.forEach(n => {
                 if (n >= 1 && n <= total) {
                     freqAbsolute[n]++;
@@ -249,18 +361,15 @@ export class StatisticalAnalyzer {
                     if (lastSeenIndex[n] === -1) {
                         lastSeenIndex[n] = idx;
                     } else {
-                        // Registra intervalo entre saídas
                         const interval = idx - lastSeenIndex[n];
                         delayDistribution[n].push(interval);
                     }
 
-                    // Distribuição por Faixas
                     const rangeIdx = Math.min(Math.floor((n - 1) / rangeSize), 4);
                     rangeDistributions[rangeIdx]++;
                 }
             });
 
-            // Co-ocorrência de Pares
             for (let i = 0; i < numbers.length; i++) {
                 for (let j = i + 1; j < numbers.length; j++) {
                     const a = Math.min(numbers[i], numbers[j]);
@@ -275,12 +384,10 @@ export class StatisticalAnalyzer {
         // 2. Cálculos derivados
         const expectedFreq = drawCount * drawn / total;
 
-        // Frequência relativa, ponderada e tendência
         const freqRelative = {};
         const freqWeighted = {};
         const expectedDeviation = {};
 
-        // Recência com decaimento exponencial (alpha = 0.05)
         const alpha = 0.05;
 
         for (let i = 1; i <= total; i++) {
@@ -288,7 +395,6 @@ export class StatisticalAnalyzer {
             freqRelative[i] = drawCount > 0 ? f / drawCount : 0;
             expectedDeviation[i] = expectedFreq > 0 ? (f - expectedFreq) / expectedFreq : 0;
 
-            // Cálculo de Frequência Ponderada por Recência
             let wSum = 0;
             let wTotal = 0;
             history.forEach((draw, idx) => {
@@ -302,7 +408,6 @@ export class StatisticalAnalyzer {
             freqWeighted[i] = wTotal > 0 ? wSum / wTotal : 0;
         }
 
-        // Análise de Atrasos
         const currentDelay = {};
         const avgDelay = {};
         const maxDelay = {};
@@ -319,7 +424,6 @@ export class StatisticalAnalyzer {
             }
         }
 
-        // Estatísticas de Distribuição (Média, Mediana, Desvio Padrão, Percentis)
         const sumStats = this.calculateDistributionStats(sumList);
         const parityStats = this.calculateDistributionStats(evenList);
         const primeStats = this.calculateDistributionStats(primeList);
@@ -329,8 +433,8 @@ export class StatisticalAnalyzer {
         const activeColsStats = this.calculateDistributionStats(activeColsList);
         const repetitionStats = this.calculateDistributionStats(repetitionList);
         const cycleStats = this.analyzeCycles(history, total);
+        const markovStats = this.analyzeMarkovTransitions(history, total, drawn);
 
-        // Top Pares mais frequentes com Support, Expected, Lift e Stability
         const halfCount = Math.floor(history.length / 2);
         const recentHistory = history.slice(0, halfCount);
         const olderHistory = history.slice(halfCount);
@@ -358,7 +462,6 @@ export class StatisticalAnalyzer {
             const pairFreq = p.count / (drawCount || 1);
             p.lift = (freqA > 0 && freqB > 0) ? Number((pairFreq / (freqA * freqB)).toFixed(4)) : 1;
 
-            // Stability: comparação entre metades temporal recente e antiga
             let recentCount = 0;
             let olderCount = 0;
             recentHistory.forEach(d => {
@@ -375,7 +478,6 @@ export class StatisticalAnalyzer {
             p.stability = maxRate > 0 ? Number((1 - Math.abs(rRate - oRate) / maxRate).toFixed(4)) : 1;
         });
 
-        // Análise de Trincas com Support, Expected, Lift e Stability
         const tripleCounts = {};
         const expectedTripleCount = drawCount * ((drawn * (drawn - 1) * (drawn - 2)) / (total * (total - 1) * (total - 2)));
         
@@ -433,8 +535,9 @@ export class StatisticalAnalyzer {
             activeColsStats,
             repetitionStats,
             cycleStats,
+            markovStats,
             rangeDistributions,
-            topPairs: topPairsSliced, // Top 30 pares com lift
+            topPairs: topPairsSliced,
             pairMatrix,
             topTriples,
             chiSquare
@@ -443,7 +546,6 @@ export class StatisticalAnalyzer {
 
     /**
      * Teste Chi-Quadrado de uniformidade para frequências
-     * @returns {{ chiSquare: number, degreesOfFreedom: number, pValue: number, isUniform: boolean }}
      */
     static chiSquareUniformity(freqAbsolute, total, drawCount, drawn) {
         const expected = (drawCount * drawn) / total;
@@ -453,11 +555,9 @@ export class StatisticalAnalyzer {
             chiSq += expected > 0 ? Math.pow(observed - expected, 2) / expected : 0;
         }
         const df = total - 1;
-        // Approximate p-value using Wilson-Hilferty approximation
         const z = Math.pow(chiSq / df, 1/3) - (1 - 2 / (9 * df));
         const se = Math.sqrt(2 / (9 * df));
         const zScore = z / se;
-        // Standard normal CDF approximation
         const pValue = 1 - 0.5 * (1 + Math.tanh(zScore * 0.7978845608));
         return {
             chiSquare: Number(chiSq.toFixed(4)),

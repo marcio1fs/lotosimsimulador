@@ -1,4 +1,5 @@
 import { LotteryModel } from '../models/lottery.js';
+import { StatisticalAnalyzer } from '../engine/statisticalAnalyzer.js';
 
 /**
  * View: App - Main dashboard and screens
@@ -122,15 +123,53 @@ export class AppView {
             ? missingCycle.slice(0, 6).map(n => String(n).padStart(2, '0')).join(', ') + (missingCycle.length > 6 ? '...' : '')
             : 'Ciclo Fechado!';
 
+        const markovTop = analysis.markovStats?.topTriggeredNumbers?.slice(0, 4) || [];
+        const markovDisplay = markovTop.length > 0
+            ? markovTop.map(m => String(m.num).padStart(2, '0')).join(', ')
+            : '-';
+
         document.getElementById('insightsContainer').style.display = 'block';
         document.getElementById('insightsGrid').innerHTML = `
             <div class="insight-card"><div class="insight-card-title">📊 Base Histórica</div><div class="insight-card-value">${results.length}</div><div class="insight-card-detail">Concursos calibrados</div></div>
             <div class="insight-card"><div class="insight-card-title">🔥 Quentes</div><div class="insight-card-value">${hot.map(h => String(h.num).padStart(2, '0')).join(', ')}</div></div>
             <div class="insight-card"><div class="insight-card-title">🧊 Frios</div><div class="insight-card-value">${cold.map(c => String(c.num).padStart(2, '0')).join(', ')}</div></div>
             <div class="insight-card"><div class="insight-card-title">⏱️ Atrasados</div><div class="insight-card-value">${mostDelayed.map(d => String(d.num).padStart(2, '0')).join(', ')}</div><div class="insight-card-detail">Concursos: ${mostDelayed[0].atraso}</div></div>
-            <div class="insight-card"><div class="insight-card-title">🔄 Falta no Ciclo</div><div class="insight-card-value">${cycleDisplay}</div><div class="insight-card-detail">${missingCycle.length} dezena(s) p/ fechar</div></div>`;
+            <div class="insight-card"><div class="insight-card-title">🔄 Falta no Ciclo</div><div class="insight-card-value">${cycleDisplay}</div><div class="insight-card-detail">${missingCycle.length} dezena(s) p/ fechar</div></div>
+            <div class="insight-card"><div class="insight-card-title">⛓️ Gatilho Markov</div><div class="insight-card-value">${markovDisplay}</div><div class="insight-card-detail">Puxadas pelo último sorteio</div></div>`;
     }
 
+    /**
+     * Renderiza o Mini-Mapa Visual 2D do Volante (destaca Moldura vs Miolo e dezenas marcadas)
+     */
+    static renderMiniVolanteGrid(numbers, total) {
+        const { rows, cols } = StatisticalAnalyzer.getGridDimensions(total);
+        const numSet = new Set(numbers);
+        const cellSize = total === 100 ? '14px' : (total >= 60 ? '16px' : '20px');
+        const fontSize = total === 100 ? '0.48rem' : '0.55rem';
+
+        let cellsHtml = '';
+        for (let n = 1; n <= total; n++) {
+            const isPicked = numSet.has(n);
+            const isFrame = StatisticalAnalyzer.isFrameNumber(n, total);
+            const bg = isPicked
+                ? 'var(--accent-green)'
+                : (isFrame ? 'rgba(255,255,255,0.08)' : 'rgba(59,130,246,0.08)');
+            const color = isPicked ? '#090d16' : 'var(--text-muted)';
+            const weight = isPicked ? '800' : '400';
+            cellsHtml += `<div style="width:${cellSize};height:${cellSize};display:flex;align-items:center;justify-content:center;font-size:${fontSize};font-weight:${weight};border-radius:3px;background:${bg};color:${color};">${String(n).padStart(2, '0')}</div>`;
+        }
+
+        return `
+            <details style="margin-top:0.55rem; background:rgba(0,0,0,0.2); border-radius:6px; padding:0.4rem 0.6rem; border:1px solid rgba(255,255,255,0.06);">
+                <summary style="cursor:pointer; font-size:0.68rem; color:var(--text-muted); font-weight:600; user-select:none;">
+                    🗺️ Ver Geometria 2D no Volante (${rows}x${cols} · Moldura vs Miolo)
+                </summary>
+                <div style="display:grid; grid-template-columns:repeat(${cols}, ${cellSize}); gap:2px; justify-content:center; margin-top:0.5rem; padding:0.25rem;">
+                    ${cellsHtml}
+                </div>
+            </details>
+        `;
+    }
 
     static renderGames(games, type) {
         const cfg = LotteryModel.CONFIG[type];
@@ -147,13 +186,37 @@ export class AppView {
         const policy = games.forecastPolicy || games[0]?.forecastPolicy;
         const portfolioProj = games.portfolioProjection || games[0]?.futureProjection?.portfolioProjection;
         const wheelMeta = games.wheelMetadata || games[0]?.wheelMetadata;
+        const fin = portfolioProj?.financial;
+        const guarantees = wheelMeta?.conditionalGuarantees || [];
 
-        // Painel de Projeção Combinatória da Carteira & Redução Gaussiana de Espaço Amostral
+        const guaranteeHtml = guarantees.length > 0 ? `
+            <div style="margin-top:0.65rem; padding:0.6rem 0.75rem; background:rgba(0,0,0,0.28); border-radius:8px; border:1px solid rgba(59,130,246,0.25); font-size:0.72rem;">
+                <div style="font-weight:700; color:#93c5fd; margin-bottom:0.35rem;">
+                    🛡️ Tabela de Garantia Condicional Fechada (${wheelMeta.elitePoolSize} Dezenas de Elite · Otimização Simulated Annealing ${wheelMeta.annealingSwapsAccepted ? `+${wheelMeta.annealingSwapsAccepted} permutações` : 'Ativa'}):
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:0.45rem;">
+                    ${guarantees.map(g => `
+                        <div style="background:rgba(255,255,255,0.03); padding:0.4rem 0.55rem; border-radius:6px;">
+                            Se caírem <strong>${g.conditionHitsInPool} dezenas</strong> no Grupo de Elite:<br>
+                            ✅ Mínimo garantido: <strong>${g.guaranteedMinBestHit} pts</strong> (Média: <strong>${g.averageBestHit} pts</strong> · ~${g.averagePrizeTickets} bilhetes premiados)
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        ` : '';
+
+        const financialHtml = fin ? `
+            <div style="margin-top:0.65rem; display:flex; flex-wrap:wrap; gap:0.75rem; align-items:center; justify-content:space-between; padding:0.55rem 0.75rem; background:rgba(245,158,11,0.09); border-radius:8px; border:1px solid rgba(245,158,11,0.25); font-size:0.73rem;">
+                <div>💰 <strong>Gestão de Banca (Preços Oficiais Caixa):</strong> Custo Unitário <strong>${fin.unitPriceFormatted}</strong> · Investimento Total (${fin.ticketCount} jogos): <strong style="color:#fbbf24;">${fin.totalInvestmentFormatted}</strong></div>
+                <div>🤝 <strong>Bolão (5 cotas):</strong> ${fin.costPerShareFormatted}/pessoa · 🔁 <strong>Teimosinha (3 conc.):</strong> ${fin.teimosinha3DrawsFormatted}</div>
+            </div>
+        ` : '';
+
         const portfolioBanner = portfolioProj ? `
             <div style="grid-column:1/-1; padding:1rem 1.2rem; border-radius:12px; background:linear-gradient(135deg, rgba(16,185,129,0.12), rgba(59,130,246,0.10)); border:1px solid rgba(16,185,129,0.35); margin-bottom:0.5rem;">
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem;">
                     <div style="font-size:0.9rem; font-weight:700; color:var(--text-main);">
-                        🚀 Projeção Combinatória da Carteira (${portfolioProj.ticketCount} Jogos Ortogonais + Poda Gaussiana)
+                        🚀 Projeção Combinatória da Carteira (${portfolioProj.ticketCount} Jogos Ortogonais + Poda Gaussiana + Markov)
                     </div>
                     <span class="badge badge-green" style="font-size:0.72rem;">Ganho de Eficiência Combinatória: ${portfolioProj.totalFactorGain}</span>
                 </div>
@@ -177,8 +240,10 @@ export class AppView {
                 </div>
                 ${wheelMeta ? `
                 <div style="margin-top:0.65rem; font-size:0.73rem; color:var(--text-muted); padding-top:0.55rem; border-top:1px dashed rgba(255,255,255,0.12);">
-                    🎯 <strong>Matriz de Fechamento Ativa (${wheelMeta.elitePoolSize} dezenas de elite):</strong> [${wheelMeta.elitePool.map(n => String(n).padStart(2,'0')).join(', ')}] · Cobertura de Pares no Grupo: <strong>${wheelMeta.pairCoverageGuaranteePct}%</strong> (${wheelMeta.coveredPairsCount}/${wheelMeta.totalPoolPairs} pares cobertos)
+                    🎯 <strong>Matriz de Fechamento (${wheelMeta.elitePoolSize} dezenas de elite):</strong> [${wheelMeta.elitePool.map(n => String(n).padStart(2,'0')).join(', ')}] · Cobertura de Pares: <strong>${wheelMeta.pairCoverageGuaranteePct}%</strong> (${wheelMeta.coveredPairsCount}/${wheelMeta.totalPoolPairs} pares · Limite Schoenheim: ${wheelMeta.schoenheimLowerBound || '-'} jgs)
                 </div>` : ''}
+                ${guaranteeHtml}
+                ${financialHtml}
             </div>
         ` : '';
 
@@ -193,6 +258,8 @@ export class AppView {
             const explanations = typeof g.explanations === 'string' ? JSON.parse(g.explanations) : (g.explanations || []);
             const modelScore = g.modelScore || 0;
             const gaussianIdx = g.gaussianQualityIndex || 85;
+            const antiCrowdScore = g.antiCrowdScore || stats?.antiCrowdScore || 75;
+            const evMult = g.expectedValueMultiplier || stats?.evMultiplier || 1.1;
             const perf = g.historicalPerformance ? g.historicalPerformance : 'Calibrado';
             const expectedHitsDisplay = typeof g.expectedHits === 'number' ? `${g.expectedHits} acertos` : 'Calculado';
             const ci = g.confidenceInterval;
@@ -201,7 +268,6 @@ export class AppView {
             const coverage = g.portfolioCoverage;
             const projection = g.futureProjection;
 
-            // Badge de significância
             const sigBadge = g.statisticallySignificant === true || g.isStatisticallySignificant === true 
                 ? '<span class="badge badge-green" style="font-size:0.6rem;">✅ Significante</span>'
                 : g.statisticallySignificant === false || g.isStatisticallySignificant === false
@@ -214,8 +280,9 @@ export class AppView {
             <div class="game-card animate-in" style="animation-delay:${i*0.03}s">
                 <div class="game-card-header">
                     <span class="game-number">${cfg.icon} Jogo #${i+1}</span>
-                    <div style="display:flex; gap:0.35rem; align-items:center;">
-                        <span class="badge badge-green" style="font-size:0.62rem;">Gauss: ${gaussianIdx}%</span>
+                    <div style="display:flex; gap:0.30rem; align-items:center; flex-wrap:wrap;">
+                        <span class="badge badge-green" style="font-size:0.60rem;" title="Índice de Qualidade na Curva de Gauss">Gauss: ${gaussianIdx}%</span>
+                        <span class="badge badge-gold" style="font-size:0.60rem;" title="Proteção Anti-Rateio (Teoria dos Jogos)">EV: ${evMult}x</span>
                         <span class="game-prob badge-purple">Score: ${modelScore}/100</span>
                     </div>
                 </div>
@@ -223,6 +290,7 @@ export class AppView {
                 <div class="game-metrics-row" style="display:flex; flex-wrap:wrap; gap:0.5rem; font-size:0.72rem; color:var(--text-muted); margin-bottom:0.75rem; background:rgba(255,255,255,0.03); padding:0.5rem 0.6rem; border-radius:6px;">
                     <div>Histórico: <strong style="color:var(--accent-green);">${perf}</strong></div>
                     <div>Esperado: <strong>${expectedHitsDisplay}</strong></div>
+                    <div>Anti-Rateio: <strong>${antiCrowdScore}%</strong></div>
                     ${ci && typeof ci.lower === 'number' ? `<div>IC 95%${ciMethodText}: <strong>[${ci.lower} — ${ci.upper}]</strong></div>` : ''}
                     ${sigBadge}
                 </div>
@@ -249,6 +317,8 @@ export class AppView {
                     ${coverage ? `<div class="game-stat-item"><div class="game-stat-label">Cobertura</div><div class="game-stat-value">${coverage}%</div></div>` : ''}
                 </div>
                 ` : ''}
+
+                ${this.renderMiniVolanteGrid(g.numbers, cfg.total)}
 
                 ${mc ? `
                 <div style="margin-top:0.5rem; font-size:0.7rem; color:var(--text-muted); background:rgba(139,92,246,0.05); padding:0.4rem 0.6rem; border-radius:6px; border:1px solid rgba(139,92,246,0.1);">

@@ -8,6 +8,7 @@ import { AutomationModel } from './models/automation.js';
 import { AuthView } from './views/auth.js';
 import { AppView } from './views/app.js';
 import { StatisticsView } from './views/statistics.js';
+import { StatisticalAnalyzer } from './engine/statisticalAnalyzer.js';
 
 let currentUser = null;
 let currentSession = null;
@@ -107,7 +108,6 @@ class AppController {
     }
 
     static bindEvents() {
-        // Auth tabs
         document.querySelectorAll('.auth-tab').forEach(tab => tab.addEventListener('click', () => { 
             AuthView.clearErrors(); 
             AuthView.showForm(tab.dataset.view); 
@@ -125,7 +125,6 @@ class AppController {
             AuthView.showForm('login'); 
         }));
 
-        // Login
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault(); 
             AuthView.clearErrors();
@@ -145,7 +144,6 @@ class AppController {
             }
         });
 
-        // Register
         document.getElementById('registerForm').addEventListener('submit', async (e) => {
             e.preventDefault(); 
             AuthView.clearErrors();
@@ -182,7 +180,6 @@ class AppController {
             }
         });
 
-        // Password toggle
         document.querySelectorAll('.password-toggle').forEach(btn => btn.addEventListener('click', () => {
             const input = document.getElementById(btn.dataset.target);
             if (input) { 
@@ -191,7 +188,6 @@ class AppController {
             }
         }));
 
-        // Nav tabs
         document.querySelectorAll('.nav-tab').forEach(tab => tab.addEventListener('click', () => {
             AppView.showScreen(tab.dataset.screen);
             if (tab.dataset.screen === 'statistics') this.updateStats();
@@ -202,7 +198,6 @@ class AppController {
             }
         }));
 
-        // Sub tabs (Estatísticas)
         document.querySelectorAll('.tab-sub-btn').forEach(btn => btn.addEventListener('click', () => {
             document.querySelectorAll('.tab-sub-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
@@ -212,7 +207,6 @@ class AppController {
             document.getElementById(`stat-${btn.dataset.tab}`).style.display = 'block';
         }));
 
-        // Lottery cards
         document.querySelectorAll('.lottery-card').forEach(card => card.addEventListener('click', () => {
             appState.currentLottery = card.dataset.type;
             appState.fixedNumbers = [];
@@ -224,13 +218,12 @@ class AppController {
             }
         }));
 
-        // Number Selector interaction
         document.addEventListener('click', (e) => {
             const ball = e.target.closest('.selector-ball');
             if (!ball || ball.classList.contains('disabled')) return;
             
             const num = parseInt(ball.dataset.num);
-            const type = ball.dataset.type; // 'fixed' or 'excluded'
+            const type = ball.dataset.type;
             const cfg = LotteryModel.CONFIG[appState.currentLottery];
 
             if (type === 'fixed') {
@@ -251,13 +244,11 @@ class AppController {
             AppView.renderNumberSelectors(appState.currentLottery, appState.fixedNumbers, appState.excludedNumbers);
         });
 
-        // Strategies
         document.querySelectorAll('.strategy-option').forEach(opt => opt.addEventListener('click', () => {
             appState.currentStrategy = opt.dataset.strategy;
             AppView.renderStrategies(opt.dataset.strategy);
         }));
 
-        // Time Windows
         document.querySelectorAll('.window-btn[data-window]').forEach(btn => btn.addEventListener('click', () => {
             document.querySelectorAll('.window-btn[data-window]').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
@@ -268,20 +259,15 @@ class AppController {
             }
         }));
 
-        // Batch Size Selector (10, 20, 35 jogos)
         document.querySelectorAll('.batch-size-btn[data-count]').forEach(btn => btn.addEventListener('click', () => {
             document.querySelectorAll('.batch-size-btn[data-count]').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             appState.currentBatchSize = parseInt(btn.dataset.count, 10) || 10;
         }));
 
-        // Fetch button
         document.getElementById('fetchBtn').addEventListener('click', () => this.fetchResults());
-
-        // Generate button
         document.getElementById('generateBtn').addEventListener('click', () => this.generateGames());
 
-        // Conference
         document.getElementById('confLotteryType').addEventListener('change', (e) => {
             const type = e.target.value;
             AppView.renderConferenceInputs(type);
@@ -304,11 +290,10 @@ class AppController {
         
         document.getElementById('confBtn').addEventListener('click', () => this.conferenceCheck());
 
-        // Export Buttons
+        // Export Buttons: PDF Real (Volantes Imprimíveis) e TXT
         document.getElementById('exportTxtBtn')?.addEventListener('click', () => this.exportGames('txt'));
-        document.getElementById('exportPdfBtn')?.addEventListener('click', () => this.exportGames('txt'));
+        document.getElementById('exportPdfBtn')?.addEventListener('click', () => this.exportGames('pdf'));
 
-        // User menu
         document.getElementById('userMenu').addEventListener('click', (e) => {
             e.stopPropagation();
             AppView.toggleUserDropdown(true);
@@ -318,7 +303,6 @@ class AppController {
             if (!e.target.closest('.user-menu')) AppView.toggleUserDropdown(false); 
         });
 
-        // Dropdown actions
         document.querySelectorAll('.dropdown-item[data-action]').forEach(item => item.addEventListener('click', (e) => {
             e.stopPropagation();
             AppView.toggleUserDropdown(false);
@@ -342,12 +326,10 @@ class AppController {
             if (action === 'export-data') this.exportData();
         }));
 
-        // Close modals
         document.querySelectorAll('[data-action="close-modal"]').forEach(btn => btn.addEventListener('click', () => {
             document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
         }));
 
-        // Automation Toggles
         const autoToggles = ['autoFetchToggle', 'autoGenerateToggle', 'autoConferenceToggle', 'autoAllLotteriesToggle'];
         autoToggles.forEach(id => {
             const el = document.getElementById(id);
@@ -356,7 +338,6 @@ class AppController {
             }
         });
 
-        // Automation Interval Buttons
         document.querySelectorAll('.interval-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const minutes = parseInt(btn.dataset.minutes);
@@ -377,7 +358,7 @@ class AppController {
         const btn = document.getElementById('fetchBtn');
         btn.disabled = true;
         AppView.setAgentStatus('Sincronizando...', true);
-        AppView.setLoading(true, 'Consultando base de dados oficial e calibrando histórico...');
+        AppView.setLoading(true, 'Consultando base de dados oficial e calibrando Cadeias de Markov...');
         
         try {
             const results = await LotteryController.fetchAllResults(
@@ -418,7 +399,7 @@ class AppController {
 
     static async generateGames() {
         const batchCount = appState.currentBatchSize || 10;
-        AppView.setLoading(true, `Agente IA aplicando Poda Gaussiana e gerando ${batchCount} jogos...`);
+        AppView.setLoading(true, `Agente IA rodando Poda Gaussiana + Simulated Annealing para ${batchCount} jogos...`);
         const type = appState.currentLottery;
         const rd = appState.resultsData[type];
         if (!rd) { AppView.setLoading(false); return; }
@@ -478,7 +459,6 @@ class AppController {
         StatisticsView.renderRange(type, rd);
         StatisticsView.renderFreqGrid(type, rd);
         
-        // Executa benchmark de estratégias vs baseline aleatória
         if (rd.data && rd.data.length > 0) {
             const benchmark = LotteryController.runStrategyBenchmark(rd.data, LotteryModel.CONFIG[type]);
             StatisticsView.renderStrategyBenchmark(benchmark);
@@ -507,18 +487,32 @@ class AppController {
     static exportGames(format) {
         if (!appState.generatedGames.length) return;
         const cfg = LotteryModel.CONFIG[appState.currentLottery];
-        const proj = appState.generatedGames.portfolioProjection;
+        const proj = appState.generatedGames.portfolioProjection || appState.generatedGames[0]?.futureProjection?.portfolioProjection;
+        const wheelMeta = appState.generatedGames.wheelMetadata || appState.generatedGames[0]?.wheelMetadata;
+
+        if (format === 'pdf') {
+            this.exportPrintableVolanteSheet(cfg, proj, wheelMeta);
+            return;
+        }
+
         let content = `LOTOSIMSIMULADOR - JOGOS INTELIGENTES (${cfg.name})\n`;
         content += `Data: ${new Date().toLocaleString('pt-BR')}\n`;
         content += `Estratégia: ${appState.currentStrategy.toUpperCase()}\n`;
         if (proj) {
             content += `Projeção no Núcleo Gaussiano: ${proj.gaussianCorePortfolioOdds} (Poda de -${proj.spacePrunedPercentage})\n`;
+            if (proj.financial) {
+                content += `Custo Oficial da Carteira: ${proj.financial.totalInvestmentFormatted} (${proj.ticketCount} jogos x ${proj.financial.unitPriceFormatted})\n`;
+            }
+        }
+        if (wheelMeta) {
+            content += `Grupo de Elite (${wheelMeta.elitePoolSize} dezenas): ${wheelMeta.elitePool.map(n => String(n).padStart(2, '0')).join(', ')}\n`;
+            content += `Cobertura de Pares no Grupo: ${wheelMeta.pairCoverageGuaranteePct}%\n`;
         }
         content += `------------------------------------------\n\n`;
 
         appState.generatedGames.forEach((g, i) => {
             const nums = g.numbers.map(n => String(n).padStart(2, '0')).join(' - ');
-            content += `JOGO #${i+1} [Score: ${g.modelScore}/100 | Gauss: ${g.gaussianQualityIndex || 85}%]\n`;
+            content += `JOGO #${i+1} [Score: ${g.modelScore}/100 | Gauss: ${g.gaussianQualityIndex || 85}% | EV: ${g.expectedValueMultiplier || 1.1}x]\n`;
             content += `${nums}\n\n`;
         });
 
@@ -527,7 +521,92 @@ class AppController {
         a.href = URL.createObjectURL(blob);
         a.download = `jogos_${appState.currentLottery}_${Date.now()}.txt`;
         a.click();
-        AppView.showToast('📥 Arquivo gerado com sucesso!', 'success');
+        AppView.showToast('📥 Arquivo TXT gerado com sucesso!', 'success');
+    }
+
+    /**
+     * Gera uma Folha de Volantes 2D Real para Impressão / Salvamento em PDF
+     */
+    static exportPrintableVolanteSheet(cfg, proj, wheelMeta) {
+        const { rows, cols } = StatisticalAnalyzer.getGridDimensions(cfg.total);
+        const fin = proj?.financial;
+
+        const cardsHtml = appState.generatedGames.map((g, idx) => {
+            const numSet = new Set(g.numbers);
+            let gridCells = '';
+            for (let n = 1; n <= cfg.total; n++) {
+                const marked = numSet.has(n);
+                gridCells += `<div class="cell ${marked ? 'marked' : ''}">${String(n).padStart(2, '0')}</div>`;
+            }
+            return `
+                <div class="volante-card">
+                    <div class="volante-header">
+                        <strong>JOGO #${idx + 1} (${cfg.name})</strong>
+                        <span>Score: ${g.modelScore}/100 · Gauss: ${g.gaussianQualityIndex || 85}% · EV: ${g.expectedValueMultiplier || 1.1}x</span>
+                    </div>
+                    <div class="numbers-line">${g.numbers.map(n => String(n).padStart(2, '0')).join(' - ')}</div>
+                    <div class="volante-grid" style="grid-template-columns: repeat(${cols}, 1fr);">
+                        ${gridCells}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        const printHtml = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Volantes Oficiais - ${cfg.name} - Lotosimsimulador</title>
+    <style>
+        body { font-family: Arial, sans-serif; color: #111827; margin: 20px; background: #fff; }
+        .header { border-bottom: 2px solid #10b981; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-start; }
+        .summary-box { background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 8px; padding: 12px; margin-bottom: 18px; font-size: 12px; line-height: 1.5; }
+        .grid-wrapper { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+        .volante-card { border: 1.5px solid #374151; border-radius: 8px; padding: 10px; page-break-inside: avoid; }
+        .volante-header { display: flex; justify-content: space-between; font-size: 11px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; margin-bottom: 6px; }
+        .numbers-line { font-size: 11px; font-weight: bold; color: #047857; margin-bottom: 8px; text-align: center; }
+        .volante-grid { display: grid; gap: 3px; }
+        .cell { border: 1px solid #9ca3af; border-radius: 3px; text-align: center; font-size: 10px; padding: 3px 0; color: #4b5563; }
+        .cell.marked { background: #111827; color: #fff; font-weight: bold; border-color: #111827; }
+        @media print { .no-print { display: none; } body { margin: 8px; } }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="margin-bottom:14px;">
+        <button onclick="window.print()" style="padding:8px 16px;background:#10b981;color:#fff;border:none;border-radius:6px;font-weight:bold;cursor:pointer;">🖨️ Imprimir / Salvar como PDF</button>
+    </div>
+    <div class="header">
+        <div>
+            <h2 style="margin:0;">🎱 Lotosimsimulador — Folha de Volantes (${cfg.name})</h2>
+            <div style="font-size:12px;color:#6b7280;">Estratégia: ${appState.currentStrategy.toUpperCase()} · Gerado em ${new Date().toLocaleString('pt-BR')}</div>
+        </div>
+        <div style="text-align:right;font-size:12px;">
+            <strong>${appState.generatedGames.length} Bilhetes</strong><br>
+            ${fin ? `Investimento: <strong>${fin.totalInvestmentFormatted}</strong>` : ''}
+        </div>
+    </div>
+    <div class="summary-box">
+        ${proj ? `<div><strong>Projeção Combinatória:</strong> 1 Jogo: ${proj.rawSingleOdds} | Carteira Direta: ${proj.portfolioDirectOdds} | <strong>Núcleo Gaussiano (-${proj.spacePrunedPercentage}): ${proj.gaussianCorePortfolioOdds}</strong> | Chance de Prêmio (>= ${proj.minPrizeTier} pts): ${proj.anyPrizePortfolioOdds} (${proj.anyPrizePortfolioProbability}%)</div>` : ''}
+        ${wheelMeta ? `<div><strong>Matriz de Fechamento (${wheelMeta.elitePoolSize} dezenas):</strong> [${wheelMeta.elitePool.map(n => String(n).padStart(2, '0')).join(', ')}] — Cobertura de Pares: ${wheelMeta.pairCoverageGuaranteePct}%</div>` : ''}
+    </div>
+    <div class="grid-wrapper">${cardsHtml}</div>
+    <script>setTimeout(() => window.print(), 350);</script>
+</body>
+</html>`;
+
+        const win = window.open('', '_blank');
+        if (win) {
+            win.document.write(printHtml);
+            win.document.close();
+            AppView.showToast('📄 Folha de Volantes PDF aberta para impressão!', 'success');
+        } else {
+            const blob = new Blob([printHtml], { type: 'text/html' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `volantes_${appState.currentLottery}_${Date.now()}.html`;
+            a.click();
+            AppView.showToast('📄 Folha de Volantes baixada!', 'success');
+        }
     }
 
     static conferenceCheck() {

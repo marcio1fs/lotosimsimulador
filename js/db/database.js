@@ -3,11 +3,36 @@ import { neon } from '@neondatabase/serverless';
 // ======================================================================
 // CONFIGURAÇÃO BANCO DE DADOS (HÍBRIDO: NEON POSTGRESQL / INDEXEDDB LOCAL)
 // ======================================================================
-// Para conectar ao Neon na nuvem, adicione VITE_NEON_DATABASE_URL no seu .env
-// ou preencha a constante NEON_URL abaixo:
+// Segurança: Nenhuma credencial sensível é exposta no código cliente.
+// Para conectar ao Neon na nuvem, configure VITE_NEON_DATABASE_URL no arquivo .env
 const NEON_URL = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_NEON_DATABASE_URL)
-    ? import.meta.env.VITE_NEON_DATABASE_URL
-    : 'postgresql://neondb_owner:npg_tVidcF3Xq5bH@ep-wispy-sunset-avmm8hw8.c-11.us-east-1.aws.neon.tech/neondb?sslmode=require';
+    ? String(import.meta.env.VITE_NEON_DATABASE_URL).trim()
+    : '';
+
+const ALLOWED_STORES = new Set([
+    'users',
+    'sessions',
+    'games',
+    'lottery_results',
+    'simulations',
+    'user_stats',
+    'auto_settings',
+    'auto_log'
+]);
+
+const SAFE_IDENTIFIER_REGEX = /^[a-z_][a-z0-9_]*$/;
+
+function assertValidStore(store) {
+    if (!ALLOWED_STORES.has(store)) {
+        throw new Error(`Store/tabela inválida bloqueada por segurança: ${store}`);
+    }
+}
+
+function assertValidColumn(col) {
+    if (!SAFE_IDENTIFIER_REGEX.test(col)) {
+        throw new Error(`Identificador de coluna inválido bloqueado por segurança: ${col}`);
+    }
+}
 
 let sqlClient = null;
 
@@ -31,7 +56,9 @@ function mapObjectToSnake(obj) {
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
     const mapped = {};
     for (const [k, v] of Object.entries(obj)) {
-        mapped[toSnakeCase(k)] = v;
+        const snakeKey = toSnakeCase(k);
+        assertValidColumn(snakeKey);
+        mapped[snakeKey] = v;
     }
     return mapped;
 }
@@ -95,12 +122,14 @@ export class Database {
     }
 
     static async add(store, data) {
+        assertValidStore(store);
         if (this.useNeon) {
             const sql = getSqlClient();
             const payload = mapObjectToSnake(data);
             if (payload.id && typeof payload.id === 'number') delete payload.id;
 
             const cols = Object.keys(payload);
+            cols.forEach(assertValidColumn);
             const values = Object.values(payload).map(v => (typeof v === 'object' && v !== null) ? JSON.stringify(v) : v);
 
             const colNames = cols.map(c => `"${c}"`).join(', ');
@@ -121,6 +150,7 @@ export class Database {
     }
 
     static async get(store, id) {
+        assertValidStore(store);
         if (this.useNeon) {
             const sql = getSqlClient();
             const pk = (store === 'user_stats' || store === 'auto_settings') ? 'user_id' : 'id';
@@ -138,9 +168,11 @@ export class Database {
     }
 
     static async getByIndex(store, indexName, value) {
+        assertValidStore(store);
         if (this.useNeon) {
             const sql = getSqlClient();
             const col = toSnakeCase(indexName);
+            assertValidColumn(col);
             const query = `SELECT * FROM "${store}" WHERE "${col}" = $1 LIMIT 1;`;
             const rows = await sql.query(query, [value]);
             return rows.length > 0 ? mapObjectToCamel(rows[0]) : undefined;
@@ -155,9 +187,11 @@ export class Database {
     }
 
     static async getAllByIndex(store, indexName, value) {
+        assertValidStore(store);
         if (this.useNeon) {
             const sql = getSqlClient();
             const col = toSnakeCase(indexName);
+            assertValidColumn(col);
             const query = `SELECT * FROM "${store}" WHERE "${col}" = $1 ORDER BY id DESC;`;
             const rows = await sql.query(query, [value]);
             return rows.map(r => mapObjectToCamel(r));
@@ -172,6 +206,7 @@ export class Database {
     }
 
     static async update(store, data) {
+        assertValidStore(store);
         if (this.useNeon) {
             const sql = getSqlClient();
             const payload = mapObjectToSnake(data);
@@ -183,6 +218,7 @@ export class Database {
             }
 
             const cols = Object.keys(payload).filter(c => c !== pk);
+            cols.forEach(assertValidColumn);
             const values = cols.map(c => {
                 const v = payload[c];
                 return (typeof v === 'object' && v !== null) ? JSON.stringify(v) : v;
@@ -204,6 +240,7 @@ export class Database {
     }
 
     static async delete(store, id) {
+        assertValidStore(store);
         if (this.useNeon) {
             const sql = getSqlClient();
             const pk = (store === 'user_stats' || store === 'auto_settings') ? 'user_id' : 'id';
@@ -221,6 +258,7 @@ export class Database {
     }
 
     static async count(store) {
+        assertValidStore(store);
         if (this.useNeon) {
             const sql = getSqlClient();
             const query = `SELECT COUNT(*)::int as count FROM "${store}";`;

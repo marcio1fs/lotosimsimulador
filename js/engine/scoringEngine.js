@@ -1,26 +1,29 @@
 /**
  * ScoringEngine - Motor de Pontuação Composta Estatística Multifatorial
- * Substitui o score enganoso de "probabilidade real" por métricas estatísticas transparentes,
- * incluindo Ciclo das Dezenas, Geometria Matricial (Moldura/Linhas/Colunas), Fibonacci,
- * Co-ocorrência de Pares/Trincas e Filtro de Poda Gaussiana.
+ * Inclui Ciclo das Dezenas, Geometria Matricial (Moldura/Linhas/Colunas), Fibonacci,
+ * Co-ocorrência de Pares/Trincas, Cadeias de Markov de 1ª Ordem (Transição t-1 -> t),
+ * Teoria dos Jogos (Anti-Crowd / Prêmio Sozinho) e Filtro de Poda Gaussiana.
  */
 
 import { StatisticalAnalyzer, PRIMES, FIBONACCI } from './statisticalAnalyzer.js';
 import { GaussianFilterEngine } from './gaussianFilterEngine.js';
+import { AntiCrowdEngine } from './antiCrowdEngine.js';
 import { SeededRandom } from './prng.js';
 
 export const DEFAULT_WEIGHTS = {
-    frequency: 0.16,
-    recency: 0.14,
-    trend: 0.10,
-    cycle: 0.10,
-    cooccurrence: 0.13,
-    distribution: 0.08,
+    frequency: 0.14,
+    recency: 0.12,
+    trend: 0.09,
+    cycle: 0.09,
+    markov: 0.10,
+    cooccurrence: 0.11,
+    distribution: 0.07,
     geometry: 0.08,
-    parity: 0.07,
-    sum: 0.07,
-    repetition: 0.04,
-    sequences: 0.03
+    antiCrowd: 0.07,
+    parity: 0.05,
+    sum: 0.05,
+    repetition: 0.02,
+    sequences: 0.01
 };
 
 export class ScoringEngine {
@@ -66,7 +69,7 @@ export class ScoringEngine {
             const curr = analysis.currentDelay?.[n] || 0;
             const avg = analysis.avgDelay?.[n] || 1;
             const ratio = curr / (avg || 1);
-            const scoreN = Math.exp(-Math.pow(ratio - 1, 2)); // Função gaussiana centrada em ratio=1
+            const scoreN = Math.exp(-Math.pow(ratio - 1, 2));
             delayScoreSum += scoreN;
         });
         const trendScore = delayScoreSum / len;
@@ -86,7 +89,18 @@ export class ScoringEngine {
             }
         }
 
-        // 5. Fator Co-ocorrência (Pares + Trincas de Alto Lift)
+        // 5. Fator Cadeia de Markov de 1ª Ordem (Transição Estocástica t-1 -> t)
+        let markovScore = 0.65;
+        if (analysis.markovStats && analysis.markovStats.markovLiftByNumber) {
+            const lifts = sortedNumbers.map(n => analysis.markovStats.markovLiftByNumber[n] || 1.0);
+            const avgMarkovLift = lifts.reduce((a, b) => a + b, 0) / Math.max(1, len);
+            markovScore = Math.max(0.1, Math.min(1.0, (avgMarkovLift - 0.5) / 0.8));
+            if (avgMarkovLift > 1.05) {
+                explanations.push(`+ Alta tração estocástica de Markov (Lift ${avgMarkovLift.toFixed(2)}x puxado pelo último concurso)`);
+            }
+        }
+
+        // 6. Fator Co-ocorrência (Pares + Trincas de Alto Lift)
         let pairCountSum = 0;
         let pairPairsCount = 0;
         for (let i = 0; i < len; i++) {
@@ -102,7 +116,6 @@ export class ScoringEngine {
         const maxPairFreq = analysis.topPairs && analysis.topPairs.length > 0 ? analysis.topPairs[0].count : 1;
         let cooccurrenceScore = maxPairFreq > 0 ? avgPairFreq / maxPairFreq : 0.5;
 
-        // Bônus por trincas históricas de alto Lift presentes no jogo
         if (analysis.topTriples && analysis.topTriples.length > 0) {
             const numSet = new Set(sortedNumbers);
             let matchedTriples = 0;
@@ -117,7 +130,7 @@ export class ScoringEngine {
             explanations.push(`+ Elevada sinergia de pares e trincas históricas`);
         }
 
-        // 6. Fator Distribuição por Faixas
+        // 7. Fator Distribuição por Faixas
         const rangeSize = Math.ceil(config.total / 5);
         const rangeCounts = [0, 0, 0, 0, 0];
         sortedNumbers.forEach(n => {
@@ -131,7 +144,7 @@ export class ScoringEngine {
             explanations.push(`+ Boa cobertura horizontal entre as 5 faixas numéricas`);
         }
 
-        // 7. Fator Geometria do Volante (Linhas, Colunas, Moldura, Primos e Fibonacci)
+        // 8. Fator Geometria do Volante (Linhas, Colunas, Moldura, Primos e Fibonacci)
         const geom = StatisticalAnalyzer.analyzeTicketGeometry(sortedNumbers, config.total);
         const gaussianEval = GaussianFilterEngine.evaluateCandidate(sortedNumbers, config, analysis);
         const geometryScore = (gaussianEval.gaussianQualityIndex || 70) / 100;
@@ -139,7 +152,14 @@ export class ScoringEngine {
             explanations.push(`+ Aprovado no Filtro de Poda Gaussiana (${geom.activeRows} linhas · ${geom.activeCols} colunas · ${geom.frameCount} na moldura)`);
         }
 
-        // 8. Fator Paridade (Pares vs Ímpares)
+        // 9. Fator Teoria dos Jogos / Anti-Divisão de Prêmio (Anti-Crowd Bias)
+        const antiCrowdEval = AntiCrowdEngine.evaluateTicketAntiCrowd(sortedNumbers, config, analysis);
+        const antiCrowdScore = (antiCrowdEval.antiCrowdScore || 70) / 100;
+        if (antiCrowdEval.antiCrowdScore >= 72) {
+            explanations.push(`+ Proteção Anti-Multidão (Score ${antiCrowdEval.antiCrowdScore}% · EV ${antiCrowdEval.expectedValueMultiplier}x menor risco de rateio)`);
+        }
+
+        // 10. Fator Paridade (Pares vs Ímpares)
         const evens = sortedNumbers.filter(n => n % 2 === 0).length;
         const parityStats = analysis.parityStats || { mean: len / 2, stdDev: 1.5 };
         const parityZ = parityStats.stdDev > 0 ? Math.abs(evens - parityStats.mean) / parityStats.stdDev : 0;
@@ -150,7 +170,7 @@ export class ScoringEngine {
             explanations.push(`- Paridade (${evens} pares) em zona periférica`);
         }
 
-        // 9. Fator Soma das Dezenas (Curva de Sino)
+        // 11. Fator Soma das Dezenas (Curva de Sino)
         const gameSum = sortedNumbers.reduce((a, b) => a + b, 0);
         const theoreticalMean = (config.pick || config.drawn) * (config.total + 1) / 2;
         const sumStats = (analysis.sumStats && analysis.sumStats.mean > 0 && config.pick === (config.drawn || config.pick))
@@ -164,7 +184,7 @@ export class ScoringEngine {
             explanations.push(`- Soma total (${gameSum}) fora da região de maior densidade`);
         }
 
-        // 10. Fator Repetição (comparação com último sorteio)
+        // 12. Fator Repetição (comparação com último sorteio)
         const lastDraw = analysis.lastDrawNumbers || [];
         let repScore = 0.5;
         if (lastDraw.length > 0) {
@@ -179,7 +199,7 @@ export class ScoringEngine {
             }
         }
 
-        // 11. Fator Sequências / Consecutivos
+        // 13. Fator Sequências / Consecutivos
         let consecutivePairs = 0;
         for (let i = 0; i < len - 1; i++) {
             if (sortedNumbers[i + 1] === sortedNumbers[i] + 1) {
@@ -193,17 +213,20 @@ export class ScoringEngine {
             explanations.push(`- Sequência de dezenas consecutivas (${consecutivePairs}) excessiva`);
         }
 
-        // Normalização dos pesos (suporta pesos customizados com ou sem cycle/geometry)
         const wCycle = weights.cycle ?? 0;
+        const wMarkov = weights.markov ?? 0;
         const wGeometry = weights.geometry ?? 0;
+        const wAntiCrowd = weights.antiCrowd ?? 0;
         const totalWeight = (
             (weights.frequency || 0) +
             (weights.recency || 0) +
             (weights.trend || 0) +
             wCycle +
+            wMarkov +
             (weights.cooccurrence || 0) +
             (weights.distribution || 0) +
             wGeometry +
+            wAntiCrowd +
             (weights.parity || 0) +
             (weights.sum || 0) +
             (weights.repetition || 0) +
@@ -215,19 +238,19 @@ export class ScoringEngine {
             recencyScore * (weights.recency || 0) +
             trendScore * (weights.trend || 0) +
             cycleScore * wCycle +
+            markovScore * wMarkov +
             cooccurrenceScore * (weights.cooccurrence || 0) +
             distributionScore * (weights.distribution || 0) +
             geometryScore * wGeometry +
+            antiCrowdScore * wAntiCrowd +
             parityScore * (weights.parity || 0) +
             sumScore * (weights.sum || 0) +
             repScore * (weights.repetition || 0) +
             sequenceScore * (weights.sequences || 0)
         ) / totalWeight;
 
-        // Model score escala de 0 a 100
         const modelScore = Number((rawScore * 100).toFixed(1));
 
-        // Mapeamento de métricas históricas de backtesting reais
         const expectedHits = (backtestSummary && typeof backtestSummary.meanHits === 'number') 
             ? backtestSummary.meanHits 
             : null;
@@ -245,6 +268,9 @@ export class ScoringEngine {
             rawScore,
             gaussianQualityIndex: gaussianEval.gaussianQualityIndex,
             passedGaussianFilter: gaussianEval.passed,
+            antiCrowdScore: antiCrowdEval.antiCrowdScore,
+            expectedValueMultiplier: antiCrowdEval.expectedValueMultiplier,
+            crowdRiskLevel: antiCrowdEval.crowdRiskLevel,
             historicalPerformance: backtestSummary?.relativeImprovement ?? null,
             expectedHits,
             confidenceInterval,
@@ -260,10 +286,13 @@ export class ScoringEngine {
                 primes: sortedNumbers.filter(n => PRIMES.includes(n)).length,
                 fibonacci: sortedNumbers.filter(n => FIBONACCI.includes(n)).length,
                 frame: geom.frameCount,
+                core: geom.coreCount,
                 activeRows: geom.activeRows,
                 activeCols: geom.activeCols,
                 consecutivePairs,
-                missingCycleIncluded: missingIncludedCount
+                missingCycleIncluded: missingIncludedCount,
+                antiCrowdScore: antiCrowdEval.antiCrowdScore,
+                evMultiplier: antiCrowdEval.expectedValueMultiplier
             }
         };
     }
@@ -284,7 +313,6 @@ export class ScoringEngine {
 
     /**
      * Calcula o score de Evidência Estatística (índice interno de 0 a 100).
-     * Reutiliza a inferência estatística exata (p-value, IC 95% e Cohen's d).
      */
     static calculateStatisticalEvidence(backtestSummary) {
         if (!backtestSummary || typeof backtestSummary.pValue !== 'number' || !Number.isFinite(backtestSummary.pValue)) {
@@ -318,7 +346,6 @@ export class ScoringEngine {
 
     /**
      * Otimiza pesos usando divisão de Treino (70%) vs Validação (30%) e penalização de Overfitting.
-     * Agora utiliza todos os fatores dos pesos reais em `_quickEvaluateWeights`.
      */
     static optimizeWeights(fullHistory, config, options = {}) {
         const seed = options.seed ?? 123456;
@@ -377,11 +404,9 @@ export class ScoringEngine {
 
             testWeights = this.normalizeWeights(testWeights);
 
-            // Avalia no conjunto de treino usando todos os pesos multifatoriais
             const trainEval = this._quickEvaluateWeights(trainHistory, config, testWeights);
             const trainMean = trainEval.meanHits;
 
-            // Avalia no conjunto de validação usando todos os pesos multifatoriais
             const valEval = this._quickEvaluateWeights(valHistory, config, testWeights);
             const valMean = valEval.meanHits;
 
@@ -452,7 +477,6 @@ export class ScoringEngine {
 
     /**
      * Avaliação multifatorial real de um conjunto de pesos sobre uma fatia histórica (sem vazamento de dados).
-     * Cada dezena recebe um score composto ponderado por: frequência, recência, atraso, ciclo, repetição e paridade.
      */
     static _quickEvaluateWeights(historySlice, config, weights) {
         if (!historySlice || historySlice.length < 4) return { hitsTotal: 0, evaluated: 0, meanHits: 0 };
@@ -461,28 +485,31 @@ export class ScoringEngine {
         const total = config.total;
         const pick = config.pick;
 
-        const wFreq = weights.frequency ?? 0.20;
-        const wRec = weights.recency ?? 0.15;
+        const wFreq = weights.frequency ?? 0.16;
+        const wRec = weights.recency ?? 0.14;
         const wTrend = weights.trend ?? 0.10;
         const wCycle = weights.cycle ?? 0.10;
-        const wRep = weights.repetition ?? 0.05;
-        const wCooc = weights.cooccurrence ?? 0.15;
+        const wMarkov = weights.markov ?? 0.10;
+        const wRep = weights.repetition ?? 0.04;
+        const wCooc = weights.cooccurrence ?? 0.12;
 
         for (let i = 0; i < evalCount; i++) {
             const draw = historySlice[i];
             const actual = new Set((draw.dezenas || []).map(Number));
             const past = historySlice.slice(i + 1);
-            const lastDrawSet = new Set((past[0]?.dezenas || []).map(Number));
+            const lastDrawNums = (past[0]?.dezenas || []).map(Number);
+            const lastDrawSet = new Set(lastDrawNums);
 
             const freq = {};
             const recency = {};
             const firstSeen = {};
             const cycleSeen = new Set();
+            const markovTriggers = {};
 
             past.forEach((pd, idx) => {
                 const decay = Math.exp(-0.08 * idx);
-                (pd.dezenas || []).forEach(d => {
-                    const n = Number(d);
+                const currNums = (pd.dezenas || []).map(Number);
+                currNums.forEach(n => {
                     freq[n] = (freq[n] || 0) + 1;
                     recency[n] = (recency[n] || 0) + decay;
                     if (firstSeen[n] === undefined) firstSeen[n] = idx;
@@ -490,16 +517,29 @@ export class ScoringEngine {
                         cycleSeen.add(n);
                     }
                 });
+
+                // Transição Markov rápida do concurso idx+1 -> idx
+                if (idx + 1 < past.length) {
+                    const prevNums = (past[idx + 1].dezenas || []).map(Number);
+                    const hasLastTrigger = prevNums.some(pn => lastDrawSet.has(pn));
+                    if (hasLastTrigger) {
+                        currNums.forEach(cn => {
+                            markovTriggers[cn] = (markovTriggers[cn] || 0) + 1;
+                        });
+                    }
+                }
             });
 
             const maxF = Math.max(1, ...Object.values(freq));
             const maxR = Math.max(1e-5, ...Object.values(recency));
+            const maxM = Math.max(1, ...Object.values(markovTriggers));
             const avgInterval = total / (config.drawn || pick);
 
             const scoredNums = [];
             for (let n = 1; n <= total; n++) {
                 const fScore = (freq[n] || 0) / maxF;
                 const rScore = (recency[n] || 0) / maxR;
+                const mScore = (markovTriggers[n] || 0) / maxM;
                 const delay = firstSeen[n] !== undefined ? firstSeen[n] : past.length;
                 const tScore = Math.exp(-0.5 * Math.pow((delay / avgInterval) - 1, 2));
                 const cScore = cycleSeen.has(n) ? 0.3 : 1.0;
@@ -510,6 +550,7 @@ export class ScoringEngine {
                     rScore * wRec +
                     tScore * wTrend +
                     cScore * wCycle +
+                    mScore * wMarkov +
                     repScore * wRep +
                     ((fScore + rScore) * 0.5) * wCooc
                 );

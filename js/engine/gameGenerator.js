@@ -1,5 +1,6 @@
 /**
- * GameGenerator - Algoritmo Avançado de Geração, Poda Gaussiana, Fechamento Combinatório e Otimização de Portfólio
+ * GameGenerator - Algoritmo Avançado de Geração, Poda Gaussiana, Fechamento Combinatório,
+ * Cadeias de Markov (t-1 -> t), Teoria dos Jogos (Anti-Crowd / Prêmio Sozinho) e Otimização de Portfólio
  */
 
 import { StatisticalAnalyzer } from './statisticalAnalyzer.js';
@@ -10,6 +11,7 @@ import { SeededRandom } from './prng.js';
 import { MonteCarloEngine } from './monteCarloEngine.js';
 import { GaussianFilterEngine } from './gaussianFilterEngine.js';
 import { WheelingEngine } from './wheelingEngine.js';
+import { AntiCrowdEngine } from './antiCrowdEngine.js';
 
 export class GameGenerator {
     /**
@@ -27,23 +29,12 @@ export class GameGenerator {
 
     /**
      * Gera um lote de jogos diversificados, podados por Curva de Gauss e otimizados
-     * @param {string} type - Modalidade da loteria ('lotofacil', 'mega', 'quina', 'lotomania')
-     * @param {Object} analysis - Objeto de análise estatística
-     * @param {string} strategy - Estratégia ('weighted', 'hot', 'cold', 'adaptive', 'wheeling', 'best_game', 'maximum_precision')
-     * @param {Array<number>} fixed - Dezenas obrigatórias
-     * @param {Array<number>} excluded - Dezenas bloqueadas
-     * @param {number} count - Quantidade de jogos a gerar (padrão: 10)
-     * @param {Object} config - Configuração da loteria
-     * @param {Object} customWeights - Pesos customizados (opcional)
-     * @param {Object} backtestSummary - Resumo de backtesting (opcional)
-     * @param {number} seed - Semente determinística
      */
     static generateBatch(type, analysis, strategy, fixed = [], excluded = [], count = 10, config, customWeights = null, backtestSummary = null, seed = 123456) {
         const rng = new SeededRandom(seed);
         let selectedGames = [];
         let wheelMetadata = null;
 
-        // Se a estratégia for Fechamento Combinatório (wheeling) ou Máxima Precisão, usa WheelingEngine + Candidatos Gauss
         if (strategy === 'wheeling') {
             const wheelResult = WheelingEngine.generateWheelingMatrix(
                 config,
@@ -62,7 +53,6 @@ export class GameGenerator {
             const gaussianPassedPool = [];
             const poolSize = Math.max(count * 14, 140);
 
-            // Gera piscina ampla de candidatos e aplica Filtro de Poda Gaussiana
             for (let i = 0; i < poolSize; i++) {
                 const game = this.generateSingleCandidate(type, analysis, strategy, fixed, excluded, config, customWeights, rng);
                 if (game && game.length === config.pick) {
@@ -70,11 +60,12 @@ export class GameGenerator {
                     if (unique.length === config.pick) {
                         const gaussianEval = GaussianFilterEngine.evaluateCandidate(unique, config, analysis, fixed);
                         const scoreObj = ScoringEngine.evaluateGame(unique, config, analysis, customWeights, backtestSummary);
+                        const antiCrowdBonus = strategy === 'anti_crowd' ? (scoreObj.antiCrowdScore || 70) * 0.35 : 0;
                         const candidateObj = {
                             numbers: unique,
                             scoreObj,
                             gaussianEval,
-                            compositeRankScore: scoreObj.modelScore * 0.75 + gaussianEval.gaussianQualityIndex * 0.25
+                            compositeRankScore: scoreObj.modelScore * 0.70 + gaussianEval.gaussianQualityIndex * 0.30 + antiCrowdBonus
                         };
                         candidatesPool.push(candidateObj);
                         if (gaussianEval.passed) {
@@ -84,10 +75,8 @@ export class GameGenerator {
                 }
             }
 
-            // Prioriza estritamente os candidatos aprovados na Poda Gaussiana
             const activePool = gaussianPassedPool.length >= count ? gaussianPassedPool : candidatesPool;
 
-            // Ordena por score composto (do maior para o menor com desempate determinístico)
             activePool.sort((a, b) => {
                 const diff = b.compositeRankScore - a.compositeRankScore;
                 if (Math.abs(diff) > 1e-5) return diff;
@@ -96,7 +85,6 @@ export class GameGenerator {
                 return a.numbers.join(',').localeCompare(b.numbers.join(','));
             });
 
-            // Seleciona jogos aplicando algoritmo de DIVERSIFICAÇÃO (Max-Min Hamming + Limite Jaccard)
             const maxSimilarityThreshold = config.pick > 15 ? 0.85 : (config.pick === 15 ? 0.72 : 0.50);
 
             for (const candidate of activePool) {
@@ -112,7 +100,6 @@ export class GameGenerator {
                 }
             }
 
-            // Se a regra de similaridade for muito estrita e faltar jogos, completa escolhendo o candidato mais distante (Max-Min Hamming)
             while (selectedGames.length < count) {
                 let bestRemaining = null;
                 let bestMinDistance = -1;
@@ -142,14 +129,12 @@ export class GameGenerator {
             }
         }
 
-        // Se ainda assim faltar (cenário extremo de bloqueio), gera jogos aleatórios únicos complementares
         while (selectedGames.length < count) {
             const randomGame = BaselineEngine.generateRandomGame(config, rng);
             const scoreObj = ScoringEngine.evaluateGame(randomGame, config, analysis, customWeights, backtestSummary);
             selectedGames.push({ numbers: randomGame, scoreObj });
         }
 
-        // Calcula coverage, diversificação e redução de espaço do portfólio
         const coverageScore = MonteCarloEngine.calculateCoverageScore(selectedGames, config);
         const diversificationScore = MonteCarloEngine.calculateDiversificationScore(selectedGames, config);
         const spaceReduction = GaussianFilterEngine.estimateSpaceReduction(config);
@@ -161,6 +146,9 @@ export class GameGenerator {
             rawScore: g.scoreObj.rawScore,
             gaussianQualityIndex: g.scoreObj.gaussianQualityIndex ?? g.gaussianEval?.gaussianQualityIndex ?? 80,
             passedGaussianFilter: g.scoreObj.passedGaussianFilter ?? g.gaussianEval?.passed ?? true,
+            antiCrowdScore: g.scoreObj.antiCrowdScore ?? 75,
+            expectedValueMultiplier: g.scoreObj.expectedValueMultiplier ?? 1.1,
+            crowdRiskLevel: g.scoreObj.crowdRiskLevel ?? 'BAIXO',
             historicalPerformance: g.scoreObj.historicalPerformance,
             expectedHits: g.scoreObj.expectedHits,
             confidenceInterval: g.scoreObj.confidenceInterval,
@@ -185,12 +173,12 @@ export class GameGenerator {
     }
 
     /**
-     * Gera uma única combinação candidata baseada na estratégia, customWeights, Ciclo, Sinergia de Pares e Geometria
+     * Gera uma única combinação candidata baseada na estratégia, customWeights, Ciclo, Markov, Anti-Crowd, Sinergia de Pares e Geometria
      */
     static generateSingleCandidate(type, analysis, strategy, fixed = [], excluded = [], config, customWeights = null, rng = null) {
         const total = config.total;
         const pick = config.pick;
-        const { freqAbsolute = {}, freqWeighted = {}, currentDelay = {}, avgDelay = {}, cycleStats = {} } = analysis || {};
+        const { freqAbsolute = {}, freqWeighted = {}, currentDelay = {}, avgDelay = {}, cycleStats = {}, markovStats = {} } = analysis || {};
         const weights = { ...DEFAULT_WEIGHTS, ...(customWeights || {}) };
 
         const freqs = Object.values(freqAbsolute);
@@ -216,12 +204,13 @@ export class GameGenerator {
             const rNorm = maxWeighted > 0 ? (freqWeighted[i] || 0) / maxWeighted : 0.5;
             const dNorm = maxDelay > 0 ? d / maxDelay : 0;
 
-            // Atraso gaussiano ótimo (quando o atraso atual se aproxima do intervalo médio de retorno)
             const delayRatio = d / Math.max(1, avgD);
             const trendScore = Math.exp(-0.5 * Math.pow(delayRatio - 1.0, 2));
 
-            // Urgência de fechamento de ciclo
             const cycleScore = cycleStats?.cycleUrgencyScore?.[i] ?? 0.35;
+            const markovLift = markovStats?.markovLiftByNumber?.[i] ?? 1.0;
+            const markovNorm = Math.max(0.1, Math.min(1.0, (markovLift - 0.5) / 0.8));
+            const antiCrowdWeight = AntiCrowdEngine.getNumberAntiCrowdWeight(i, total);
 
             let weight = 1;
             switch (strategy) {
@@ -237,25 +226,49 @@ export class GameGenerator {
                     weight = 0.15 + 0.85 * ((1 - (f - minFreq) / (rangeFreq + 1)) * 0.55 + dNorm * 0.45);
                     break;
 
+                case 'anti_crowd':
+                    // Modo Prêmio Sozinho: Maximiza Valor Esperado (EV) fugindo dos números favoritos da multidão + Markov + Gauss
+                    weight = (
+                        antiCrowdWeight * 0.45 +
+                        markovNorm * 0.20 +
+                        cycleScore * 0.15 +
+                        fNorm * 0.10 +
+                        trendScore * 0.10
+                    );
+                    break;
+
+                case 'markov':
+                    // Modo Cadeia de Markov Pura + Ciclo
+                    weight = (
+                        markovNorm * 0.50 +
+                        cycleScore * 0.20 +
+                        rNorm * 0.15 +
+                        fNorm * 0.15
+                    );
+                    break;
+
                 case 'wheeling':
                 case 'adaptive':
                 case 'best_game':
                 case 'maximum_precision':
                 default: {
-                    // Modelo Estatístico Multifatorial Calibrado usando customWeights
-                    const wFreq = weights.frequency ?? 0.20;
-                    const wRec = weights.recency ?? 0.15;
+                    const wFreq = weights.frequency ?? 0.16;
+                    const wRec = weights.recency ?? 0.14;
                     const wTrend = weights.trend ?? 0.10;
                     const wCycle = weights.cycle ?? 0.10;
-                    const wRep = weights.repetition ?? 0.05;
+                    const wMarkov = weights.markov ?? 0.10;
+                    const wAntiCrowd = weights.antiCrowd ?? 0.07;
+                    const wRep = weights.repetition ?? 0.04;
                     const repBonus = lastDrawSet.has(i) ? 0.65 : 0.45;
-                    const denom = (wFreq + wRec + wTrend + wCycle + wRep) || 1;
+                    const denom = (wFreq + wRec + wTrend + wCycle + wMarkov + wAntiCrowd + wRep) || 1;
 
                     weight = (
                         fNorm * wFreq +
                         rNorm * wRec +
                         trendScore * wTrend +
                         cycleScore * wCycle +
+                        markovNorm * wMarkov +
+                        antiCrowdWeight * wAntiCrowd +
                         repBonus * wRep
                     ) / denom;
                     break;
@@ -265,20 +278,17 @@ export class GameGenerator {
             pool.push({ num: i, weight: Math.max(0.05, weight) });
         }
 
-        // Ordena a piscina por peso (determinístico)
         pool.sort((a, b) => b.weight - a.weight || a.num - b.num);
 
         const selected = new Set(fixed);
         const activeRng = rng || new SeededRandom(123456);
         const { cols } = StatisticalAnalyzer.getGridDimensions(total);
 
-        // Controle dinâmico de equilíbrio Par/Ímpar e Linhas durante a montagem do candidato
         const maxAllowedEvens = config.maxPar ?? Math.ceil(pick * 0.65);
         const maxAllowedOdds = pick - (config.minPar ?? Math.floor(pick * 0.35));
         let currentEvens = [...selected].filter(n => n % 2 === 0).length;
         let currentOdds = selected.size - currentEvens;
 
-        // Janela candidata adaptativa ao universo da loteria (corrige o vício de top-6 fixo)
         const sliceRatio = strategy === 'hot' ? 0.35 : 0.55;
         let attempts = 0;
 
@@ -287,16 +297,13 @@ export class GameGenerator {
             const dynamicWindow = Math.max(8, Math.min(pool.length, Math.ceil(pool.length * sliceRatio)));
             const candidateSlice = pool.slice(0, dynamicWindow);
 
-            // Calcula pesos ajustados por Sinergia de Pares (Lift) e Equilíbrio de Paridade/Linha
             const adjustedWeights = candidateSlice.map(item => {
                 let w = item.weight;
                 const isEven = item.num % 2 === 0;
 
-                // Penaliza se estourar o teto de pares ou ímpares da Curva de Gauss
                 if (isEven && currentEvens >= maxAllowedEvens) w *= 0.08;
                 if (!isEven && currentOdds >= maxAllowedOdds) w *= 0.08;
 
-                // Sinergia de Co-ocorrência com as dezenas já escolhidas no bilhete
                 if (selected.size > 0 && analysis?.pairMatrix) {
                     let pairAcc = 0;
                     selected.forEach(s => {
@@ -305,12 +312,11 @@ export class GameGenerator {
                         pairAcc += (analysis.pairMatrix[a]?.[b] || 0);
                     });
                     const avgCooc = pairAcc / selected.size;
-                    const expectedCooc = Math.max(1, (analysis.expectedFreq || 1) * (( config.drawn || pick ) / total));
+                    const expectedCooc = Math.max(1, (analysis.expectedFreq || 1) * ((config.drawn || pick) / total));
                     const coocBoost = Math.min(1.45, Math.max(0.75, avgCooc / expectedCooc));
                     w *= (0.75 + 0.25 * coocBoost);
                 }
 
-                // Penaliza criar sequências triplas (ex: n-2, n-1, n) em loterias esparsas (Mega/Quina)
                 if (total >= 60) {
                     if ((selected.has(item.num - 1) && selected.has(item.num - 2)) ||
                         (selected.has(item.num + 1) && selected.has(item.num + 2)) ||
@@ -319,7 +325,6 @@ export class GameGenerator {
                     }
                 }
 
-                // Penaliza superpopulação na mesma linha do volante
                 const itemRow = Math.floor((item.num - 1) / cols);
                 let sameRowCount = 0;
                 selected.forEach(s => {
@@ -341,7 +346,6 @@ export class GameGenerator {
             }
         }
 
-        // Se faltar dezenas por limites de exclusão, completa com números aleatórios determinísticos válidos
         while (selected.size < pick) {
             const randNum = activeRng.nextInt(1, total);
             if (!excluded.includes(randNum)) {
@@ -354,8 +358,6 @@ export class GameGenerator {
 
     /**
      * Executa o Modo "MELHOR JOGO" (BEST_GAME)
-     * Testa todas as janelas temporais e seleciona a janela e configuração de maior objectiveScore
-     * combinando Fechamento Combinatório + Poda Gaussiana.
      */
     static runBestGameMode(fullHistory, config, fixed = [], excluded = [], count = 10, seed = 123456) {
         const windows = [20, 50, 100, 200, 'full'];
@@ -405,15 +407,10 @@ export class GameGenerator {
 
     /**
      * Executa o Modo "MÁXIMA PRECISÃO" (MAXIMUM_PRECISION)
-     * Executa o pipeline completo de 15 etapas + Poda Gaussiana + Matriz de Fechamento Combinatório:
-     * 1. Validar dados 2. Janelas 3. Backtest 4. Walk-Forward 5. Comparar Baseline 6. Inferência (p-value, Cohen d)
-     * 7. Otimizar Pesos Multifatoriais 8. Overfitting 9. Stability 10. Monte Carlo 11. Fechamento + Candidatos Gauss
-     * 12. Score 13. Diversificação Jaccard/Hamming 14. Coverage 15. Status
      */
     static runMaximumPrecisionMode(fullHistory, config, fixed = [], excluded = [], count = 10, seed = 123456) {
         const prng = new SeededRandom(seed);
 
-        // 1. Validação de suficiência de dados
         if (!fullHistory || fullHistory.length < 15) {
             const emptyAnalysis = StatisticalAnalyzer.analyze([], config);
             const emptyBatch = this.generateBatch(config.apiName, emptyAnalysis, 'weighted', fixed, excluded, count, config, DEFAULT_WEIGHTS, null, seed);
@@ -424,11 +421,9 @@ export class GameGenerator {
             return emptyBatch;
         }
 
-        // 2 & 3 & 4. Janelas, Backtest e Walk-Forward
         const recentHistory = StatisticalAnalyzer.getWindow(fullHistory, 100);
         const analysis = StatisticalAnalyzer.analyze(recentHistory, config);
 
-        // 7. Otimização Determinística de Pesos Multifatoriais (Treino 70% / Validação 30%)
         const optWeightsResult = ScoringEngine.optimizeWeights(recentHistory, config, { seed });
         const finalWeights = optWeightsResult.optimizedWeights;
 
@@ -440,7 +435,6 @@ export class GameGenerator {
 
         const backtestResult = BacktestEngine.runBacktest(recentHistory, config, generatorFn, { windowSize: 30, seed });
 
-        // Recalibra o breakdown do otimizador incorporando stabilityScore e statisticalEvidence do backtest
         const stabilityScore = backtestResult.walkForward ? backtestResult.walkForward.stabilityScore : null;
         const recalibratedOpt = ScoringEngine.optimizeWeights(recentHistory, config, {
             seed,
@@ -448,11 +442,9 @@ export class GameGenerator {
             backtestSummary: backtestResult
         });
 
-        // 10. Monte Carlo (10.000 iterações determinísticas)
         const topCandidate = this.generateSingleCandidate(config.apiName, analysis, 'maximum_precision', fixed, excluded, config, finalWeights, prng);
         const monteCarloResult = MonteCarloEngine.simulateCandidate(topCandidate, config, 10000, { seed, history: recentHistory });
 
-        // 11, 12, 13. Combina Matriz de Fechamento Combinatório com Piscina Gaussiana de Alta Precisão
         const wheelResult = WheelingEngine.generateWheelingMatrix(
             config,
             analysis,
@@ -465,7 +457,6 @@ export class GameGenerator {
         );
         const rawBatch = this.generateBatch(config.apiName, analysis, 'maximum_precision', fixed, excluded, count * 2, config, finalWeights, backtestResult, seed);
 
-        // Mescla os melhores jogos da Poda Gaussiana com a Matriz de Fechamento garantindo Distância Jaccard <= 0.70
         const combinedCandidates = [
             ...wheelResult.tickets.map((t, idx) => ({
                 id: seed + idx,
@@ -474,6 +465,9 @@ export class GameGenerator {
                 rawScore: t.scoreObj.rawScore,
                 gaussianQualityIndex: t.gaussianEval?.gaussianQualityIndex ?? 85,
                 passedGaussianFilter: t.gaussianEval?.passed ?? true,
+                antiCrowdScore: t.scoreObj.antiCrowdScore ?? 78,
+                expectedValueMultiplier: t.scoreObj.expectedValueMultiplier ?? 1.15,
+                crowdRiskLevel: t.scoreObj.crowdRiskLevel ?? 'BAIXO',
                 historicalPerformance: t.scoreObj.historicalPerformance,
                 expectedHits: t.scoreObj.expectedHits,
                 confidenceInterval: t.scoreObj.confidenceInterval,
@@ -506,7 +500,6 @@ export class GameGenerator {
             if (diversifiedBatch.length >= count) break;
         }
 
-        // Se faltar por filtro de similaridade, completa com candidatos restantes sem duplicata exata
         while (diversifiedBatch.length < count && combinedCandidates.length > diversifiedBatch.length) {
             const remaining = combinedCandidates.find(r =>
                 !diversifiedBatch.some(d => d.numbers.join(',') === r.numbers.join(','))
@@ -515,12 +508,10 @@ export class GameGenerator {
             else break;
         }
 
-        // 14. Cobertura e Diversificação do Portfólio
         const coverageScore = MonteCarloEngine.calculateCoverageScore(diversifiedBatch, config);
         const diversificationScore = MonteCarloEngine.calculateDiversificationScore(diversifiedBatch, config);
         const spaceReduction = GaussianFilterEngine.estimateSpaceReduction(config);
 
-        // 15. Atribuição do Status do Modelo
         let status = 'NOT_VALIDATED';
         if (backtestResult.diffMean <= 0) {
             status = 'BASELINE_NOT_BEATEN';
@@ -532,7 +523,6 @@ export class GameGenerator {
             status = 'VALIDATED';
         }
 
-        // Anexa metadados do pipeline completo no resultado do portfólio
         diversifiedBatch.forEach((game, idx) => {
             game.id = seed + idx;
             game.coverageScore = coverageScore;
