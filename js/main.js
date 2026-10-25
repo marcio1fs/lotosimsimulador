@@ -303,11 +303,12 @@ class AppController {
             if (!e.target.closest('.user-menu')) AppView.toggleUserDropdown(false); 
         });
 
-        document.querySelectorAll('.dropdown-item[data-action]').forEach(item => item.addEventListener('click', (e) => {
+        document.querySelectorAll('.dropdown-item[data-action], .btn[data-action="logout"]').forEach(item => item.addEventListener('click', (e) => {
             e.stopPropagation();
             AppView.toggleUserDropdown(false);
             const action = item.dataset.action;
             if (action === 'logout') {
+                document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
                 AuthController.logout(currentSession?.id).then(() => { 
                     AuthView.show(); 
                     AppView.showToast('👋 Até logo!', 'success'); 
@@ -325,6 +326,51 @@ class AppController {
             }
             if (action === 'export-data') this.exportData();
         }));
+
+        // Alteração de Senha no Modal de Perfil
+        document.getElementById('changePassBtn')?.addEventListener('click', async () => {
+            if (!currentUser) return;
+            const currentPass = document.getElementById('currentPassword').value;
+            const newPass = document.getElementById('newPassword').value;
+            const confirmPass = document.getElementById('newPasswordConfirm').value;
+
+            if (!currentPass || !newPass || !confirmPass) {
+                AppView.showToast('⚠️ Preencha todos os campos de senha!', 'error');
+                return;
+            }
+            if (newPass.length < 6) {
+                AppView.showToast('⚠️ A nova senha deve ter no mínimo 6 caracteres!', 'error');
+                return;
+            }
+            if (newPass !== confirmPass) {
+                AppView.showToast('⚠️ As senhas novas não coincidem!', 'error');
+                return;
+            }
+
+            const res = await AuthController.changePassword(currentUser.id, currentPass, newPass);
+            if (res.success) {
+                document.getElementById('currentPassword').value = '';
+                document.getElementById('newPassword').value = '';
+                document.getElementById('newPasswordConfirm').value = '';
+                AppView.showToast('🔒 Senha atualizada com criptografia PBKDF2!', 'success');
+            } else {
+                AppView.showToast(`❌ ${res.error}`, 'error');
+            }
+        });
+
+        // Botões de Execução Manual e Limpeza do Modal de Automação
+        document.getElementById('runManualBtn')?.addEventListener('click', async () => {
+            if (!currentUser) return;
+            AppView.showToast('🤖 Executando ciclo manual de automação...', 'info');
+            await this.runAutoCycle();
+            AppView.showToast('✅ Task de automação concluída!', 'success');
+        });
+
+        document.getElementById('clearLogBtn')?.addEventListener('click', () => {
+            AutomationModel.state.log = [];
+            AppView.renderAutoLog([]);
+            AppView.showToast('🗑️ Log de operações limpo!', 'info');
+        });
 
         document.querySelectorAll('[data-action="close-modal"]').forEach(btn => btn.addEventListener('click', () => {
             document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
@@ -683,7 +729,7 @@ class AppController {
                 <div>🎲 Jogos: <strong>${gameCount}</strong></div>
                 <div>📊 Sims: <strong>${simCount}</strong></div>
                 <div>📋 Resultados: <strong>${resultsCount}</strong></div>
-                <div>💾 Storage: <strong>IndexedDB</strong></div>
+                <div>💾 Storage: <strong>${Database.useNeon ? 'Neon PostgreSQL' : 'IndexedDB Local'}</strong></div>
             </div>`;
     }
 

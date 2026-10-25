@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
     id BIGSERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
-    password VARCHAR(255) NOT NULL,
+    password VARCHAR(500) NOT NULL,
     role VARCHAR(50) DEFAULT 'user',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -35,18 +35,19 @@ CREATE TABLE IF NOT EXISTS games (
     historical_performance TEXT,
     expected_hits NUMERIC(6,2),
     confidence_level VARCHAR(50),
-    probability_type VARCHAR(50),
+    probability_type VARCHAR(150),
     explanations JSONB,
     stats JSONB,
     status VARCHAR(50) DEFAULT 'generated',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. TABELA DE RESULTADOS DE LOTERIAS
+-- 4. TABELA DE RESULTADOS DE LOTERIAS (Alinhada com LotteryController)
 CREATE TABLE IF NOT EXISTS lottery_results (
     id BIGSERIAL PRIMARY KEY,
     lottery_type VARCHAR(50) NOT NULL,
     concurso INT NOT NULL,
+    data VARCHAR(50),
     data_apuracao VARCHAR(50),
     dezenas JSONB NOT NULL,
     acumulou BOOLEAN DEFAULT FALSE,
@@ -55,12 +56,15 @@ CREATE TABLE IF NOT EXISTS lottery_results (
     CONSTRAINT uq_lottery_concurso UNIQUE (lottery_type, concurso)
 );
 
--- 5. TABELA DE SIMULAÇÕES
+-- 5. TABELA DE SIMULAÇÕES (Alinhada com LotteryController)
 CREATE TABLE IF NOT EXISTS simulations (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
     lottery_type VARCHAR(50) NOT NULL,
-    total_games INT NOT NULL,
+    strategy VARCHAR(100),
+    games_count INT DEFAULT 10,
+    results_count INT DEFAULT 0,
+    total_games INT DEFAULT 10,
     results JSONB,
     score NUMERIC(6,2),
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -88,10 +92,10 @@ CREATE TABLE IF NOT EXISTS auto_settings (
     auto_conference BOOLEAN DEFAULT FALSE,
     auto_all_lotteries BOOLEAN DEFAULT FALSE,
     interval_minutes INT DEFAULT 30,
-    lottery_type VARCHAR(50) DEFAULT 'megasena',
-    strategy VARCHAR(100) DEFAULT 'adaptive',
-    games_per_draw INT DEFAULT 1,
-    max_spend_per_draw NUMERIC(10,2) DEFAULT 10.00,
+    lottery_type VARCHAR(50) DEFAULT 'lotofacil',
+    strategy VARCHAR(100) DEFAULT 'wheeling',
+    games_per_draw INT DEFAULT 10,
+    max_spend_per_draw NUMERIC(10,2) DEFAULT 50.00,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -99,7 +103,9 @@ CREATE TABLE IF NOT EXISTS auto_settings (
 CREATE TABLE IF NOT EXISTS auto_log (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
-    action VARCHAR(100) NOT NULL,
+    type VARCHAR(50) DEFAULT 'info',
+    message TEXT,
+    action VARCHAR(100),
     details JSONB,
     timestamp TIMESTAMPTZ DEFAULT NOW()
 );

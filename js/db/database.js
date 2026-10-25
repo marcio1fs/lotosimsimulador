@@ -1,5 +1,3 @@
-import { neon } from '@neondatabase/serverless';
-
 // ======================================================================
 // CONFIGURAÇÃO BANCO DE DADOS (HÍBRIDO: NEON POSTGRESQL / INDEXEDDB LOCAL)
 // ======================================================================
@@ -36,8 +34,9 @@ function assertValidColumn(col) {
 
 let sqlClient = null;
 
-function getSqlClient() {
+async function getSqlClient() {
     if (!sqlClient && NEON_URL) {
+        const { neon } = await import('@neondatabase/serverless');
         sqlClient = neon(NEON_URL);
     }
     return sqlClient;
@@ -84,7 +83,7 @@ export class Database {
     static async init() {
         if (this.useNeon) {
             try {
-                const sql = getSqlClient();
+                const sql = await getSqlClient();
                 const testResult = await sql`SELECT NOW() as now`;
                 console.log("🔥 Backend Nuvem (Neon PostgreSQL) Conectado com Sucesso!", testResult[0]?.now);
                 return true;
@@ -124,7 +123,7 @@ export class Database {
     static async add(store, data) {
         assertValidStore(store);
         if (this.useNeon) {
-            const sql = getSqlClient();
+            const sql = await getSqlClient();
             const payload = mapObjectToSnake(data);
             if (payload.id && typeof payload.id === 'number') delete payload.id;
 
@@ -152,7 +151,7 @@ export class Database {
     static async get(store, id) {
         assertValidStore(store);
         if (this.useNeon) {
-            const sql = getSqlClient();
+            const sql = await getSqlClient();
             const pk = (store === 'user_stats' || store === 'auto_settings') ? 'user_id' : 'id';
             const query = `SELECT * FROM "${store}" WHERE "${pk}" = $1 LIMIT 1;`;
             const rows = await sql.query(query, [id]);
@@ -170,7 +169,7 @@ export class Database {
     static async getByIndex(store, indexName, value) {
         assertValidStore(store);
         if (this.useNeon) {
-            const sql = getSqlClient();
+            const sql = await getSqlClient();
             const col = toSnakeCase(indexName);
             assertValidColumn(col);
             const query = `SELECT * FROM "${store}" WHERE "${col}" = $1 LIMIT 1;`;
@@ -189,7 +188,7 @@ export class Database {
     static async getAllByIndex(store, indexName, value) {
         assertValidStore(store);
         if (this.useNeon) {
-            const sql = getSqlClient();
+            const sql = await getSqlClient();
             const col = toSnakeCase(indexName);
             assertValidColumn(col);
             const query = `SELECT * FROM "${store}" WHERE "${col}" = $1 ORDER BY id DESC;`;
@@ -208,7 +207,7 @@ export class Database {
     static async update(store, data) {
         assertValidStore(store);
         if (this.useNeon) {
-            const sql = getSqlClient();
+            const sql = await getSqlClient();
             const payload = mapObjectToSnake(data);
             const pk = (store === 'user_stats' || store === 'auto_settings') ? 'user_id' : 'id';
             const pkVal = payload[pk];
@@ -242,7 +241,7 @@ export class Database {
     static async delete(store, id) {
         assertValidStore(store);
         if (this.useNeon) {
-            const sql = getSqlClient();
+            const sql = await getSqlClient();
             const pk = (store === 'user_stats' || store === 'auto_settings') ? 'user_id' : 'id';
             const query = `DELETE FROM "${store}" WHERE "${pk}" = $1;`;
             await sql.query(query, [id]);
@@ -260,7 +259,7 @@ export class Database {
     static async count(store) {
         assertValidStore(store);
         if (this.useNeon) {
-            const sql = getSqlClient();
+            const sql = await getSqlClient();
             const query = `SELECT COUNT(*)::int as count FROM "${store}";`;
             const rows = await sql.query(query);
             return rows[0]?.count || 0;
