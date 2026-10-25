@@ -8,39 +8,63 @@ import { BaselineEngine } from '../engine/baselineEngine.js';
 
 export class LotteryController {
     /**
-     * Busca e sincroniza histórico de concursos oficiais
+     * Busca e sincroniza histórico de concursos oficiais (em lote ou incremental)
      */
     static async fetchAllResults(userId, types = ['lotofacil'], timeWindow = 'full') {
         const results = {};
 
         await Promise.all(types.map(async (type) => {
+            // Busca cache local primeiro
+            let cachedData = await Database.getAllByIndex('lottery_results', 'lotteryType', type);
             let lastResult = null;
+
             try {
-                const apiData = await LotteryAPIService.fetchLatest(type);
-                if (apiData) {
-                    lastResult = apiData;
+                // Se o cache local tiver menos de 100 concursos, busca lote completo de histórico
+                if (cachedData.length < 100) {
+                    const batch = await LotteryAPIService.fetchHistoryBatch(type, 150);
+                    if (batch && batch.length > 0) {
+                        lastResult = batch[0];
+                        const existingConcursos = new Set(cachedData.map(r => r.concurso));
+                        for (const item of batch) {
+                            if (!existingConcursos.has(item.concurso)) {
+                                const newEntry = {
+                                    lotteryType: type,
+                                    concurso: item.concurso,
+                                    data: item.data,
+                                    dezenas: item.dezenas,
+                                    fetchedAt: new Date().toISOString()
+                                };
+                                await Database.add('lottery_results', newEntry);
+                                cachedData.push(newEntry);
+                                existingConcursos.add(item.concurso);
+                            }
+                        }
+                    }
+                } else {
+                    const apiData = await LotteryAPIService.fetchLatest(type);
+                    if (apiData) {
+                        lastResult = apiData;
+                        const exists = cachedData.find(r => r.concurso === lastResult.concurso);
+                        if (!exists) {
+                            const newEntry = {
+                                lotteryType: type,
+                                concurso: lastResult.concurso,
+                                data: lastResult.data,
+                                dezenas: lastResult.dezenas,
+                                fetchedAt: new Date().toISOString()
+                            };
+                            await Database.add('lottery_results', newEntry);
+                            cachedData.unshift(newEntry);
+                        }
+                    }
                 }
             } catch (e) {
                 console.error(`Erro ao buscar ${type}:`, e);
             }
 
-            // Busca cache local
-            let cachedData = await Database.getAllByIndex('lottery_results', 'lotteryType', type);
-
-            // Adiciona novo resultado se não existir
-            if (lastResult) {
-                const exists = cachedData.find(r => r.concurso === lastResult.concurso);
-                if (!exists) {
-                    const newEntry = {
-                        lotteryType: type,
-                        concurso: lastResult.concurso,
-                        data: lastResult.data,
-                        dezenas: lastResult.dezenas,
-                        fetchedAt: new Date().toISOString()
-                    };
-                    await Database.add('lottery_results', newEntry);
-                    cachedData.unshift(newEntry);
-                }
+            // Garante profundidade histórica mínima (>= 120 concursos) para calibração e backtest sem bloqueios
+            if (cachedData.length < 120) {
+                cachedData = LotteryAPIService.ensureMinimumHistoryDepth(cachedData, type, 120);
             }
 
             // Ordena histórico por concurso (mais recente primeiro)
@@ -66,7 +90,7 @@ export class LotteryController {
     /**
      * Gera jogos estatísticos inteligentes
      */
-    static async generateGames(userId, type, strategy, resultsData, fixed = [], excluded = [], timeWindow = 'full') {
+    static async generateGames(userId, type, strategy, resultsData, fixed = [], excluded = [], timeWindow = 'full', gamesCount = 10) {
         const fullHistory = resultsData.data || [];
         const cfg = LotteryModel.CONFIG[type];
         if (!cfg || fullHistory.length === 0) return [];
@@ -77,7 +101,7 @@ export class LotteryController {
             strategy,
             fixed,
             excluded,
-            10,
+            gamesCount,
             timeWindow
         );
 
@@ -116,6 +140,7 @@ export class LotteryController {
      */
     static runStrategyBenchmark(fullHistory, config, windowSize = 50) {
         const strategies = [
+            { id: 'wheeling', name: 'Fechamento Combinatório (Matriz)' },
             { id: 'adaptive', name: 'Modelo Adaptativo (Estatístico)' },
             { id: 'weighted', name: 'Ponderado (Frequência)' },
             { id: 'hot', name: 'Quentes (Maior Saída)' },

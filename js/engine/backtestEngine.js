@@ -42,6 +42,7 @@ export class BacktestEngine {
 
         const baselineHitsList = [];
         const hitTierBreakdown = {};
+        const minPrizeTier = config.total === 25 ? 11 : (config.total === 60 ? 4 : (config.total === 80 ? 2 : 15));
 
         const baseSeed = options.seed ?? 123456;
         const prng = new SeededRandom(baseSeed);
@@ -69,7 +70,7 @@ export class BacktestEngine {
             hitsList.push(hits);
             hitsDistribution[hits] = (hitsDistribution[hits] || 0) + 1;
             
-            if (hits >= 11) {
+            if (hits >= minPrizeTier) {
                 hitTierBreakdown[hits] = (hitTierBreakdown[hits] || 0) + 1;
             }
             
@@ -129,13 +130,24 @@ export class BacktestEngine {
      */
     static evaluateWalkForward(chronologicalHistory, config, generatorFn, evalWindow) {
         const total = chronologicalHistory.length;
-        if (total < 40) return { isOverfitting: false, inSampleMean: 0, outSampleMean: 0 };
+        if (total < 20) {
+            return {
+                isOverfitting: false,
+                inSampleMean: 0,
+                outSampleMean: 0,
+                diff: 0,
+                degradation: 0,
+                stabilityScore: null,
+                foldResults: []
+            };
+        }
 
-        const mid = total - Math.floor(evalWindow / 2);
+        const effectiveWindow = Math.min(evalWindow, total - 5);
+        const mid = total - Math.floor(effectiveWindow / 2);
         
         // In-sample test (metade anterior da janela)
         let inSampleHits = [];
-        for (let i = total - evalWindow; i < mid; i++) {
+        for (let i = total - effectiveWindow; i < mid; i++) {
             const past = chronologicalHistory.slice(0, i).reverse();
             const actual = new Set(chronologicalHistory[i].dezenas ? chronologicalHistory[i].dezenas.map(Number) : []);
             const game = generatorFn(past, config);
@@ -157,16 +169,20 @@ export class BacktestEngine {
 
         const inStats = StatisticalAnalyzer.calculateDistributionStats(inSampleHits);
         const outStats = StatisticalAnalyzer.calculateDistributionStats(outSampleHits);
+        const degradation = Number(Math.max(0, inStats.mean - outStats.mean).toFixed(2));
 
         // K-Fold Cross Validation (3 Folds na janela)
         const folds = 3;
-        const foldSize = Math.floor(evalWindow / folds);
+        const foldSize = Math.floor(effectiveWindow / folds);
         const foldResults = [];
-        if (evalWindow >= 15) {
+        if (effectiveWindow >= 12 && foldSize >= 2) {
             for (let f = 0; f < folds; f++) {
-                const foldStart = total - evalWindow + (f * foldSize);
+                const foldStart = total - effectiveWindow + (f * foldSize);
                 const foldEnd = f === folds - 1 ? total : foldStart + foldSize;
+                const foldMid = foldStart + Math.floor((foldEnd - foldStart) / 2);
                 let foldHits = [];
+                let foldInHits = [];
+                let foldOutHits = [];
                 for (let i = foldStart; i < foldEnd; i++) {
                     const past = chronologicalHistory.slice(0, i).reverse();
                     const actual = new Set(chronologicalHistory[i].dezenas ? chronologicalHistory[i].dezenas.map(Number) : []);
@@ -174,12 +190,19 @@ export class BacktestEngine {
                     const predArray = Array.isArray(game) ? game : (game && game.dezenas ? game.dezenas : []);
                     const hits = predArray.filter(n => actual.has(n)).length;
                     foldHits.push(hits);
+                    if (i < foldMid) foldInHits.push(hits);
+                    else foldOutHits.push(hits);
                 }
                 const fStats = StatisticalAnalyzer.calculateDistributionStats(foldHits);
+                const fInStats = StatisticalAnalyzer.calculateDistributionStats(foldInHits);
+                const fOutStats = StatisticalAnalyzer.calculateDistributionStats(foldOutHits);
                 foldResults.push({
                     fold: f + 1,
                     size: foldHits.length,
-                    mean: fStats.mean
+                    mean: fStats.mean,
+                    inSampleMean: fInStats.mean,
+                    outSampleMean: fOutStats.mean,
+                    degradation: Number(Math.max(0, fInStats.mean - fOutStats.mean).toFixed(2))
                 });
             }
         }
@@ -187,7 +210,7 @@ export class BacktestEngine {
         // Se a performance despencar bruscamente na amostra nova, há overfitting
         const isOverfitting = (inStats.mean - outStats.mean) > ((inStats.stdDev || 1) * 0.8);
 
-        // Estabilidade entre folds (0 a 100) — exige ao menos 2 folds válidos (Req 8, 9, 10 de 4.1)
+        // Estabilidade entre folds (0 a 100) — exige ao menos 2 folds válidos
         let stabilityScore = null;
         if (foldResults.length >= 2) {
             const foldMeans = foldResults.map(f => f.mean);
@@ -195,7 +218,6 @@ export class BacktestEngine {
             const foldVar = foldMeans.reduce((s, m) => s + Math.pow(m - foldMeanAvg, 2), 0) / foldMeans.length;
             const foldStd = Math.sqrt(foldVar);
             
-            // Coeficiente de Variação (escala independente da loteria)
             const cv = foldMeanAvg > 0 ? (foldStd / foldMeanAvg) : 0;
             const overfitGap = Math.max(0, inStats.mean - outStats.mean);
             const overfitRatio = foldMeanAvg > 0 ? (overfitGap / foldMeanAvg) : 0;
@@ -210,6 +232,7 @@ export class BacktestEngine {
             inSampleMean: inStats.mean,
             outSampleMean: outStats.mean,
             diff: Number((outStats.mean - inStats.mean).toFixed(2)),
+            degradation,
             stabilityScore,
             foldResults
         };
@@ -231,7 +254,7 @@ export class BacktestEngine {
             pValue: null,
             isStatisticallySignificant: false,
             tTestResult: { tStatistic: 0, pValue: null, isSignificant: false },
-            walkForward: { isOverfitting: false, inSampleMean: 0, outSampleMean: 0, diff: 0, stabilityScore: null, foldResults: [] },
+            walkForward: { isOverfitting: false, inSampleMean: 0, outSampleMean: 0, diff: 0, degradation: 0, stabilityScore: null, foldResults: [] },
             dataLeakageDetected: false
         };
     }

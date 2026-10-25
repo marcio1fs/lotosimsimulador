@@ -1,21 +1,26 @@
 /**
- * ScoringEngine - Motor de Pontuação Composta Estatística
- * Substitui o score enganoso de "probabilidade real" por métricas estatísticas transparentes e explicáveis.
+ * ScoringEngine - Motor de Pontuação Composta Estatística Multifatorial
+ * Substitui o score enganoso de "probabilidade real" por métricas estatísticas transparentes,
+ * incluindo Ciclo das Dezenas, Geometria Matricial (Moldura/Linhas/Colunas), Fibonacci,
+ * Co-ocorrência de Pares/Trincas e Filtro de Poda Gaussiana.
  */
 
-import { PRIMES } from './statisticalAnalyzer.js';
+import { StatisticalAnalyzer, PRIMES, FIBONACCI } from './statisticalAnalyzer.js';
+import { GaussianFilterEngine } from './gaussianFilterEngine.js';
 import { SeededRandom } from './prng.js';
 
 export const DEFAULT_WEIGHTS = {
-    frequency: 0.20,
-    recency: 0.15,
+    frequency: 0.16,
+    recency: 0.14,
     trend: 0.10,
-    cooccurrence: 0.15,
-    distribution: 0.10,
-    parity: 0.10,
-    sum: 0.10,
-    repetition: 0.05,
-    sequences: 0.05
+    cycle: 0.10,
+    cooccurrence: 0.13,
+    distribution: 0.08,
+    geometry: 0.08,
+    parity: 0.07,
+    sum: 0.07,
+    repetition: 0.04,
+    sequences: 0.03
 };
 
 export class ScoringEngine {
@@ -38,7 +43,7 @@ export class ScoringEngine {
         const freqs = Object.values(analysis.freqAbsolute || {});
         const maxFreq = Math.max(...freqs) || 1;
         const minFreq = Math.min(...freqs) || 0;
-        const avgGameFreq = sortedNumbers.reduce((s, n) => s + (analysis.freqAbsolute[n] || 0), 0) / len;
+        const avgGameFreq = sortedNumbers.reduce((s, n) => s + (analysis.freqAbsolute?.[n] || 0), 0) / len;
         const freqScore = (avgGameFreq - minFreq) / (maxFreq - minFreq || 1);
         if (freqScore > 0.6) {
             explanations.push(`+ Frequência média alta (${avgGameFreq.toFixed(1)} saídas/dezena)`);
@@ -46,137 +51,183 @@ export class ScoringEngine {
             explanations.push(`- Presença de dezenas com baixa frequência histórica`);
         }
 
-        // 2. Fator Recência (Frequência Ponderada)
+        // 2. Fator Recência (Frequência Ponderada Exponencial)
         const weightedFreqs = Object.values(analysis.freqWeighted || {});
         const maxWeighted = Math.max(...weightedFreqs) || 1;
-        const avgGameWeighted = sortedNumbers.reduce((s, n) => s + (analysis.freqWeighted[n] || 0), 0) / len;
+        const avgGameWeighted = sortedNumbers.reduce((s, n) => s + (analysis.freqWeighted?.[n] || 0), 0) / len;
         const recencyScore = maxWeighted > 0 ? avgGameWeighted / maxWeighted : 0.5;
         if (recencyScore > 0.65) {
             explanations.push(`+ Forte momento recente (dezenas ativas em concursos recentes)`);
         }
 
         // 3. Fator Tendência / Atraso Estatístico
-        // Recompensar atrasos alinhados com o atraso médio histórico da dezena
         let delayScoreSum = 0;
         sortedNumbers.forEach(n => {
-            const curr = analysis.currentDelay[n] || 0;
-            const avg = analysis.avgDelay[n] || 1;
-            // Se o atraso atual está próximo do atraso médio, o score é alto
+            const curr = analysis.currentDelay?.[n] || 0;
+            const avg = analysis.avgDelay?.[n] || 1;
             const ratio = curr / (avg || 1);
             const scoreN = Math.exp(-Math.pow(ratio - 1, 2)); // Função gaussiana centrada em ratio=1
             delayScoreSum += scoreN;
         });
         const trendScore = delayScoreSum / len;
         if (trendScore > 0.7) {
-            explanations.push(`+ Atrasos numéricos dentro do intervalo médio histórico`);
+            explanations.push(`+ Atrasos numéricos alinhados ao intervalo médio de retorno`);
         }
 
-        // 4. Fator Co-ocorrência (Pares)
+        // 4. Fator Ciclo das Dezenas (Fechamento de Ciclo)
+        const missingCycleSet = new Set(analysis.cycleStats?.missingInCurrentCycle || []);
+        const missingIncludedCount = sortedNumbers.filter(n => missingCycleSet.has(n)).length;
+        let cycleScore = 0.75;
+        if (missingCycleSet.size > 0) {
+            const targetCycleInclusion = Math.min(missingCycleSet.size, Math.max(1, Math.ceil(missingCycleSet.size * (len / config.total) * 1.35)));
+            cycleScore = Math.min(1.0, 0.45 + 0.55 * (missingIncludedCount / targetCycleInclusion));
+            if (missingIncludedCount > 0) {
+                explanations.push(`+ Inclui ${missingIncludedCount}/${missingCycleSet.size} dezena(s) que faltam para fechar o ciclo atual`);
+            }
+        }
+
+        // 5. Fator Co-ocorrência (Pares + Trincas de Alto Lift)
         let pairCountSum = 0;
         let pairPairsCount = 0;
         for (let i = 0; i < len; i++) {
             for (let j = i + 1; j < len; j++) {
                 const a = Math.min(sortedNumbers[i], sortedNumbers[j]);
                 const b = Math.max(sortedNumbers[i], sortedNumbers[j]);
-                const pairFreq = (analysis.pairMatrix[a] && analysis.pairMatrix[a][b]) || 0;
+                const pairFreq = (analysis.pairMatrix?.[a] && analysis.pairMatrix[a][b]) || 0;
                 pairCountSum += pairFreq;
                 pairPairsCount++;
             }
         }
         const avgPairFreq = pairPairsCount > 0 ? pairCountSum / pairPairsCount : 0;
         const maxPairFreq = analysis.topPairs && analysis.topPairs.length > 0 ? analysis.topPairs[0].count : 1;
-        const cooccurrenceScore = maxPairFreq > 0 ? avgPairFreq / maxPairFreq : 0.5;
+        let cooccurrenceScore = maxPairFreq > 0 ? avgPairFreq / maxPairFreq : 0.5;
+
+        // Bônus por trincas históricas de alto Lift presentes no jogo
+        if (analysis.topTriples && analysis.topTriples.length > 0) {
+            const numSet = new Set(sortedNumbers);
+            let matchedTriples = 0;
+            for (const t of analysis.topTriples.slice(0, 15)) {
+                if (t.numbers.every(n => numSet.has(n))) matchedTriples++;
+            }
+            if (matchedTriples > 0) {
+                cooccurrenceScore = Math.min(1.0, cooccurrenceScore + Math.min(0.20, matchedTriples * 0.05));
+            }
+        }
         if (cooccurrenceScore > 0.5) {
-            explanations.push(`+ Elevada co-ocorrência de pares históricos`);
+            explanations.push(`+ Elevada sinergia de pares e trincas históricas`);
         }
 
-        // 5. Fator Distribuição por Faixas
+        // 6. Fator Distribuição por Faixas
         const rangeSize = Math.ceil(config.total / 5);
         const rangeCounts = [0, 0, 0, 0, 0];
         sortedNumbers.forEach(n => {
             const idx = Math.min(Math.floor((n - 1) / rangeSize), 4);
             rangeCounts[idx]++;
         });
-        // Quanto mais distribuído entre as 5 faixas (sem concentrar tudo em 1 ou 2), maior o score
         const expectedPerRange = len / 5;
         const rangeVariance = rangeCounts.reduce((s, c) => s + Math.pow(c - expectedPerRange, 2), 0) / 5;
         const distributionScore = Math.max(0, 1 - (rangeVariance / Math.pow(len, 2)));
         if (distributionScore > 0.7) {
-            explanations.push(`+ Boa distribuição por faixas numéricas`);
+            explanations.push(`+ Boa cobertura horizontal entre as 5 faixas numéricas`);
         }
 
-        // 6. Fator Paridade (Pares vs Ímpares)
+        // 7. Fator Geometria do Volante (Linhas, Colunas, Moldura, Primos e Fibonacci)
+        const geom = StatisticalAnalyzer.analyzeTicketGeometry(sortedNumbers, config.total);
+        const gaussianEval = GaussianFilterEngine.evaluateCandidate(sortedNumbers, config, analysis);
+        const geometryScore = (gaussianEval.gaussianQualityIndex || 70) / 100;
+        if (gaussianEval.passed) {
+            explanations.push(`+ Aprovado no Filtro de Poda Gaussiana (${geom.activeRows} linhas · ${geom.activeCols} colunas · ${geom.frameCount} na moldura)`);
+        }
+
+        // 8. Fator Paridade (Pares vs Ímpares)
         const evens = sortedNumbers.filter(n => n % 2 === 0).length;
         const parityStats = analysis.parityStats || { mean: len / 2, stdDev: 1.5 };
         const parityZ = parityStats.stdDev > 0 ? Math.abs(evens - parityStats.mean) / parityStats.stdDev : 0;
-        const parityScore = Math.max(0, 1 - (parityZ / 3)); // Penalty se afastar > 3 desvios
+        const parityScore = Math.max(0, 1 - (parityZ / 3));
         if (parityScore > 0.7) {
-            explanations.push(`+ Proporção par/ímpar (${evens} pares) alinhada à média da loteria`);
+            explanations.push(`+ Proporção par/ímpar (${evens}P / ${len - evens}I) centrada na curva normal`);
         } else {
-            explanations.push(`- Paridade (${evens} pares) em zona atípica`);
+            explanations.push(`- Paridade (${evens} pares) em zona periférica`);
         }
 
-        // 7. Fator Soma das Dezenas
+        // 9. Fator Soma das Dezenas (Curva de Sino)
         const gameSum = sortedNumbers.reduce((a, b) => a + b, 0);
-        // Calcula média teórica da soma: pick * (total + 1) / 2
         const theoreticalMean = (config.pick || config.drawn) * (config.total + 1) / 2;
-        const sumStats = analysis.sumStats || { mean: theoreticalMean, stdDev: theoreticalMean * 0.1 };
+        const sumStats = (analysis.sumStats && analysis.sumStats.mean > 0 && config.pick === (config.drawn || config.pick))
+            ? analysis.sumStats
+            : { mean: theoreticalMean, stdDev: theoreticalMean * 0.12 };
         const sumZ = sumStats.stdDev > 0 ? Math.abs(gameSum - sumStats.mean) / sumStats.stdDev : 0;
         const sumScore = Math.max(0, 1 - (sumZ / 3));
         if (sumScore > 0.7) {
-            explanations.push(`+ Soma total (${gameSum}) dentro do intervalo central de ocorrências`);
+            explanations.push(`+ Soma total (${gameSum}) na zona central da Curva de Gauss`);
         } else {
-            explanations.push(`- Soma total (${gameSum}) fora da região de maior concentração`);
+            explanations.push(`- Soma total (${gameSum}) fora da região de maior densidade`);
         }
 
-        // 8. Fator Repetição (comparação com último sorteio)
+        // 10. Fator Repetição (comparação com último sorteio)
         const lastDraw = analysis.lastDrawNumbers || [];
         let repScore = 0.5;
         if (lastDraw.length > 0) {
             const overlap = sortedNumbers.filter(n => lastDraw.includes(n)).length;
             const expectedOverlap = analysis.repetitionStats?.mean ?? Math.round(len * (config.drawn || config.pick) / config.total);
             const overlapRatio = expectedOverlap > 0 ? overlap / expectedOverlap : 1;
-            repScore = Math.exp(-Math.pow(overlapRatio - 1, 2)); // Gaussian centered at expected
-            if (Math.abs(overlap - expectedOverlap) <= 1) {
-                explanations.push(`+ Repetição (${overlap} dezenas do último sorteio) alinhada à média histórica (${expectedOverlap})`);
+            repScore = Math.exp(-Math.pow(overlapRatio - 1, 2));
+            if (Math.abs(overlap - expectedOverlap) <= 1.2) {
+                explanations.push(`+ Repetição (${overlap} dezenas do último sorteio) calibrada à média (${Number(expectedOverlap).toFixed(1)})`);
             } else if (overlap > expectedOverlap + 2) {
                 explanations.push(`- Repetição elevada (${overlap} dezenas) acima do padrão`);
             }
         }
 
-        // 9. Fator Sequências / Consecutivos
+        // 11. Fator Sequências / Consecutivos
         let consecutivePairs = 0;
         for (let i = 0; i < len - 1; i++) {
             if (sortedNumbers[i + 1] === sortedNumbers[i] + 1) {
                 consecutivePairs++;
             }
         }
-        // Penalizar sequências gigantescas (ex: 5 números seguidos)
         const sequenceScore = consecutivePairs <= 4 ? 1 - (consecutivePairs * 0.15) : 0.2;
-        if (consecutivePairs > 0 && consecutivePairs <= 3) {
-            explanations.push(`+ Sequências de consecutivas (${consecutivePairs}) dentro do padrão estatístico`);
+        if (consecutivePairs >= 0 && consecutivePairs <= 3) {
+            explanations.push(`+ Controle de sequências consecutivas (${consecutivePairs} par(es)) dentro do ótimo`);
         } else if (consecutivePairs > 4) {
             explanations.push(`- Sequência de dezenas consecutivas (${consecutivePairs}) excessiva`);
         }
 
-        // Normalização dos pesos
-        const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0) || 1;
+        // Normalização dos pesos (suporta pesos customizados com ou sem cycle/geometry)
+        const wCycle = weights.cycle ?? 0;
+        const wGeometry = weights.geometry ?? 0;
+        const totalWeight = (
+            (weights.frequency || 0) +
+            (weights.recency || 0) +
+            (weights.trend || 0) +
+            wCycle +
+            (weights.cooccurrence || 0) +
+            (weights.distribution || 0) +
+            wGeometry +
+            (weights.parity || 0) +
+            (weights.sum || 0) +
+            (weights.repetition || 0) +
+            (weights.sequences || 0)
+        ) || 1;
+
         const rawScore = (
-            freqScore * weights.frequency +
-            recencyScore * weights.recency +
-            trendScore * weights.trend +
-            cooccurrenceScore * weights.cooccurrence +
-            distributionScore * weights.distribution +
-            parityScore * weights.parity +
-            sumScore * weights.sum +
-            repScore * weights.repetition +
-            sequenceScore * weights.sequences
+            freqScore * (weights.frequency || 0) +
+            recencyScore * (weights.recency || 0) +
+            trendScore * (weights.trend || 0) +
+            cycleScore * wCycle +
+            cooccurrenceScore * (weights.cooccurrence || 0) +
+            distributionScore * (weights.distribution || 0) +
+            geometryScore * wGeometry +
+            parityScore * (weights.parity || 0) +
+            sumScore * (weights.sum || 0) +
+            repScore * (weights.repetition || 0) +
+            sequenceScore * (weights.sequences || 0)
         ) / totalWeight;
 
         // Model score escala de 0 a 100
         const modelScore = Number((rawScore * 100).toFixed(1));
 
-        // Mapeamento de métricas históricas de backtesting reais (sem fallbacks fictícios ou hardcoded)
+        // Mapeamento de métricas históricas de backtesting reais
         const expectedHits = (backtestSummary && typeof backtestSummary.meanHits === 'number') 
             ? backtestSummary.meanHits 
             : null;
@@ -192,6 +243,8 @@ export class ScoringEngine {
         return {
             modelScore,
             rawScore,
+            gaussianQualityIndex: gaussianEval.gaussianQualityIndex,
+            passedGaussianFilter: gaussianEval.passed,
             historicalPerformance: backtestSummary?.relativeImprovement ?? null,
             expectedHits,
             confidenceInterval,
@@ -205,7 +258,12 @@ export class ScoringEngine {
                 odds: len - evens,
                 sum: gameSum,
                 primes: sortedNumbers.filter(n => PRIMES.includes(n)).length,
-                consecutivePairs
+                fibonacci: sortedNumbers.filter(n => FIBONACCI.includes(n)).length,
+                frame: geom.frameCount,
+                activeRows: geom.activeRows,
+                activeCols: geom.activeCols,
+                consecutivePairs,
+                missingCycleIncluded: missingIncludedCount
             }
         };
     }
@@ -227,9 +285,6 @@ export class ScoringEngine {
     /**
      * Calcula o score de Evidência Estatística (índice interno de 0 a 100).
      * Reutiliza a inferência estatística exata (p-value, IC 95% e Cohen's d).
-     * NOTA: Trata-se de um índice de força de evidência relativa contra a baseline aleatória,
-     * e NÃO de uma probabilidade de acerto ou garantia de prêmios futuros.
-     * Retorna null se não houver p-value ou se os dados forem insuficientes.
      */
     static calculateStatisticalEvidence(backtestSummary) {
         if (!backtestSummary || typeof backtestSummary.pValue !== 'number' || !Number.isFinite(backtestSummary.pValue)) {
@@ -241,34 +296,29 @@ export class ScoringEngine {
         const ci = backtestSummary.confidenceInterval;
         const diffMean = Number.isFinite(backtestSummary.diffMean) ? backtestSummary.diffMean : 0;
 
-        // Se o modelo teve desempenho inferior à baseline
         if (diffMean < 0 || effectSize < 0) {
             const lowScore = Math.max(0, 20 + diffMean * 10);
             return Number(lowScore.toFixed(1));
         }
 
-        // Verifica se o IC 95% da diferença inclui zero
         const ciIncludesZero = ci && typeof ci.lower === 'number' && typeof ci.upper === 'number'
             ? (ci.lower <= 0 && ci.upper >= 0)
             : true;
 
         if (pValue < 0.05 && !ciIncludesZero) {
-            // Evidência estatística forte
             const strongScore = Math.min(100, 80 + Math.min(20, effectSize * 20));
             return Number(strongScore.toFixed(1));
         } else if (pValue < 0.10) {
-            // Evidência moderada / marginal
             return Number((50 + (1 - pValue) * 20).toFixed(1));
         } else {
-            // Sem significância estatística (p >= 0.10 ou IC inclui 0)
             const inconclusiveScore = Math.max(20, 50 - (pValue - 0.05) * 40);
             return Number(inconclusiveScore.toFixed(1));
         }
     }
 
     /**
-     * Otimiza pesos usando divisão de Treino (70%) vs Validação (30%) e penalização de Overfitting
-     * Suporta métricas ausentes (null) sem favorecê-las ou usar substitutos arbitrários (Req 11, 12).
+     * Otimiza pesos usando divisão de Treino (70%) vs Validação (30%) e penalização de Overfitting.
+     * Agora utiliza todos os fatores dos pesos reais em `_quickEvaluateWeights`.
      */
     static optimizeWeights(fullHistory, config, options = {}) {
         const seed = options.seed ?? 123456;
@@ -302,7 +352,7 @@ export class ScoringEngine {
         const valHistory = fullHistory.slice(trainCutoff);
 
         const factors = Object.keys(baseWeights);
-        const variations = [0.5, 0.8, 1.0, 1.2, 1.5];
+        const variations = [0.4, 0.75, 1.0, 1.35, 1.75];
 
         let bestWeights = { ...baseWeights };
         let bestObjectiveScore = -Infinity;
@@ -311,13 +361,12 @@ export class ScoringEngine {
         let bestOverfitGap = 0;
         let bestBreakdown = null;
 
-        const iterations = options.iterations || 20;
+        const iterations = options.iterations || 24;
 
         for (let i = 0; i < iterations; i++) {
             let testWeights = { ...baseWeights };
             if (i > 0) {
-                // Seleção aleatória determinística via PRNG
-                const numVary = prng.nextInt(1, 3);
+                const numVary = prng.nextInt(1, 4);
                 const shuffledFactors = prng.shuffle(factors);
                 for (let f = 0; f < numVary; f++) {
                     const factorKey = shuffledFactors[f];
@@ -328,13 +377,13 @@ export class ScoringEngine {
 
             testWeights = this.normalizeWeights(testWeights);
 
-            // Avalia no conjunto de treino
-            const trainHitsSum = this._quickEvaluateWeights(trainHistory, config, testWeights, prng);
-            const trainMean = trainHitsSum / Math.max(1, trainHistory.length - 10);
+            // Avalia no conjunto de treino usando todos os pesos multifatoriais
+            const trainEval = this._quickEvaluateWeights(trainHistory, config, testWeights);
+            const trainMean = trainEval.meanHits;
 
-            // Avalia no conjunto de validação
-            const valHitsSum = this._quickEvaluateWeights(valHistory, config, testWeights, prng);
-            const valMean = valHitsSum / Math.max(1, valHistory.length - 5);
+            // Avalia no conjunto de validação usando todos os pesos multifatoriais
+            const valEval = this._quickEvaluateWeights(valHistory, config, testWeights);
+            const valMean = valEval.meanHits;
 
             const overfitGap = Math.max(0, trainMean - valMean);
             const expectedMean = (config.pick * (config.drawn || config.pick)) / config.total;
@@ -346,7 +395,6 @@ export class ScoringEngine {
             const statEvidence = this.calculateStatisticalEvidence(options.backtestSummary);
             const overfitPenalty = overfitGap * 25;
 
-            // Renormalização dinâmica de pesos entre componentes válidos (não-null) (Req 11, 12 de 4.1)
             const components = [
                 { name: 'performance', weight: 0.30, val: perfScore },
                 { name: 'outOfSample', weight: 0.35, val: outOfSampleScore },
@@ -403,40 +451,82 @@ export class ScoringEngine {
     }
 
     /**
-     * Avaliação rápida interna de um conjunto de pesos para otimização
+     * Avaliação multifatorial real de um conjunto de pesos sobre uma fatia histórica (sem vazamento de dados).
+     * Cada dezena recebe um score composto ponderado por: frequência, recência, atraso, ciclo, repetição e paridade.
      */
-    static _quickEvaluateWeights(historySlice, config, weights, prng) {
-        if (!historySlice || historySlice.length < 5) return 0;
+    static _quickEvaluateWeights(historySlice, config, weights) {
+        if (!historySlice || historySlice.length < 4) return { hitsTotal: 0, evaluated: 0, meanHits: 0 };
         let hitsTotal = 0;
-        const evalCount = Math.min(15, historySlice.length - 1);
+        const evalCount = Math.min(15, historySlice.length - 3);
         const total = config.total;
         const pick = config.pick;
+
+        const wFreq = weights.frequency ?? 0.20;
+        const wRec = weights.recency ?? 0.15;
+        const wTrend = weights.trend ?? 0.10;
+        const wCycle = weights.cycle ?? 0.10;
+        const wRep = weights.repetition ?? 0.05;
+        const wCooc = weights.cooccurrence ?? 0.15;
 
         for (let i = 0; i < evalCount; i++) {
             const draw = historySlice[i];
             const actual = new Set((draw.dezenas || []).map(Number));
             const past = historySlice.slice(i + 1);
+            const lastDrawSet = new Set((past[0]?.dezenas || []).map(Number));
 
-            // Frequência rápida no passado
             const freq = {};
-            past.forEach(pd => {
+            const recency = {};
+            const firstSeen = {};
+            const cycleSeen = new Set();
+
+            past.forEach((pd, idx) => {
+                const decay = Math.exp(-0.08 * idx);
                 (pd.dezenas || []).forEach(d => {
                     const n = Number(d);
                     freq[n] = (freq[n] || 0) + 1;
+                    recency[n] = (recency[n] || 0) + decay;
+                    if (firstSeen[n] === undefined) firstSeen[n] = idx;
+                    if (idx < Math.ceil(total / (config.drawn || pick)) * 2) {
+                        cycleSeen.add(n);
+                    }
                 });
             });
 
-            // Seleção determinística ponderada por freqs * pesos.frequency
-            const cand = [];
-            const nums = Array.from({ length: total }, (_, idx) => idx + 1);
-            nums.sort((a, b) => (freq[b] || 0) - (freq[a] || 0));
-            cand.push(...nums.slice(0, pick));
+            const maxF = Math.max(1, ...Object.values(freq));
+            const maxR = Math.max(1e-5, ...Object.values(recency));
+            const avgInterval = total / (config.drawn || pick);
+
+            const scoredNums = [];
+            for (let n = 1; n <= total; n++) {
+                const fScore = (freq[n] || 0) / maxF;
+                const rScore = (recency[n] || 0) / maxR;
+                const delay = firstSeen[n] !== undefined ? firstSeen[n] : past.length;
+                const tScore = Math.exp(-0.5 * Math.pow((delay / avgInterval) - 1, 2));
+                const cScore = cycleSeen.has(n) ? 0.3 : 1.0;
+                const repScore = lastDrawSet.has(n) ? 0.8 : 0.4;
+
+                const score = (
+                    fScore * wFreq +
+                    rScore * wRec +
+                    tScore * wTrend +
+                    cScore * wCycle +
+                    repScore * wRep +
+                    ((fScore + rScore) * 0.5) * wCooc
+                );
+                scoredNums.push({ n, score });
+            }
+
+            scoredNums.sort((a, b) => b.score - a.score || a.n - b.n);
+            const cand = scoredNums.slice(0, pick).map(x => x.n);
 
             const hits = cand.filter(n => actual.has(n)).length;
             hitsTotal += hits;
         }
 
-        return hitsTotal;
+        return {
+            hitsTotal,
+            evaluated: evalCount,
+            meanHits: evalCount > 0 ? hitsTotal / evalCount : 0
+        };
     }
 }
-

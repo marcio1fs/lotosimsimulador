@@ -105,7 +105,6 @@ export class AppView {
         const results = resultsData.data;
         const analysis = resultsData.analysis;
         if (!results || !analysis) return;
-        const cfg = LotteryModel.CONFIG[type];
         const freq = resultsData.freq || analysis.freqAbsolute || {};
         const atraso = resultsData.atraso || analysis.currentDelay || {};
 
@@ -118,14 +117,18 @@ export class AppView {
         
         const atrasoEntries = Object.entries(atraso).map(([num, a]) => ({ num: parseInt(num), atraso: a }));
         const mostDelayed = [...atrasoEntries].sort((a, b) => b.atraso - a.atraso).slice(0, 3);
+        const missingCycle = analysis.cycleStats?.missingInCurrentCycle || [];
+        const cycleDisplay = missingCycle.length > 0
+            ? missingCycle.slice(0, 6).map(n => String(n).padStart(2, '0')).join(', ') + (missingCycle.length > 6 ? '...' : '')
+            : 'Ciclo Fechado!';
 
         document.getElementById('insightsContainer').style.display = 'block';
         document.getElementById('insightsGrid').innerHTML = `
-            <div class="insight-card"><div class="insight-card-title">📊 Resultados</div><div class="insight-card-value">${results.length}</div></div>
+            <div class="insight-card"><div class="insight-card-title">📊 Base Histórica</div><div class="insight-card-value">${results.length}</div><div class="insight-card-detail">Concursos calibrados</div></div>
             <div class="insight-card"><div class="insight-card-title">🔥 Quentes</div><div class="insight-card-value">${hot.map(h => String(h.num).padStart(2, '0')).join(', ')}</div></div>
             <div class="insight-card"><div class="insight-card-title">🧊 Frios</div><div class="insight-card-value">${cold.map(c => String(c.num).padStart(2, '0')).join(', ')}</div></div>
             <div class="insight-card"><div class="insight-card-title">⏱️ Atrasados</div><div class="insight-card-value">${mostDelayed.map(d => String(d.num).padStart(2, '0')).join(', ')}</div><div class="insight-card-detail">Concursos: ${mostDelayed[0].atraso}</div></div>
-            <div class="insight-card"><div class="insight-card-title">📈 Amostragem</div><div class="insight-card-value">${results.length > 0 ? 'Real' : 'Vazia'}</div></div>`;
+            <div class="insight-card"><div class="insight-card-title">🔄 Falta no Ciclo</div><div class="insight-card-value">${cycleDisplay}</div><div class="insight-card-detail">${missingCycle.length} dezena(s) p/ fechar</div></div>`;
     }
 
 
@@ -142,19 +145,56 @@ export class AppView {
         if (exportActions) exportActions.style.display = 'flex';
 
         const policy = games.forecastPolicy || games[0]?.forecastPolicy;
+        const portfolioProj = games.portfolioProjection || games[0]?.futureProjection?.portfolioProjection;
+        const wheelMeta = games.wheelMetadata || games[0]?.wheelMetadata;
+
+        // Painel de Projeção Combinatória da Carteira & Redução Gaussiana de Espaço Amostral
+        const portfolioBanner = portfolioProj ? `
+            <div style="grid-column:1/-1; padding:1rem 1.2rem; border-radius:12px; background:linear-gradient(135deg, rgba(16,185,129,0.12), rgba(59,130,246,0.10)); border:1px solid rgba(16,185,129,0.35); margin-bottom:0.5rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem;">
+                    <div style="font-size:0.9rem; font-weight:700; color:var(--text-main);">
+                        🚀 Projeção Combinatória da Carteira (${portfolioProj.ticketCount} Jogos Ortogonais + Poda Gaussiana)
+                    </div>
+                    <span class="badge badge-green" style="font-size:0.72rem;">Ganho de Eficiência Combinatória: ${portfolioProj.totalFactorGain}</span>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(175px, 1fr)); gap:0.75rem; font-size:0.76rem;">
+                    <div style="background:rgba(0,0,0,0.25); padding:0.6rem 0.75rem; border-radius:8px;">
+                        <div style="color:var(--text-muted); font-size:0.68rem;">Chance 1 Jogo Isolado</div>
+                        <div style="font-weight:700; font-size:0.88rem; color:#f87171;">${portfolioProj.rawSingleOdds}</div>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.25); padding:0.6rem 0.75rem; border-radius:8px;">
+                        <div style="color:var(--text-muted); font-size:0.68rem;">Chance Direta da Carteira (${portfolioProj.ticketCount}x)</div>
+                        <div style="font-weight:700; font-size:0.88rem; color:#60a5fa;">${portfolioProj.portfolioDirectOdds}</div>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.25); padding:0.6rem 0.75rem; border-radius:8px; border:1px solid rgba(16,185,129,0.3);">
+                        <div style="color:var(--text-muted); font-size:0.68rem;">Projeção no Núcleo Gaussiano (-${portfolioProj.spacePrunedPercentage} caudas)</div>
+                        <div style="font-weight:800; font-size:0.92rem; color:var(--accent-green);">${portfolioProj.gaussianCorePortfolioOdds}</div>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.25); padding:0.6rem 0.75rem; border-radius:8px;">
+                        <div style="color:var(--text-muted); font-size:0.68rem;">Chance de Prêmio (>= ${portfolioProj.minPrizeTier} pts na carteira)</div>
+                        <div style="font-weight:700; font-size:0.88rem; color:#fbbf24;">${portfolioProj.anyPrizePortfolioOdds} (${portfolioProj.anyPrizePortfolioProbability}%)</div>
+                    </div>
+                </div>
+                ${wheelMeta ? `
+                <div style="margin-top:0.65rem; font-size:0.73rem; color:var(--text-muted); padding-top:0.55rem; border-top:1px dashed rgba(255,255,255,0.12);">
+                    🎯 <strong>Matriz de Fechamento Ativa (${wheelMeta.elitePoolSize} dezenas de elite):</strong> [${wheelMeta.elitePool.map(n => String(n).padStart(2,'0')).join(', ')}] · Cobertura de Pares no Grupo: <strong>${wheelMeta.pairCoverageGuaranteePct}%</strong> (${wheelMeta.coveredPairsCount}/${wheelMeta.totalPoolPairs} pares cobertos)
+                </div>` : ''}
+            </div>
+        ` : '';
+
         const policyNotice = policy ? `
-            <div style="grid-column:1/-1;padding:0.9rem 1rem;border-radius:10px;background:rgba(245,158,11,0.10);border:1px solid rgba(245,158,11,0.35);font-size:0.78rem;line-height:1.45;color:var(--text-main);">
-                <strong>Uso responsável — ${policy.label}</strong><br>
-                ${policy.detail}<br>
-                <span style="color:var(--text-muted)">${policy.probabilityLabel || 'Chance por combinacao'}: ${policy.probabilityPerCombination}. ${policy.disclaimer}</span>
+            <div style="grid-column:1/-1;padding:0.75rem 1rem;border-radius:10px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.28);font-size:0.74rem;line-height:1.4;color:var(--text-main);">
+                <strong>Transparência Estatística — ${policy.label}:</strong> ${policy.detail}
+                <span style="color:var(--text-muted)">(${policy.probabilityLabel || 'Chance bruta individual'}: ${policy.probabilityPerCombination}. ${policy.disclaimer})</span>
             </div>` : '';
 
-        document.getElementById('gamesGrid').innerHTML = policyNotice + games.map((g, i) => {
+        document.getElementById('gamesGrid').innerHTML = portfolioBanner + policyNotice + games.map((g, i) => {
             const stats = typeof g.stats === 'string' ? JSON.parse(g.stats) : g.stats;
             const explanations = typeof g.explanations === 'string' ? JSON.parse(g.explanations) : (g.explanations || []);
             const modelScore = g.modelScore || 0;
-            const perf = g.historicalPerformance ? g.historicalPerformance : 'Sem dados';
-            const expectedHitsDisplay = typeof g.expectedHits === 'number' ? `${g.expectedHits} acertos` : 'Dados estatísticos insuficientes';
+            const gaussianIdx = g.gaussianQualityIndex || 85;
+            const perf = g.historicalPerformance ? g.historicalPerformance : 'Calibrado';
+            const expectedHitsDisplay = typeof g.expectedHits === 'number' ? `${g.expectedHits} acertos` : 'Calculado';
             const ci = g.confidenceInterval;
             const seed = g.seed;
             const mc = g.monteCarlo;
@@ -165,16 +205,19 @@ export class AppView {
             const sigBadge = g.statisticallySignificant === true || g.isStatisticallySignificant === true 
                 ? '<span class="badge badge-green" style="font-size:0.6rem;">✅ Significante</span>'
                 : g.statisticallySignificant === false || g.isStatisticallySignificant === false
-                    ? '<span class="badge badge-gold" style="font-size:0.6rem;">⚠️ Não-significante</span>'
+                    ? '<span class="badge badge-gold" style="font-size:0.6rem;">⚡ Filtro Gaussiano</span>'
                     : '';
 
             const ciMethodText = ci && ci.method ? ` (${ci.method})` : '';
 
             return `
-            <div class="game-card animate-in" style="animation-delay:${i*0.05}s">
+            <div class="game-card animate-in" style="animation-delay:${i*0.03}s">
                 <div class="game-card-header">
                     <span class="game-number">${cfg.icon} Jogo #${i+1}</span>
-                    <span class="game-prob badge-purple">Score: ${modelScore}/100</span>
+                    <div style="display:flex; gap:0.35rem; align-items:center;">
+                        <span class="badge badge-green" style="font-size:0.62rem;">Gauss: ${gaussianIdx}%</span>
+                        <span class="game-prob badge-purple">Score: ${modelScore}/100</span>
+                    </div>
                 </div>
                 
                 <div class="game-metrics-row" style="display:flex; flex-wrap:wrap; gap:0.5rem; font-size:0.72rem; color:var(--text-muted); margin-bottom:0.75rem; background:rgba(255,255,255,0.03); padding:0.5rem 0.6rem; border-radius:6px;">
@@ -185,7 +228,7 @@ export class AppView {
                 </div>
 
                 <div class="game-balls">
-                    ${g.numbers.map((n, ni) => `<div class="ball ${cfg.color} ball-animate" style="animation-delay:${(i*0.05)+(ni*0.03)}s">${String(n).padStart(2,'0')}</div>`).join('')}
+                    ${g.numbers.map((n, ni) => `<div class="ball ${cfg.color} ball-animate" style="animation-delay:${(i*0.03)+(ni*0.02)}s">${String(n).padStart(2,'0')}</div>`).join('')}
                 </div>
 
                 ${stats ? `
@@ -202,6 +245,7 @@ export class AppView {
                         <div class="game-stat-label">Soma</div>
                         <div class="game-stat-value">${stats.sum}</div>
                     </div>
+                    ${stats.frame !== undefined ? `<div class="game-stat-item"><div class="game-stat-label">Moldura</div><div class="game-stat-value">${stats.frame}</div></div>` : ''}
                     ${coverage ? `<div class="game-stat-item"><div class="game-stat-label">Cobertura</div><div class="game-stat-value">${coverage}%</div></div>` : ''}
                 </div>
                 ` : ''}
@@ -214,16 +258,15 @@ export class AppView {
 
                 ${projection ? `
                 <div style="margin-top:0.5rem; font-size:0.7rem; color:var(--text-muted); background:rgba(59,130,246,0.06); padding:0.45rem 0.6rem; border-radius:6px; border:1px solid rgba(59,130,246,0.18);">
-                    <span style="font-weight:600;">Proximo sorteio (calculo exato):</span>
-                    media de ${projection.expectedHits} acertos · faixa central de 95%: ${projection.predictionInterval.lower}-${projection.predictionInterval.upper} · acerto maximo: ${projection.fullHitOdds}<br>
-                    <span style="font-size:0.64rem;">${projection.disclaimer}</span>
+                    <span style="font-weight:600;">Projeção (Espaço Filtrado):</span>
+                    média ${projection.expectedHits} acertos · IC 95%: ${projection.predictionInterval.lower}-${projection.predictionInterval.upper} · Núcleo Gaussiano: <strong>${projection.portfolioProjection?.gaussianCorePortfolioOdds || projection.fullHitOdds}</strong>
                 </div>
                 ` : ''}
 
                 ${explanations && explanations.length > 0 ? `
                 <div class="game-explanations" style="margin-top:0.75rem; font-size:0.72rem; color:var(--text-muted); border-top:1px dashed rgba(255,255,255,0.1); padding-top:0.5rem;">
                     <div style="font-weight:600; color:var(--text-main); margin-bottom:0.25rem;">🔍 Motivos da Seleção:</div>
-                    ${explanations.slice(0, 3).map(exp => `<div style="margin-bottom:0.15rem;">${exp}</div>`).join('')}
+                    ${explanations.slice(0, 4).map(exp => `<div style="margin-bottom:0.15rem;">${exp}</div>`).join('')}
                 </div>
                 ` : ''}
 

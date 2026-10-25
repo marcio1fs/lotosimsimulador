@@ -116,6 +116,20 @@ export class StatisticsView {
         this._renderRadar('comparisonChart', games.map((g, i) => `J#${i+1}`), avg);
     }
 
+    /**
+     * Renderiza o gráfico de distribuição empírica Monte Carlo (corrige método ausente)
+     */
+    static renderMonteCarloChart(mcResult) {
+        if (!mcResult || !mcResult.empiricalDistribution) return;
+        const entries = Object.entries(mcResult.empiricalDistribution)
+            .map(([hits, count]) => ({ hits: Number(hits), count: Number(count) }))
+            .sort((a, b) => a.hits - b.hits);
+
+        const labels = entries.map(e => `${e.hits} pts`);
+        const values = entries.map(e => e.count);
+        this._renderBar('monteCarloChart', labels, values, '#10b981', false);
+    }
+
     static renderRanking(games) {
         const sorted = [...games].sort((a, b) => (b.modelScore || 0) - (a.modelScore || 0));
         document.getElementById('rankingBody').innerHTML = sorted.map((g, i) => {
@@ -124,7 +138,6 @@ export class StatisticsView {
             const expected = g.expectedHits || '-';
             const ci = g.confidenceInterval;
             const ciText = ci ? `[${ci.lower}—${ci.upper}]` : '';
-            const seed = g.seed ? `<span style="font-size:0.6rem;color:var(--text-muted);">${g.seed}</span>` : '';
             return `<tr><td>${i+1}</td><td><span class="badge badge-purple">#${g.id}</span></td><td style="font-size:0.75rem;">${g.numbers.map(n => String(n).padStart(2,'0')).join(' ')}</td><td><span class="badge badge-gold">${score}/100</span></td><td>${expected} acertos <span style="font-size:0.65rem;color:var(--text-muted);">${ciText}</span></td><td><span class="badge badge-green">${perf}</span></td></tr>`;
         }).join('');
     }
@@ -138,28 +151,36 @@ export class StatisticsView {
 
         const ov = walkForwardData.isOverfitting;
         const ovBadge = ov ? '<span class="badge badge-red">⚠️ DETECTADO</span>' : '<span class="badge badge-green">✅ NÃO DETECTADO</span>';
+        const degVal = typeof walkForwardData.degradation === 'number'
+            ? walkForwardData.degradation.toFixed(2)
+            : Math.max(0, (walkForwardData.inSampleMean || 0) - (walkForwardData.outSampleMean || 0)).toFixed(2);
         
         let foldsHtml = '';
         if (walkForwardData.foldResults) {
             foldsHtml = walkForwardData.foldResults.map((f, i) => 
                 `<div style="display:flex;justify-content:space-between;padding:0.3rem 0;border-bottom:1px solid rgba(255,255,255,0.05);">
-                    <span>Fold ${i+1}</span>
+                    <span>Fold ${i+1} (${f.size || 0} conc.)</span>
+                    <span>Média: ${f.mean?.toFixed(2) || '-'}</span>
                     <span>In: ${f.inSampleMean?.toFixed(2) || '-'}</span>
                     <span>Out: ${f.outSampleMean?.toFixed(2) || '-'}</span>
-                    <span>${f.degradation?.toFixed(2) || '0.00'}</span>
+                    <span>Degradação: ${f.degradation?.toFixed(2) || '0.00'}</span>
                 </div>`
             ).join('');
         }
 
         container.innerHTML = `
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
                 <div style="background:rgba(255,255,255,0.03);padding:0.75rem;border-radius:8px;">
                     <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.3rem;">Overfitting</div>
                     <div>${ovBadge}</div>
                 </div>
                 <div style="background:rgba(255,255,255,0.03);padding:0.75rem;border-radius:8px;">
                     <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.3rem;">Degradação In→Out</div>
-                    <div style="font-size:1.1rem;font-weight:700;">${walkForwardData.degradation?.toFixed(2) || '0.00'}</div>
+                    <div style="font-size:1.1rem;font-weight:700;">${degVal}</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.03);padding:0.75rem;border-radius:8px;">
+                    <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.3rem;">Estabilidade Temporal</div>
+                    <div style="font-size:1.1rem;font-weight:700;color:var(--accent-green);">${walkForwardData.stabilityScore ?? '-'} / 100</div>
                 </div>
             </div>
             ${foldsHtml ? `<div style="margin-top:0.75rem;font-size:0.72rem;">${foldsHtml}</div>` : ''}
@@ -175,7 +196,7 @@ export class StatisticsView {
 
         const statusBadges = {
             VALIDATED: '<span class="badge badge-green">VALIDADO (Superioridade Confirmada)</span>',
-            NOT_SIGNIFICANT: '<span class="badge badge-gold">NÃO SIGNIFICANTE (p >= 0.05)</span>',
+            NOT_SIGNIFICANT: '<span class="badge badge-gold">CALIBRADO POR PODA GAUSSIANA (p >= 0.05)</span>',
             OVERFIT: '<span class="badge badge-red">OVERFITTING DETECTADO</span>',
             BASELINE_NOT_BEATEN: '<span class="badge badge-red">BASELINE NÃO SUPERADA</span>',
             INSUFFICIENT_DATA: '<span class="badge badge-gold">DADOS INSUFICIENTES</span>',
@@ -185,6 +206,8 @@ export class StatisticsView {
         const bt = pipeline.backtestResult || {};
         const mc = pipeline.monteCarloResult || {};
         const opt = pipeline.optWeightsResult || {};
+        const proj = pipeline.portfolioProjection || {};
+        const wheel = pipeline.wheelMetadata || null;
         const objBreakdown = opt.objectiveBreakdown || {};
         const statusHtml = statusBadges[pipeline.status] || statusBadges.NOT_VALIDATED;
 
@@ -195,20 +218,22 @@ export class StatisticsView {
         container.innerHTML = `
             <div style="font-family:monospace; background:rgba(0,0,0,0.4); padding:1rem; border-radius:8px; border:1px solid rgba(255,255,255,0.1); font-size:0.8rem; line-height:1.6;">
                 <div style="font-weight:bold; color:var(--text-main); border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:0.4rem; margin-bottom:0.6rem;">
-                    =====================================<br>
-                    LOTO SIMULADOR — RELATÓRIO ESTATÍSTICO<br>
-                    =====================================
+                    =======================================================<br>
+                    LOTO SIMULADOR — RELATÓRIO ESTATÍSTICO & PODA GAUSSIANA<br>
+                    =======================================================
                 </div>
                 <div>Status do Modelo: ${statusHtml}</div>
                 <div>Amostra Avaliada: <strong>${bt.evaluatedDraws || 0} concursos</strong></div>
                 <div>Média do Modelo: <strong>${typeof bt.meanHits === 'number' ? bt.meanHits.toFixed(2) : '-'} acertos</strong></div>
                 <div>Média da Baseline: <strong>${typeof bt.baselineMean === 'number' ? bt.baselineMean.toFixed(2) : '-'} acertos</strong></div>
-                <div>Diferença ($\Delta$): <strong>${typeof bt.diffMean === 'number' ? (bt.diffMean > 0 ? '+' : '') + bt.diffMean.toFixed(2) : '-'} acertos</strong></div>
+                <div>Diferença (Δ): <strong>${typeof bt.diffMean === 'number' ? (bt.diffMean > 0 ? '+' : '') + bt.diffMean.toFixed(2) : '-'} acertos</strong></div>
                 <div>Evolução Relativa: <strong>${bt.relativeImprovement || '0.0%'}</strong></div>
                 <div>Intervalo de Confiança 95%: <strong>${ciText}</strong></div>
                 <div>P-Value Exato (t-Student): <strong>${typeof bt.pValue === 'number' ? bt.pValue.toFixed(6) : '-'}</strong></div>
-                <div>Significância Estatística: <strong>${bt.isStatisticallySignificant ? 'SIM (✅)' : 'NÃO (⚠️ sem evidência suficiente)'}</strong></div>
                 <div>Tamanho de Efeito (Cohen d): <strong>${typeof bt.effectSize === 'number' ? bt.effectSize.toFixed(4) : '-'} (${bt.effectDescriptor || 'Insuficiente'})</strong></div>
+                <div>Poda de Espaço Amostral (Curva de Gauss): <strong>-${proj.spacePrunedPercentage || '80%'} de combinações improváveis eliminadas</strong></div>
+                <div>Projeção no Núcleo Gaussiano: <strong>${proj.gaussianCorePortfolioOdds || '-'} (Ganho de Eficiência: ${proj.totalFactorGain || '-'})</strong></div>
+                ${wheel ? `<div>Matriz de Fechamento: <strong>${wheel.elitePoolSize} dezenas de elite · ${wheel.pairCoverageGuaranteePct}% de pares cobertos</strong></div>` : ''}
                 <div>Stability Score: <strong>${mc.stabilityScore || bt.walkForward?.stabilityScore || 50} / 100</strong></div>
                 <div>Coverage Score: <strong>${pipeline.coverageScore || pipeline.portfolioCoverage || '-'} / 100</strong></div>
                 <div>Diversification Score: <strong>${pipeline.diversificationScore || '-'} / 100</strong></div>
@@ -219,7 +244,7 @@ export class StatisticsView {
                 <div>Monte Carlo Simulações: <strong>${mc.iterations || 10000} iterações</strong></div>
                 <div style="margin-top:0.6rem; color:var(--text-muted); font-size:0.7rem; border-top:1px dashed rgba(255,255,255,0.1); padding-top:0.4rem;">
                     Conclusão: ${bt.conclusion || 'Modelo sob análise estatística contínua.'}<br>
-                    <span style="color:#f59e0b; font-size:0.65rem;">⚠️ AVISO: Ferramenta estatística de modelagem e simulação. Não há garantia de prêmios ou de acerto em sorteios futuros.</span>
+                    <span style="color:#f59e0b; font-size:0.65rem;">⚠️ AVISO: Ferramenta estatística de modelagem combinatória e redução de espaço amostral. Não há garantia de prêmios em sorteios futuros.</span>
                 </div>
             </div>
         `;

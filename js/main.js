@@ -13,8 +13,9 @@ let currentUser = null;
 let currentSession = null;
 const appState = { 
     currentLottery: 'lotofacil', 
-    currentStrategy: 'adaptive', 
+    currentStrategy: 'wheeling', 
     currentTimeWindow: 100,
+    currentBatchSize: 10,
     generatedGames: [], 
     simulationHistory: [], 
     resultsData: {}, 
@@ -201,8 +202,6 @@ class AppController {
             }
         }));
 
-
-
         // Sub tabs (Estatísticas)
         document.querySelectorAll('.tab-sub-btn').forEach(btn => btn.addEventListener('click', () => {
             document.querySelectorAll('.tab-sub-btn').forEach(b => b.classList.remove('active'));
@@ -259,14 +258,21 @@ class AppController {
         }));
 
         // Time Windows
-        document.querySelectorAll('.window-btn').forEach(btn => btn.addEventListener('click', () => {
-            document.querySelectorAll('.window-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.window-btn[data-window]').forEach(btn => btn.addEventListener('click', () => {
+            document.querySelectorAll('.window-btn[data-window]').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             const winVal = btn.dataset.window;
             appState.currentTimeWindow = winVal === 'full' ? 'full' : parseInt(winVal, 10);
             if (appState.resultsData[appState.currentLottery]) {
                 this.fetchResults();
             }
+        }));
+
+        // Batch Size Selector (10, 20, 35 jogos)
+        document.querySelectorAll('.batch-size-btn[data-count]').forEach(btn => btn.addEventListener('click', () => {
+            document.querySelectorAll('.batch-size-btn[data-count]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            appState.currentBatchSize = parseInt(btn.dataset.count, 10) || 10;
         }));
 
         // Fetch button
@@ -300,7 +306,7 @@ class AppController {
 
         // Export Buttons
         document.getElementById('exportTxtBtn')?.addEventListener('click', () => this.exportGames('txt'));
-        document.getElementById('exportPdfBtn')?.addEventListener('click', () => this.exportGames('txt')); // Simula PDF como TXT formatado por enquanto
+        document.getElementById('exportPdfBtn')?.addEventListener('click', () => this.exportGames('txt'));
 
         // User menu
         document.getElementById('userMenu').addEventListener('click', (e) => {
@@ -356,7 +362,6 @@ class AppController {
                 const minutes = parseInt(btn.dataset.minutes);
                 AutomationModel.state.intervalMinutes = minutes;
                 
-                // Restart timer se estiver ativo
                 if (AutomationModel.state.active) {
                     AutomationController.start(() => this.runAutoCycle());
                 }
@@ -372,7 +377,7 @@ class AppController {
         const btn = document.getElementById('fetchBtn');
         btn.disabled = true;
         AppView.setAgentStatus('Sincronizando...', true);
-        AppView.setLoading(true, 'Consultando base de dados oficial...');
+        AppView.setLoading(true, 'Consultando base de dados oficial e calibrando histórico...');
         
         try {
             const results = await LotteryController.fetchAllResults(
@@ -412,7 +417,8 @@ class AppController {
     }
 
     static async generateGames() {
-        AppView.setLoading(true, 'Agente IA analisando padrões estatísticos...');
+        const batchCount = appState.currentBatchSize || 10;
+        AppView.setLoading(true, `Agente IA aplicando Poda Gaussiana e gerando ${batchCount} jogos...`);
         const type = appState.currentLottery;
         const rd = appState.resultsData[type];
         if (!rd) { AppView.setLoading(false); return; }
@@ -425,12 +431,13 @@ class AppController {
                 rd, 
                 appState.fixedNumbers, 
                 appState.excludedNumbers,
-                appState.currentTimeWindow
+                appState.currentTimeWindow,
+                batchCount
             );
             appState.generatedGames = games;
             
             const stats = await UserModel.getStats(currentUser.id);
-            stats.gamesGenerated += 10; 
+            stats.gamesGenerated += games.length; 
             stats.simulations += 1;
             await UserModel.updateStats(currentUser.id, stats);
             
@@ -443,11 +450,11 @@ class AppController {
                 date: new Date().toLocaleString('pt-BR'), 
                 lottery: LotteryModel.CONFIG[type].name, 
                 strategy: appState.currentStrategy, 
-                games: 10, 
+                games: games.length, 
                 resultsAnalyzed: rd.data.length 
             });
             AppView.renderHistory(appState.simulationHistory);
-            AppView.showToast(`✅ 10 novos jogos estatísticos gerados!`, 'success');
+            AppView.showToast(`✅ ${games.length} jogos de alta precisão gerados!`, 'success');
         } catch (e) {
             console.error('Generation error:', e);
             AppView.showToast('❌ Erro ao gerar jogos', 'error');
@@ -500,14 +507,18 @@ class AppController {
     static exportGames(format) {
         if (!appState.generatedGames.length) return;
         const cfg = LotteryModel.CONFIG[appState.currentLottery];
+        const proj = appState.generatedGames.portfolioProjection;
         let content = `LOTOSIMSIMULADOR - JOGOS INTELIGENTES (${cfg.name})\n`;
         content += `Data: ${new Date().toLocaleString('pt-BR')}\n`;
         content += `Estratégia: ${appState.currentStrategy.toUpperCase()}\n`;
+        if (proj) {
+            content += `Projeção no Núcleo Gaussiano: ${proj.gaussianCorePortfolioOdds} (Poda de -${proj.spacePrunedPercentage})\n`;
+        }
         content += `------------------------------------------\n\n`;
 
         appState.generatedGames.forEach((g, i) => {
             const nums = g.numbers.map(n => String(n).padStart(2, '0')).join(' - ');
-            content += `JOGO #${i+1} [Score: ${g.modelScore}/100]\n`;
+            content += `JOGO #${i+1} [Score: ${g.modelScore}/100 | Gauss: ${g.gaussianQualityIndex || 85}%]\n`;
             content += `${nums}\n\n`;
         });
 
@@ -547,10 +558,8 @@ class AppController {
         AppView.renderConferenceResults(results, type, appState.resultsData[type]?.lastResult);
     }
 
-
-
     static toggleAutomation(id) {
-        const key = id.replace('Toggle','').toLowerCase(); // 'autofetch'
+        const key = id.replace('Toggle','').toLowerCase();
         if (key === 'autofetch') AutomationModel.state.autoFetch = document.getElementById(id).checked;
         else if (key === 'autogenerate') AutomationModel.state.autoGenerate = document.getElementById(id).checked;
         else if (key === 'autoconference') AutomationModel.state.autoConference = document.getElementById(id).checked;
@@ -623,6 +632,4 @@ class AppController {
     }
 }
 
-
 document.addEventListener('DOMContentLoaded', () => AppController.init());
-

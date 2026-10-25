@@ -206,29 +206,40 @@
                     <div class="data-status-item"><span id="lastFetchTime">-</span></div>
                 </div>
 
-                <div class="section-title" style="font-size:0.85rem; margin-top:1.5rem;"><span>🗓️</span> Janela Temporal de Análise</div>
-                <div class="time-window-selector">
-                    <button class="window-btn" data-window="20">20 concursos</button>
-                    <button class="window-btn" data-window="50">50 concursos</button>
-                    <button class="window-btn active" data-window="100">100 concursos</button>
-                    <button class="window-btn" data-window="200">200 concursos</button>
-                    <button class="window-btn" data-window="500">500 concursos</button>
-                    <button class="window-btn" data-window="full">Completo</button>
+                <div class="section-title" style="font-size:0.85rem; margin-top:1.5rem;"><span>🗓️</span> Janela Temporal e Tamanho da Carteira</div>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+                    <div class="time-window-selector">
+                        <button class="window-btn" data-window="20">20 concursos</button>
+                        <button class="window-btn" data-window="50">50 concursos</button>
+                        <button class="window-btn active" data-window="100">100 concursos</button>
+                        <button class="window-btn" data-window="200">200 concursos</button>
+                        <button class="window-btn" data-window="500">500 concursos</button>
+                        <button class="window-btn" data-window="full">Completo</button>
+                    </div>
+                    <div class="time-window-selector" id="batchSizeSelector" title="Quantidade de jogos na carteira/fechamento">
+                        <button class="window-btn batch-size-btn active" data-count="10">10 Jogos</button>
+                        <button class="window-btn batch-size-btn" data-count="20">20 Jogos (Fechamento)</button>
+                        <button class="window-btn batch-size-btn" data-count="35">35 Jogos (Alta Cobertura)</button>
+                    </div>
                 </div>
 
-                <div class="section-title" style="font-size:0.85rem; margin-top:1.5rem;"><span>🧠</span> Estratégia de Geração Estatística</div>
+                <div class="section-title" style="font-size:0.85rem; margin-top:1.5rem;"><span>🧠</span> Estratégia de Geração Estatística e Combinatória</div>
                 <div class="strategy-options">
-                    <div class="strategy-option selected" data-strategy="adaptive">
-                        <div class="strategy-option-name">🤖 Modelo Adaptativo</div>
-                        <div class="strategy-option-desc">Multifatorial calibrado</div>
+                    <div class="strategy-option selected" data-strategy="wheeling">
+                        <div class="strategy-option-name">🎯 FECHAMENTO COMBINATÓRIO</div>
+                        <div class="strategy-option-desc">Matriz Elite + Poda Gaussiana</div>
+                    </div>
+                    <div class="strategy-option" data-strategy="maximum_precision">
+                        <div class="strategy-option-name">🛡️ MÁXIMA PRECISÃO</div>
+                        <div class="strategy-option-desc">Anti-overfitting + Fechamento</div>
                     </div>
                     <div class="strategy-option" data-strategy="best_game">
                         <div class="strategy-option-name">🏆 MELHOR JOGO</div>
                         <div class="strategy-option-desc">Backtest auto-otimizado</div>
                     </div>
-                    <div class="strategy-option" data-strategy="maximum_precision">
-                        <div class="strategy-option-name">🛡️ MÁXIMA PRECISÃO</div>
-                        <div class="strategy-option-desc">Anti-overfitting estrito</div>
+                    <div class="strategy-option" data-strategy="adaptive">
+                        <div class="strategy-option-name">🤖 Modelo Adaptativo</div>
+                        <div class="strategy-option-desc">Multifatorial + Ciclo</div>
                     </div>
                     <div class="strategy-option" data-strategy="weighted">
                         <div class="strategy-option-name">⚖️ Ponderado</div>

@@ -1,23 +1,25 @@
-import { StatisticalAnalyzer, PRIMES } from '../engine/statisticalAnalyzer.js';
+import { StatisticalAnalyzer, PRIMES, FIBONACCI } from '../engine/statisticalAnalyzer.js';
 import { ScoringEngine, DEFAULT_WEIGHTS } from '../engine/scoringEngine.js';
 import { GameGenerator } from '../engine/gameGenerator.js';
 import { BacktestEngine } from '../engine/backtestEngine.js';
 import { MonteCarloEngine } from '../engine/monteCarloEngine.js';
 import { ForecastPolicy } from '../engine/forecastPolicy.js';
 import { ProbabilityEngine } from '../engine/probabilityEngine.js';
+import { GaussianFilterEngine } from '../engine/gaussianFilterEngine.js';
 
 /**
  * Model: Lottery - Configurações, Regras de Negócio e Pontuação Estatística
  */
 export class LotteryModel {
     static CONFIG = {
-        lotofacil: { name: 'Lotofácil', total: 25, pick: 15, drawn: 15, color: 'lotofacil', icon: '🟣', apiName: 'lotofacil', minPar: 6, maxPar: 9, minSum: 160, maxSum: 220 },
-        mega: { name: 'Mega Sena', total: 60, pick: 6, drawn: 6, color: 'mega', icon: '🟢', apiName: 'megasena', minPar: 2, maxPar: 4, minSum: 150, maxSum: 220 },
-        lotomania: { name: 'Lotomania', total: 100, pick: 50, drawn: 20, color: 'lotomania', icon: '🔴', apiName: 'lotomania', minPar: 22, maxPar: 28, minSum: 2400, maxSum: 2600 },
-        quina: { name: 'Quina', total: 80, pick: 5, drawn: 5, color: 'quina', icon: '🔵', apiName: 'quina', minPar: 2, maxPar: 3, minSum: 150, maxSum: 250 }
+        lotofacil: { name: 'Lotofácil', total: 25, pick: 15, drawn: 15, color: 'lotofacil', icon: '🟣', apiName: 'lotofacil', minPar: 6, maxPar: 9, minSum: 165, maxSum: 220 },
+        mega: { name: 'Mega Sena', total: 60, pick: 6, drawn: 6, color: 'mega', icon: '🟢', apiName: 'megasena', minPar: 2, maxPar: 4, minSum: 135, maxSum: 235 },
+        lotomania: { name: 'Lotomania', total: 100, pick: 50, drawn: 20, color: 'lotomania', icon: '🔴', apiName: 'lotomania', minPar: 22, maxPar: 28, minSum: 2380, maxSum: 2670 },
+        quina: { name: 'Quina', total: 80, pick: 5, drawn: 5, color: 'quina', icon: '🔵', apiName: 'quina', minPar: 2, maxPar: 3, minSum: 140, maxSum: 265 }
     };
 
     static PRIMES = PRIMES;
+    static FIBONACCI = FIBONACCI;
 
     /**
      * Executa a análise estatística sobre o histórico de resultados da loteria
@@ -42,21 +44,26 @@ export class LotteryModel {
     }
 
     /**
-     * Valida estatisticamente um jogo candidato
+     * Valida estatisticamente um jogo candidato via Filtro de Poda Gaussiana
      */
-    static validateGame(numbers, type) {
+    static validateGame(numbers, type, analysis = null) {
         const cfg = this.CONFIG[type];
-        const evens = numbers.filter(n => n % 2 === 0).length;
-        const odds = numbers.length - evens;
-        const sum = numbers.reduce((a, b) => a + b, 0);
-        const primes = numbers.filter(n => this.PRIMES.includes(n)).length;
-
-        const parOK = evens >= cfg.minPar && evens <= cfg.maxPar;
-        const sumOK = sum >= (cfg.minSum || 0) && sum <= (cfg.maxSum || 9999);
+        const evalRes = GaussianFilterEngine.evaluateCandidate(numbers, cfg, analysis);
 
         return {
-            valid: parOK && sumOK,
-            stats: { evens, odds, sum, primes }
+            valid: evalRes.passed,
+            gaussianQualityIndex: evalRes.gaussianQualityIndex,
+            checks: evalRes.checks,
+            stats: {
+                evens: evalRes.metrics.evens,
+                odds: evalRes.metrics.odds,
+                sum: evalRes.metrics.sum,
+                primes: evalRes.metrics.primes,
+                fibonacci: evalRes.metrics.fibonacci,
+                frame: evalRes.metrics.frame,
+                activeRows: evalRes.metrics.activeRows,
+                activeCols: evalRes.metrics.activeCols
+            }
         };
     }
 
@@ -81,14 +88,18 @@ export class LotteryModel {
         const analysis = StatisticalAnalyzer.analyze(windowData, cfg);
         analysis.lastDrawNumbers = fullHistory[0]?.dezenas?.map(Number) || [];
 
+        // Otimiza os pesos para a janela ativa se houver dados suficientes
+        const optWeights = ScoringEngine.optimizeWeights(windowData, cfg, { seed });
+        const activeWeights = optWeights.optimizedWeights || DEFAULT_WEIGHTS;
+
         // Executa um backtest cego com semente determinística
         const generatorFn = (past, c) => {
             const pastAnalysis = StatisticalAnalyzer.analyze(past, c);
-            return GameGenerator.generateSingleCandidate(c.apiName, pastAnalysis, strategy, [], [], c, null);
+            return GameGenerator.generateSingleCandidate(c.apiName, pastAnalysis, strategy, [], [], c, activeWeights);
         };
         const backtestSummary = BacktestEngine.runBacktest(windowData, cfg, generatorFn, { windowSize: 30, seed });
 
-        const games = GameGenerator.generateBatch(type, analysis, strategy, fixed, excluded, count, cfg, DEFAULT_WEIGHTS, backtestSummary, seed);
+        const games = GameGenerator.generateBatch(type, analysis, strategy, fixed, excluded, count, cfg, activeWeights, backtestSummary, seed);
 
         // Monte Carlo determinístico para o melhor jogo
         const topGame = games[0];
@@ -101,12 +112,22 @@ export class LotteryModel {
     }
 
     static attachForecastPolicy(games, fullHistory, strategy, config, backtest = null) {
+        const activeBacktest = backtest || games.modelPipeline?.backtestResult || null;
         const policy = ForecastPolicy.evaluate({
             historySize: fullHistory?.length || 0,
-            backtest: backtest || games.modelPipeline?.backtestResult || null,
+            backtest: activeBacktest,
             strategy,
             config
         });
+
+        const divScore = games[0]?.diversificationScore || games.modelPipeline?.diversificationScore || 75;
+        const portfolioProjection = ProbabilityEngine.calculatePortfolioProjection(
+            config,
+            games.length || 10,
+            games[0]?.numbers?.length || config.pick,
+            divScore
+        );
+
         games.forEach(game => {
             const theoretical = ProbabilityEngine.hypergeometric(config, game.numbers?.length || config.pick);
             game.forecastPolicy = policy;
@@ -116,12 +137,17 @@ export class LotteryModel {
                 predictionInterval: theoretical.predictionInterval,
                 fullHitOdds: theoretical.fullHitOdds,
                 cumulativeProbabilities: theoretical.cumulativeProbabilities,
-                historicalValidation: backtest || games.modelPipeline?.backtestResult || null,
+                portfolioProjection,
+                historicalValidation: activeBacktest,
                 disclaimer: 'Projecao estatistica do proximo sorteio, nao previsao de dezenas nem garantia de premio.'
             };
         });
         games.forecastPolicy = policy;
-        if (games.modelPipeline) games.modelPipeline.forecastPolicy = policy;
+        games.portfolioProjection = portfolioProjection;
+        if (games.modelPipeline) {
+            games.modelPipeline.forecastPolicy = policy;
+            games.modelPipeline.portfolioProjection = portfolioProjection;
+        }
         return games;
     }
 }

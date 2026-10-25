@@ -1,11 +1,156 @@
 /**
  * StatisticalAnalyzer - Motor Avançado de Análise Estatística para Loterias
- * Analisa séries temporais, distribuições empíricas, atrasos, repetições, co-ocorrência e padrões combinatórios.
+ * Analisa séries temporais, distribuições empíricas, atrasos, repetições, co-ocorrência,
+ * ciclo das dezenas, geometria matricial (linhas/colunas/moldura/miolo), Fibonacci e padrões combinatórios.
  */
 
 export const PRIMES = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97];
+export const FIBONACCI = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
 
 export class StatisticalAnalyzer {
+    /**
+     * Retorna dimensões da matriz do volante oficial para cada modalidade
+     */
+    static getGridDimensions(total) {
+        if (total === 25) return { rows: 5, cols: 5 };
+        if (total === 60) return { rows: 6, cols: 10 };
+        if (total === 80) return { rows: 8, cols: 10 };
+        if (total === 100) return { rows: 10, cols: 10 };
+        const cols = Math.ceil(Math.sqrt(total));
+        const rows = Math.ceil(total / cols);
+        return { rows, cols };
+    }
+
+    /**
+     * Verifica se uma dezena pertence à Moldura (borda externa) do volante
+     */
+    static isFrameNumber(num, total) {
+        const { rows, cols } = this.getGridDimensions(total);
+        const zeroIdx = num - 1;
+        const r = Math.floor(zeroIdx / cols);
+        const c = zeroIdx % cols;
+        return r === 0 || r === rows - 1 || c === 0 || c === cols - 1;
+    }
+
+    /**
+     * Calcula estatísticas geométricas de um conjunto de dezenas (linhas, colunas, moldura, fibonacci, primos)
+     */
+    static analyzeTicketGeometry(numbers, total) {
+        const { rows, cols } = this.getGridDimensions(total);
+        const rowCounts = new Array(rows).fill(0);
+        const colCounts = new Array(cols).fill(0);
+        let frameCount = 0;
+        let fibonacciCount = 0;
+        let primeCount = 0;
+
+        numbers.forEach(n => {
+            if (n >= 1 && n <= total) {
+                const zeroIdx = n - 1;
+                const r = Math.min(rows - 1, Math.floor(zeroIdx / cols));
+                const c = zeroIdx % cols;
+                rowCounts[r]++;
+                colCounts[c]++;
+                if (this.isFrameNumber(n, total)) frameCount++;
+                if (FIBONACCI.includes(n)) fibonacciCount++;
+                if (PRIMES.includes(n)) primeCount++;
+            }
+        });
+
+        const activeRows = rowCounts.filter(c => c > 0).length;
+        const activeCols = colCounts.filter(c => c > 0).length;
+        const maxInSingleRow = Math.max(0, ...rowCounts);
+        const maxInSingleCol = Math.max(0, ...colCounts);
+
+        return {
+            rows,
+            cols,
+            rowCounts,
+            colCounts,
+            activeRows,
+            activeCols,
+            maxInSingleRow,
+            maxInSingleCol,
+            frameCount,
+            coreCount: numbers.length - frameCount,
+            fibonacciCount,
+            primeCount
+        };
+    }
+
+    /**
+     * Analisa os Ciclos das Dezenas (quantos sorteios leva para todas as dezenas do universo saírem ao menos 1 vez)
+     * e identifica quais dezenas faltam sair para fechar o ciclo atual.
+     */
+    static analyzeCycles(history, total) {
+        if (!history || history.length === 0) {
+            return {
+                completedCycles: 0,
+                avgCycleLength: 0,
+                currentCycleLength: 0,
+                missingInCurrentCycle: [],
+                seenInCurrentCycle: [],
+                cycleUrgencyScore: {}
+            };
+        }
+
+        // Processa em ordem cronológica (do mais antigo para o mais recente)
+        const chronological = [...history].reverse();
+        const cycleLengths = [];
+        let seenSet = new Set();
+        let currentStartIdx = 0;
+
+        chronological.forEach((draw, idx) => {
+            const nums = Array.isArray(draw.dezenas) ? draw.dezenas.map(Number) : [];
+            nums.forEach(n => {
+                if (n >= 1 && n <= total) seenSet.add(n);
+            });
+
+            if (seenSet.size === total) {
+                cycleLengths.push(idx - currentStartIdx + 1);
+                seenSet = new Set();
+                currentStartIdx = idx + 1;
+            }
+        });
+
+        const currentCycleLength = chronological.length - currentStartIdx;
+        const missingInCurrentCycle = [];
+        const seenInCurrentCycle = [];
+
+        for (let n = 1; n <= total; n++) {
+            if (seenSet.has(n)) {
+                seenInCurrentCycle.push(n);
+            } else {
+                missingInCurrentCycle.push(n);
+            }
+        }
+
+        const avgCycleLength = cycleLengths.length > 0
+            ? Number((cycleLengths.reduce((a, b) => a + b, 0) / cycleLengths.length).toFixed(2))
+            : Math.ceil(total / 5);
+
+        // Calcula urgência de ciclo para cada dezena (dezenas ausentes no ciclo atual ganham impulso proporcional ao avanço do ciclo)
+        const cycleProgress = avgCycleLength > 0 ? Math.min(1.5, currentCycleLength / avgCycleLength) : 0.5;
+        const cycleUrgencyScore = {};
+        for (let n = 1; n <= total; n++) {
+            if (!seenSet.has(n)) {
+                // Quanto mais perto de fechar o ciclo (poucas dezenas faltando), maior a pressão estatística de fechamento
+                const scarcityFactor = 1 - (missingInCurrentCycle.length / total);
+                cycleUrgencyScore[n] = Number(Math.min(1, 0.55 + 0.45 * Math.max(cycleProgress / 1.5, scarcityFactor)).toFixed(4));
+            } else {
+                cycleUrgencyScore[n] = 0.25;
+            }
+        }
+
+        return {
+            completedCycles: cycleLengths.length,
+            avgCycleLength,
+            currentCycleLength,
+            missingInCurrentCycle,
+            seenInCurrentCycle,
+            cycleUrgencyScore
+        };
+    }
+
     /**
      * Filtra o histórico para a janela temporal desejada
      * @param {Array} history - Array de concursos (ordenados do mais recente para o mais antigo, ou vice-versa)
@@ -47,13 +192,18 @@ export class StatisticalAnalyzer {
             }
         }
 
-        // Histórico de somas, pares, ímpares, primos, repetições
+        // Histórico de somas, pares, ímpares, primos, fibonacci, moldura, repetições e assinaturas históricas
         const sumList = [];
         const evenList = [];
         const primeList = [];
+        const fibonacciList = [];
+        const frameList = [];
+        const activeRowsList = [];
+        const activeColsList = [];
         const repetitionList = []; // Repetição em relação ao concurso anterior (história normalizada)
         const rangeDistributions = [0, 0, 0, 0, 0]; // 5 faixas iguais
         const rangeSize = Math.ceil(total / 5);
+        const historicalDrawSignatures = new Set();
 
         // Processa do concurso mais recente (índice 0) ao mais antigo
         let prevNumbersSet = null;
@@ -62,6 +212,10 @@ export class StatisticalAnalyzer {
             const rawNumbers = Array.isArray(draw.dezenas) ? draw.dezenas.map(Number) : [];
             const numbers = [...new Set(rawNumbers)].sort((a, b) => a - b);
             const currentSet = new Set(numbers);
+
+            if (numbers.length > 0) {
+                historicalDrawSignatures.add(numbers.join(','));
+            }
 
             // Contagem de repetição em relação ao concurso anterior
             if (prevNumbersSet !== null) {
@@ -77,10 +231,15 @@ export class StatisticalAnalyzer {
             const evens = numbers.filter(n => n % 2 === 0).length;
             const primes = numbers.filter(n => PRIMES.includes(n)).length;
             const sum = numbers.reduce((a, b) => a + b, 0);
+            const geom = this.analyzeTicketGeometry(numbers, total);
 
             evenList.push(evens);
             primeList.push(primes);
             sumList.push(sum);
+            fibonacciList.push(geom.fibonacciCount);
+            frameList.push(geom.frameCount);
+            activeRowsList.push(geom.activeRows);
+            activeColsList.push(geom.activeCols);
 
             // Frequência, Atraso e Faixas
             numbers.forEach(n => {
@@ -160,11 +319,16 @@ export class StatisticalAnalyzer {
             }
         }
 
-        // Estatísticas de Soma (Média, Mediana, Desvio Padrão, Percentis)
+        // Estatísticas de Distribuição (Média, Mediana, Desvio Padrão, Percentis)
         const sumStats = this.calculateDistributionStats(sumList);
         const parityStats = this.calculateDistributionStats(evenList);
         const primeStats = this.calculateDistributionStats(primeList);
+        const fibonacciStats = this.calculateDistributionStats(fibonacciList);
+        const frameStats = this.calculateDistributionStats(frameList);
+        const activeRowsStats = this.calculateDistributionStats(activeRowsList);
+        const activeColsStats = this.calculateDistributionStats(activeColsList);
         const repetitionStats = this.calculateDistributionStats(repetitionList);
+        const cycleStats = this.analyzeCycles(history, total);
 
         // Top Pares mais frequentes com Support, Expected, Lift e Stability
         const halfCount = Math.floor(history.length / 2);
@@ -250,10 +414,8 @@ export class StatisticalAnalyzer {
 
         return {
             drawCount,
-            // The analyzer receives history from newest to oldest. Keeping the
-            // latest draw here makes repetition diagnostics available to every
-            // generation mode, including the advanced pipeline.
             lastDrawNumbers: Array.isArray(history[0]?.dezenas) ? history[0].dezenas.map(Number) : [],
+            historicalDrawSignatures,
             freqAbsolute,
             freqRelative,
             freqWeighted,
@@ -265,7 +427,12 @@ export class StatisticalAnalyzer {
             sumStats,
             parityStats,
             primeStats,
+            fibonacciStats,
+            frameStats,
+            activeRowsStats,
+            activeColsStats,
             repetitionStats,
+            cycleStats,
             rangeDistributions,
             topPairs: topPairsSliced, // Top 30 pares com lift
             pairMatrix,
@@ -283,7 +450,7 @@ export class StatisticalAnalyzer {
         let chiSq = 0;
         for (let n = 1; n <= total; n++) {
             const observed = freqAbsolute[n] || 0;
-            chiSq += Math.pow(observed - expected, 2) / expected;
+            chiSq += expected > 0 ? Math.pow(observed - expected, 2) / expected : 0;
         }
         const df = total - 1;
         // Approximate p-value using Wilson-Hilferty approximation
@@ -335,8 +502,8 @@ export class StatisticalAnalyzer {
             stdDev: Number(stdDev.toFixed(2)),
             min: sorted[0],
             max: sorted[len - 1],
-            p10,
-            p90,
+            p10: Number(p10.toFixed(2)),
+            p90: Number(p90.toFixed(2)),
             distribution
         };
     }
