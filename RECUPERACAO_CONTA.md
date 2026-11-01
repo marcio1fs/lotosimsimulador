@@ -130,16 +130,17 @@ qualquer um deles seria mais fraco que a senha e ficaria guardado no mesmo lugar
 
 ## 8. Banco de dados
 
-O bloco **10** de `schema.sql` (idempotente) cria:
+A migração **`002_recuperacao_de_conta.sql`** (aplicada com `npm run migrate`, ver
+[MIGRACOES.md](./MIGRACOES.md)) cria:
 
 - `users.email_verified` e `users.email_verified_at`;
 - `email_verifications`, `password_resets` (só hashes) e `recovery_requests`;
 - índices por token, por usuário e por (IP/e-mail, instante).
 
 **Contas antigas:** não há como provar o e-mail de quem já estava no banco, e deixá-las "não
-verificadas" transformaria um recurso novo em aviso permanente. O script marca como
+verificadas" transformaria um recurso novo em aviso permanente. A migração marca como
 verificadas apenas as contas com `created_at` **anterior a 01/11/2026** — o corte é uma data
-fixa, então rodar o script de novo não marca contas novas.
+fixa, então rodar de novo não marca contas novas.
 
 ## 9. Testes
 
@@ -178,5 +179,6 @@ em vez de passar despercebido. Cobrem:
 ## 11. Status
 
 Item **concluído** (01/11/2026): rotas, políticas, tokens, transporte, telas e testes acima.
-Permanece pendente da mesma lista original: migrações versionadas, rate limit nas rotas
-restantes e observabilidade. (O Chart.js já saiu do CDN — ver [INTERFACE.md](./INTERFACE.md).)
+Permanece pendente da mesma lista original: rate limit nas rotas restantes e observabilidade.
+(Já resolvidos: Chart.js saiu do CDN — [INTERFACE.md](./INTERFACE.md); migrações versionadas —
+[MIGRACOES.md](./MIGRACOES.md).)

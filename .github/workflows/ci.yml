@@ -116,3 +116,9 @@ jobs:
       # fonte e arquivo versionado é o modo mais silencioso de perder uma tela.
       - name: index.html em dia com os templates
         run: npm run check:html
+
+      # Mesma ideia para o banco: schema.sql é foto das migrações. Bancos que
+      # divergem dos arquivos não quebram teste nenhum — até alguém precisar
+      # aplicar a próxima migração em cima de um schema que não é o real.
+      - name: schema.sql em dia com as migrações
+        run: npm run check:schema
