@@ -11,7 +11,12 @@ export class AuthController {
                 await UserModel.updateStats(result.user.id, { gamesGenerated: 0, simulations: 0, resultsAnalyzed: 0 });
             }
             await AutomationModel.load(result.user.id);
-            return { success: true, user: result.user, session: result.session };
+            return {
+                success: true,
+                user: result.user,
+                session: result.session,
+                passwordUpgraded: Boolean(result.passwordUpgraded)
+            };
         }
         return result;
     }

@@ -2,7 +2,7 @@
 > **Documento histórico (v1.1) — com correções de fato.**
 > Este relatório registra a reengenharia que criou os motores atuais. Os números
 > de teste citados nas seções 1–3 são os **daquela época**: 4 suítes, 151 ainda
-> não existiam. Hoje a suíte tem **411 testes em 28 arquivos** (`npm test`) e o
+> não existiam. Hoje a suíte tem **429 testes em 29 arquivos** (`npm test`) e o
 > projeto passou por uma segunda auditoria, **[AUDITORIA_PRECISAO.md](./AUDITORIA_PRECISAO.md)**,
 > que encontrou 11 defeitos adicionais — inclusive um que **fabricava resultados
 > de loteria** — e, depois dela, mais seis itens de precisão.
@@ -22,7 +22,7 @@
 | :--- | :--- |
 | **Problemas Encontrados** | 12 falhas conceituais, metodológicas e de infraestrutura |
 | **Problemas Corrigidos** | 12 de 12 **do escopo desta auditoria** (a segunda encontrou outros 11) |
-| **Testes Automatizados** | 4 suítes passando **na época** — hoje 28 arquivos / 411 testes |
+| **Testes Automatizados** | 4 suítes passando **na época** — hoje 29 arquivos / 429 testes |
 | **Backtesting** | Simulação cega walk-forward sem data leakage implementada |
 | **Baseline Aleatória** | Motor comparativo estatístico em tempo real ativo |
 | **Vantagem sobre o aleatório** | **Nenhuma, e isso é o resultado esperado** (ver seção 4) |
@@ -96,7 +96,7 @@ ok 4 - ScoringEngine - Avaliação Transparente sem Falsa Probabilidade
 Uma suíte de 4 casos não podia sustentar as afirmações da seção 4. Hoje:
 
 ```bash
-npm test            # 28 arquivos, 411 testes
+npm test            # 29 arquivos, 429 testes
 npm run build       # build de produção
 npm run check:html  # index.html em dia com os templates
 ```

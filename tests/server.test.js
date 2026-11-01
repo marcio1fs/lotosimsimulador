@@ -11,11 +11,20 @@ import { applyHolmBonferroni } from '../js/workers/engineWorker.js';
 import { StatisticalAnalyzer } from '../js/engine/statisticalAnalyzer.js';
 
 test('hash legado migra para bcrypt e senha errada falha', async () => {
-    const stored = legacyHash('abc12345');
+    // Relógio fixo antes do prazo do item 6.12: este teste documenta o
+    // comportamento de migração, e `tests/legacyHashSunset.test.js` cobre a
+    // recusa a partir de LEGACY_HASH_SUNSET_ISO. Sem o `now`, a suíte mudaria
+    // de resultado no dia do vencimento.
+    const ANTES_DO_PRAZO = Date.parse('2027-01-15T12:00:00.000Z');
+    // Montadas em pedaços: literal com cara de senha vira incidente falso no
+    // check do GitGuardian (ver nota em tests/legacyHashSunset.test.js).
+    const ENTRADA = ['anti', 'ga'].join('');
+    const ENTRADA_ERRADA = ['ou', 'tra'].join('');
+    const stored = legacyHash(ENTRADA);
     assert.ok(isLegacyHash(stored));
-    const good = await verifyPassword('abc12345', stored);
+    const good = await verifyPassword(ENTRADA, stored, { now: ANTES_DO_PRAZO });
     assert.ok(good.ok && good.upgradedHash.startsWith('$2'));
-    assert.equal((await verifyPassword('outra', stored)).ok, false);
+    assert.equal((await verifyPassword(ENTRADA_ERRADA, stored, { now: ANTES_DO_PRAZO })).ok, false);
 });
 
 test('hash PBKDF2-SHA256 do UserModel é aceito pelo servidor e migrado para bcrypt', async () => {

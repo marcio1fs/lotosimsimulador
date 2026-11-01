@@ -6,6 +6,7 @@ import {
 } from './security.js';
 import { syncLotteries } from './lotterySync.js';
 import { evaluateSameSiteRequest, parseAllowedOrigins, hasJsonContentType } from './originPolicy.js';
+import { LEGACY_HASH_SUNSET_LABEL } from '../shared/passwordPolicy.js';
 
 const MAX_BODY = 512 * 1024;
 const MAX_FAILS = 5;              // tentativas de login falhas...
@@ -113,6 +114,10 @@ const clearFails = (email) =>
 
 // ---------------------------------------------------------------- auth
 const GENERIC_LOGIN_ERROR = 'E-mail ou senha incorretos';
+/** Só aparece para quem já tem sessão válida — não é oráculo de existência de conta. */
+const LEGACY_EXPIRED_MESSAGE =
+    `Sua senha está no formato antigo, desativado em ${LEGACY_HASH_SUNSET_LABEL}. ` +
+    'Defina uma senha nova entrando em contato com o suporte do projeto.';
 
 const auth = {
     async register(req, res, body) {
@@ -148,6 +153,14 @@ const auth = {
         const rows = await sql.query('SELECT * FROM users WHERE LOWER(email) = $1 LIMIT 1', [email]);
         const user = rows[0];
         const check = user ? await verifyPassword(password, user.password) : { ok: false };
+        if (check.legacyExpired) {
+            // Item 6.12: o formato `h_…` deixou de ser aceito em LEGACY_HASH_SUNSET_LABEL.
+            // A resposta é a MESMA de senha errada: dizer "sua conta é antiga"
+            // transformaria qualquer senha num oráculo de existência de conta.
+            console.warn(`[auth] login recusado: conta ${user.id} ainda tem hash legado (formato desativado em ${LEGACY_HASH_SUNSET_LABEL})`);
+            await recordFail(ip, email);
+            throw new HttpError(401, GENERIC_LOGIN_ERROR, { field: 'password' });
+        }
         if (!check.ok) {
             await recordFail(ip, email);
             throw new HttpError(401, GENERIC_LOGIN_ERROR, { field: 'password' });
@@ -155,9 +168,18 @@ const auth = {
         if (check.upgradedHash) {
             await sql.query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [check.upgradedHash, user.id]);
         }
+        if (check.legacy) {
+            console.warn(`[auth] conta ${user.id}: hash legado convertido para bcrypt; peça uma senha nova ao usuário`);
+        }
         await clearFails(email);
         const sessionId = await createSession(req, res, user.id, Boolean(body.remember));
-        return { success: true, user: publicUser(user), session: { id: sessionId } };
+        return {
+            success: true,
+            user: publicUser(user),
+            session: { id: sessionId },
+            // A tela usa isto para pedir uma senha nova na hora (item 6.12).
+            passwordUpgraded: Boolean(check.legacy)
+        };
     },
 
     async me(req) {
@@ -180,6 +202,7 @@ const auth = {
         const sql = getSql();
         const rows = await sql.query('SELECT password FROM users WHERE id = $1', [s.user.id]);
         const check = await verifyPassword(current, rows[0]?.password);
+        if (check.legacyExpired) throw new HttpError(400, LEGACY_EXPIRED_MESSAGE);
         if (!check.ok) throw new HttpError(400, 'Senha atual incorreta');
         await sql.query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [await hashPassword(next), s.user.id]);
         await sql.query('DELETE FROM sessions WHERE user_id = $1 AND id <> $2', [s.user.id, s.sessionId]);
@@ -192,6 +215,7 @@ const auth = {
         const sql = getSql();
         const rows = await sql.query('SELECT password FROM users WHERE id = $1', [s.user.id]);
         const check = await verifyPassword(password, rows[0]?.password);
+        if (check.legacyExpired) throw new HttpError(400, LEGACY_EXPIRED_MESSAGE);
         if (!check.ok) throw new HttpError(400, 'Senha incorreta');
         // ON DELETE CASCADE remove sessions, games, simulations, user_stats, auto_settings, auto_log
         await sql.query('DELETE FROM users WHERE id = $1', [s.user.id]);

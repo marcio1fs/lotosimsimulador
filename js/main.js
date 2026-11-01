@@ -147,7 +147,13 @@ class AppController {
             AuthView.setLoading(false, 'loginBtn');
 
             if (result.success) {
-                AppView.showToast('✅ Login realizado com sucesso!', 'success');
+                // Item 6.12: a senha vinha do formato antigo e foi convertida agora.
+                AppView.showToast(
+                    result.passwordUpgraded
+                        ? '✅ Login realizado! Sua senha antiga foi convertida — defina uma nova em Perfil.'
+                        : '✅ Login realizado com sucesso!',
+                    'success'
+                );
                 setTimeout(() => this.afterLogin(result.user, result.session), 500);
             } else {
                 AuthView.showError(result.field === 'email' ? 'loginEmail' : 'loginPassword', result.error);
