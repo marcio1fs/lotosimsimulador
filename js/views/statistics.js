@@ -1,5 +1,6 @@
 import { LotteryModel } from '../models/lottery.js';
 import { escapeHtml } from '../utils/sanitize.js';
+import { BayesFrequencyEngine } from '../engine/bayesFrequencyEngine.js';
 
 /**
  * View: Statistics - Data visualization and charts
@@ -72,9 +73,32 @@ export class StatisticsView {
         const cfg = LotteryModel.CONFIG[type];
         const freq = this._getFrequency(resultsData);
         const maxF = Math.max(1, ...Object.values(freq));
+
+        // A intensidade do fundo mostra a contagem crua. O tooltip mostra a
+        // estimativa encolhida e o intervalo — a contagem sozinha induz a
+        // achar que 6 em 25 concursos significa mais que 40 em 200.
+        const drawCount = resultsData?.analysis?.drawCount ?? 0;
+        let bayes = null;
+        if (drawCount > 0) {
+            try {
+                bayes = BayesFrequencyEngine.shrink(freq, {
+                    total: cfg.total,
+                    drawn: cfg.drawn,
+                    drawCount
+                });
+            } catch {
+                bayes = null;
+            }
+        }
+        const pct = (v) => BayesFrequencyEngine.formatPct(v);
+
         document.getElementById('freqGrid').innerHTML = Array.from({length: cfg.total}, (_, i) => {
             const f = freq[i+1] || 0; const intensity = f / maxF;
-            return `<div class="freq-cell" style="background:hsla(220,60%,${15+intensity*35}%,${0.5+intensity*0.5});color:${intensity>0.5?'#fff':'var(--text-muted)'};">${String(i+1).padStart(2,'0')}<div class="freq-tooltip">${i+1}: ${f}x</div></div>`;
+            const b = bayes?.numbers[i];
+            const tooltip = b
+                ? `${i+1}: ${f}x de ${drawCount} · estim. ${pct(b.shrunkRate)} (IC 95% ${pct(b.lower)}–${pct(b.upper)})`
+                : `${i+1}: ${f}x`;
+            return `<div class="freq-cell" style="background:hsla(220,60%,${15+intensity*35}%,${0.5+intensity*0.5});color:${intensity>0.5?'#fff':'var(--text-muted)'};">${String(i+1).padStart(2,'0')}<div class="freq-tooltip">${tooltip}</div></div>`;
         }).join('');
     }
 

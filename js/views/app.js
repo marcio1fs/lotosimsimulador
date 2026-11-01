@@ -1,6 +1,7 @@
 import { LotteryModel } from '../models/lottery.js';
 import { StatisticalAnalyzer } from '../engine/statisticalAnalyzer.js';
 import { escapeHtml } from '../utils/sanitize.js';
+import { BayesFrequencyEngine, BAYES_DISCLAIMER } from '../engine/bayesFrequencyEngine.js';
 
 /**
  * View: App - Main dashboard and screens
@@ -153,16 +154,54 @@ export class AppView {
             ? `Dezenas fora do padrão: ${chi.topDeviations.slice(0, 4).map(d => String(d.number).padStart(2, '0')).join(', ')}`
             : 'Frequências compatíveis com sorteio justo';
 
+        // Encolhimento bayesiano (Beta-Binomial) das frequências.
+        // A frequência bruta de uma amostra pequena não é estimativa da taxa
+        // real da dezena: 6 aparições em 25 concursos (24%) tem erro-padrão de
+        // ~8 p.p. O motor encolhe cada taxa em direção à base (drawn/total) e
+        // devolve intervalo de credibilidade — com correção de Bonferroni para
+        // o fato de que estamos olhando 25/60/80/100 dezenas ao mesmo tempo.
+        const cfg = LotteryModel.CONFIG[type];
+        let bayes = null;
+        if (cfg && analysis.drawCount > 0) {
+            try {
+                bayes = BayesFrequencyEngine.shrink(freq, {
+                    total: cfg.total,
+                    drawn: cfg.drawn,
+                    drawCount: analysis.drawCount
+                });
+            } catch {
+                bayes = null;
+            }
+        }
+
+        const pct = (v) => BayesFrequencyEngine.formatPct(v);
+        const hotNumbers = bayes ? bayes.hot.map(h => h.number) : hot.map(h => h.num);
+        const coldNumbers = bayes ? bayes.cold.map(c => c.number) : cold.map(c => c.num);
+        const hotDetail = bayes
+            ? `Bruto ${pct(bayes.hot[0].rawRate)} → ${pct(bayes.hot[0].shrunkRate)} · IC 95% ${pct(bayes.hot[0].lower)}–${pct(bayes.hot[0].upper)}`
+            : `Maior frequência: ${pct(hot[0].freq / Math.max(1, analysis.drawCount))}`;
+        const coldDetail = bayes
+            ? `Bruto ${pct(bayes.cold[0].rawRate)} → ${pct(bayes.cold[0].shrunkRate)} · IC 95% ${pct(bayes.cold[0].lower)}–${pct(bayes.cold[0].upper)}`
+            : `Menor frequência: ${pct(cold[0].freq / Math.max(1, analysis.drawCount))}`;
+
+        const syntheticNote = syntheticDraws > 0
+            ? ` · ⚠️ inclui ${syntheticDraws} sintético(s)`
+            : '';
+        const bayesCard = bayes
+            ? `<div class="insight-card" title="${escapeHtml(BAYES_DISCLAIMER)}"><div class="insight-card-title">🎯 Frequência × Ruído</div><div class="insight-card-value">${bayes.summary.distinguishableSimultaneous === 0 ? 'Nenhuma se destaca' : `${bayes.summary.distinguishableSimultaneous} dezena(s)`}</div><div class="insight-card-detail">${bayes.summary.distinguishableSimultaneous === 0 ? `IC 95% simultâneo · esperado ~${bayes.summary.expectedByChance.toFixed(1)} desvio(s) por azar${syntheticNote}` : `IC 95% simultâneo · base ${pct(bayes.baselineRate)}${syntheticNote}`}</div></div>`
+            : '';
+
         document.getElementById('insightsContainer').style.display = 'block';
         document.getElementById('insightsGrid').innerHTML = `
             <div class="insight-card"><div class="insight-card-title">📊 Base Histórica</div><div class="insight-card-value">${officialDraws}</div><div class="insight-card-detail">${syntheticDraws > 0 ? `⚠️ + ${syntheticDraws} sintéticos (sem valor estatístico)` : 'Concursos oficiais'}</div></div>
-            <div class="insight-card"><div class="insight-card-title">🔥 Quentes</div><div class="insight-card-value">${hot.map(h => String(h.num).padStart(2, '0')).join(', ')}</div></div>
-            <div class="insight-card"><div class="insight-card-title">🧊 Frios</div><div class="insight-card-value">${cold.map(c => String(c.num).padStart(2, '0')).join(', ')}</div></div>
+            <div class="insight-card"><div class="insight-card-title">🔥 Quentes</div><div class="insight-card-value">${hotNumbers.map(n => String(n).padStart(2, '0')).join(', ')}</div><div class="insight-card-detail">${hotDetail}</div></div>
+            <div class="insight-card"><div class="insight-card-title">🧊 Frios</div><div class="insight-card-value">${coldNumbers.map(n => String(n).padStart(2, '0')).join(', ')}</div><div class="insight-card-detail">${coldDetail}</div></div>
             <div class="insight-card"><div class="insight-card-title">⏱️ Atrasados</div><div class="insight-card-value">${mostDelayed.map(d => String(d.num).padStart(2, '0')).join(', ')}</div><div class="insight-card-detail">Concursos: ${mostDelayed[0].atraso}</div></div>
             <div class="insight-card"><div class="insight-card-title">🔄 Falta no Ciclo</div><div class="insight-card-value">${cycleDisplay}</div><div class="insight-card-detail">${missingCycle.length} dezena(s) p/ fechar</div></div>
             <div class="insight-card"><div class="insight-card-title">⛓️ Gatilho Markov</div><div class="insight-card-value">${markovDisplay}</div><div class="insight-card-detail">${markovDetail}</div></div>
             <div class="insight-card"><div class="insight-card-title">⚖️ Uniformidade (χ² exato)</div><div class="insight-card-value">${uniformityValue}</div><div class="insight-card-detail">${uniformityDetail}</div></div>
-            <div class="insight-card"><div class="insight-card-title">🔎 Dezenas em Desvio</div><div class="insight-card-value">${chi?.topDeviations?.length || 0}</div><div class="insight-card-detail">${uniformityNote}</div></div>`;
+            <div class="insight-card"><div class="insight-card-title">🔎 Dezenas em Desvio</div><div class="insight-card-value">${chi?.topDeviations?.length || 0}</div><div class="insight-card-detail">${uniformityNote}</div></div>
+            ${bayesCard}`;
     }
 
     /**
