@@ -118,3 +118,19 @@ CREATE INDEX IF NOT EXISTS idx_games_lottery ON games(lottery_type);
 CREATE INDEX IF NOT EXISTS idx_lottery_results_lookup ON lottery_results(lottery_type, concurso);
 CREATE INDEX IF NOT EXISTS idx_simulations_user ON simulations(user_id);
 CREATE INDEX IF NOT EXISTS idx_auto_log_user_time ON auto_log(user_id, timestamp DESC);
+
+-- 9. TABELA DE PROTEÇÃO CONTRA FORÇA BRUTA (RATE LIMIT SERVERLESS)
+CREATE TABLE IF NOT EXISTS login_attempts (
+    id BIGSERIAL PRIMARY KEY,
+    ip VARCHAR(100) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ÍNDICES COMPOSTOS DE PERFORMANCE E RATE LIMIT
+CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip, at DESC);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_email ON login_attempts(email, at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_games_user_created ON games(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_lottery_results_type_desc ON lottery_results(lottery_type, concurso DESC);
+CREATE INDEX IF NOT EXISTS idx_simulations_user_desc ON simulations(user_id, created_at DESC);

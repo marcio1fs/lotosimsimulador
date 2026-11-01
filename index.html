@@ -70,7 +70,7 @@
             <div class="form-group">
                 <label class="form-label">Senha</label>
                 <div class="password-wrapper">
-                    <input type="password" class="form-input" id="regPassword" placeholder="Mínimo 6 caracteres" required>
+                    <input type="password" class="form-input" id="regPassword" placeholder="Mínimo 8 caracteres" required>
                     <button type="button" class="password-toggle" data-target="regPassword">👁️</button>
                 </div>
                 <div class="password-strength"><div class="password-strength-fill" id="strengthFill"></div></div>
@@ -448,6 +448,11 @@
             <input type="password" class="form-input" id="newPassword" placeholder="Nova senha" style="margin-top:0.5rem;">
             <input type="password" class="form-input" id="newPasswordConfirm" placeholder="Confirmar nova senha" style="margin-top:0.5rem;">
             <button class="btn btn-secondary btn-sm" style="margin-top:0.5rem; width: 100%;" id="changePassBtn">🔒 Salvar Nova Senha</button>
+            <div style="margin-top:1rem; padding-top:0.75rem; border-top:1px solid rgba(239,68,68,0.2);">
+                <label class="form-label" style="color:#f87171;">Zona de Privacidade (LGPD)</label>
+                <input type="password" class="form-input" id="deleteAccountPassword" placeholder="Confirme sua senha para excluir a conta">
+                <button class="btn btn-secondary btn-sm" style="margin-top:0.5rem; width:100%; border-color:rgba(239,68,68,0.4); color:#f87171;" id="deleteAccountBtn">🗑️ Excluir Minha Conta e Dados</button>
+            </div>
         </div>
         <div style="margin-top:1.5rem;">
             <button class="btn btn-secondary" style="width:100%;" data-action="logout">🚪 Encerrar Sessão</button>
@@ -511,7 +516,7 @@
             <button class="modal-close" data-action="close-modal">✕</button>
         </div>
         <div class="db-info-panel">
-            <h4>Estrutura Interna (IndexedDB)</h4>
+            <h4>Estrutura Híbrida (API Serverless / IndexedDB)</h4>
             <ul>
                 <li><strong>users</strong>: Perfil e segurança</li>
                 <li><strong>games</strong>: Repositório de jogos gerados</li>

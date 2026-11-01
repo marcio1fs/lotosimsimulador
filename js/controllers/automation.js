@@ -11,9 +11,9 @@ export class AutomationController {
     }
 
     static stop() {
-        if (AutomationModel.state.timer) { 
-            clearInterval(AutomationModel.state.timer); 
-            AutomationModel.state.timer = null; 
+        if (AutomationModel.state.timer) {
+            clearInterval(AutomationModel.state.timer);
+            AutomationModel.state.timer = null;
         }
         AutomationModel.state.nextRun = null;
     }
@@ -21,8 +21,8 @@ export class AutomationController {
     static async executeCycle(userId, appState) {
         AutomationModel.state.execCountToday++;
         AutomationModel.addLog('info', `Execução automática #${AutomationModel.state.execCountToday}`);
-        const types = AutomationModel.state.autoAllLotteries ? ['lotofacil','mega','lotomania','quina'] : [appState.currentLottery];
-        
+        const types = AutomationModel.state.autoAllLotteries ? ['lotofacil', 'mega', 'lotomania', 'quina'] : [appState.currentLottery];
+
         try {
             if (AutomationModel.state.autoFetch) {
                 AutomationModel.addLog('fetch', 'Sincronizando dados...');
@@ -38,9 +38,7 @@ export class AutomationController {
                         appState.currentLottery = type;
                         const games = await LotteryController.generateGames(userId, type, appState.currentStrategy, rd);
                         appState.generatedGames = games;
-                        const stats = await UserModel.getStats(userId);
-                        stats.gamesGenerated += 10; stats.simulations += 1;
-                        await UserModel.updateStats(userId, stats);
+                        await UserModel.incrementStats(userId, { gamesDelta: games.length, simulationsDelta: 1 });
                     }
                 }
             }
@@ -48,15 +46,15 @@ export class AutomationController {
                 const type = appState.currentLottery;
                 const last = appState.resultsData[type]?.lastResult;
                 if (last?.dezenas) {
-                    const drawn = last.dezenas.map(d => parseInt(d));
+                    const drawn = last.dezenas.map(d => parseInt(d, 10));
                     const hits = appState.generatedGames.map(g => ({ ...g, hitCount: g.numbers.filter(n => drawn.includes(n)).length }));
                     const maxHit = Math.max(...hits.map(h => h.hitCount));
                     AutomationModel.addLog('conference', `Melhor performance: ${maxHit} acertos`);
                 }
             }
             await AutomationModel.save(userId);
-        } catch (e) { 
-            AutomationModel.addLog('error', e.message); 
+        } catch (e) {
+            AutomationModel.addLog('error', e.message);
             console.error('Automation error:', e);
         }
     }

@@ -1,7 +1,19 @@
 import { Database } from '../db/database.js';
 
+async function authFetch(path, method = 'POST', body = undefined) {
+    const opts = { method, credentials: 'include', headers: {} };
+    if (body !== undefined) {
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(body);
+    }
+    const res = await fetch(path, opts);
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data };
+}
+
 /**
- * Model: User - Operações de usuário e autenticação criptográfica (PBKDF2 / SHA-256 via Web Crypto API)
+ * Model: User - Autenticação segura via API Serverless (bcrypt + HttpOnly Cookie)
+ * com fallback local criptográfico PBKDF2-SHA256 (Web Crypto API) para modo offline.
  */
 export class UserModel {
     /**
@@ -60,7 +72,7 @@ export class UserModel {
     }
 
     /**
-     * Verifica uma senha contra o hash armazenado (suporta PBKDF2 e migra hashes legados automaticamente)
+     * Verifica uma senha contra o hash armazenado no modo local (suporta PBKDF2 e migra hashes legados)
      */
     static async verifyPasswordAsync(password, storedHash) {
         if (!storedHash || typeof storedHash !== 'string') return { valid: false, needsUpgrade: false };
@@ -73,7 +85,6 @@ export class UserModel {
             return { valid: computed === storedHash, needsUpgrade: false };
         }
 
-        // Fallback para contas criadas antes da atualização criptográfica
         const legacyValid = storedHash === this._legacyHashPassword(password);
         return { valid: legacyValid, needsUpgrade: legacyValid };
     }
@@ -85,11 +96,16 @@ export class UserModel {
     }
 
     static async register(name, email, password) {
+        if (Database.useApi) {
+            const { ok, data } = await authFetch('/api/auth/register', 'POST', { name, email, password });
+            return ok ? { success: true } : { success: false, error: data.error || 'Falha ao criar conta' };
+        }
+
         const normalizedEmail = String(email || '').trim().toLowerCase();
         const exists = await Database.getByIndex('users', 'email', normalizedEmail);
         if (exists) return { success: false, error: 'E-mail já cadastrado' };
         if (!name || name.trim().length < 3) return { success: false, error: 'Nome deve ter pelo menos 3 caracteres' };
-        if (!password || password.length < 6) return { success: false, error: 'Senha deve ter pelo menos 6 caracteres' };
+        if (!password || password.length < 8) return { success: false, error: 'Senha deve ter pelo menos 8 caracteres' };
 
         const securePasswordHash = await this.hashPasswordAsync(password);
         const userId = await Database.add('users', {
@@ -113,16 +129,22 @@ export class UserModel {
     }
 
     static async login(email, password, remember) {
+        if (Database.useApi) {
+            const { ok, data } = await authFetch('/api/auth/login', 'POST', { email, password, remember });
+            return ok
+                ? { success: true, user: data.user, session: data.session }
+                : { success: false, error: data.error || 'E-mail ou senha incorretos', field: data.field || 'password' };
+        }
+
         const normalizedEmail = String(email || '').trim().toLowerCase();
         const user = await Database.getByIndex('users', 'email', normalizedEmail);
-        if (!user) return { success: false, error: 'E-mail não encontrado', field: 'email' };
+        if (!user) return { success: false, error: 'E-mail ou senha incorretos', field: 'password' };
 
         const verification = await this.verifyPasswordAsync(password, user.password);
         if (!verification.valid) {
-            return { success: false, error: 'Senha incorreta', field: 'password' };
+            return { success: false, error: 'E-mail ou senha incorretos', field: 'password' };
         }
 
-        // Se a conta usava hash legado, atualiza silenciosamente para PBKDF2-SHA256
         if (verification.needsUpgrade) {
             user.password = await this.hashPasswordAsync(password);
             await Database.update('users', user);
@@ -143,10 +165,16 @@ export class UserModel {
             else sessionStorage.setItem('loteria_session_token', token);
         }
 
-        return { success: true, user, session: { id: sessionId, token } };
+        const { password: _ignored, ...safeUser } = user;
+        return { success: true, user: safeUser, session: { id: sessionId } };
     }
 
     static async validateSession() {
+        if (Database.useApi) {
+            const { ok, data } = await authFetch('/api/auth/me', 'GET');
+            return ok && data.user ? { user: data.user, session: data.session } : null;
+        }
+
         if (typeof localStorage === 'undefined' || typeof sessionStorage === 'undefined') return null;
         const token = localStorage.getItem('loteria_session_token') || sessionStorage.getItem('loteria_session_token');
         if (!token) return null;
@@ -156,25 +184,55 @@ export class UserModel {
             return null;
         }
         const user = await Database.get('users', session.userId);
-        return user ? { user, session } : null;
+        if (!user) return null;
+        const { password: _ignored, ...safeUser } = user;
+        return { user: safeUser, session: { id: session.id } };
     }
 
     static async logout(sessionId) {
-        if (sessionId) await Database.delete('sessions', sessionId).catch(() => {});
+        if (Database.useApi) {
+            await authFetch('/api/auth/logout', 'POST', {}).catch(() => {});
+        } else if (sessionId) {
+            await Database.delete('sessions', sessionId).catch(() => {});
+        }
         if (typeof localStorage !== 'undefined') localStorage.removeItem('loteria_session_token');
         if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('loteria_session_token');
     }
 
     static async changePassword(userId, currentPass, newPass) {
+        if (Database.useApi) {
+            const { ok, data } = await authFetch('/api/auth/change-password', 'POST', { currentPass, newPass });
+            return ok ? { success: true } : { success: false, error: data.error || 'Erro ao alterar senha' };
+        }
+
         const user = await Database.get('users', userId);
         if (!user) return { success: false, error: 'Usuário não encontrado' };
 
         const verification = await this.verifyPasswordAsync(currentPass, user.password);
         if (!verification.valid) return { success: false, error: 'Senha atual incorreta' };
-        if (!newPass || newPass.length < 6) return { success: false, error: 'A nova senha deve ter no mínimo 6 caracteres' };
+        if (!newPass || newPass.length < 8) return { success: false, error: 'A nova senha deve ter no mínimo 8 caracteres' };
 
         user.password = await this.hashPasswordAsync(newPass);
         await Database.update('users', user);
+        return { success: true };
+    }
+
+    static async deleteAccount(userId, password) {
+        if (Database.useApi) {
+            const { ok, data } = await authFetch('/api/auth/delete-account', 'POST', { password });
+            return ok ? { success: true } : { success: false, error: data.error || 'Erro ao excluir conta' };
+        }
+
+        const user = await Database.get('users', userId);
+        if (!user) return { success: false, error: 'Usuário não encontrado' };
+        const verification = await this.verifyPasswordAsync(password, user.password);
+        if (!verification.valid) return { success: false, error: 'Senha incorreta' };
+
+        await Database.delete('users', userId);
+        await Database.delete('user_stats', userId).catch(() => {});
+        await Database.delete('auto_settings', userId).catch(() => {});
+        if (typeof localStorage !== 'undefined') localStorage.removeItem('loteria_session_token');
+        if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('loteria_session_token');
         return { success: true };
     }
 
@@ -185,5 +243,22 @@ export class UserModel {
     static async updateStats(userId, stats) {
         const current = await this.getStats(userId);
         await Database.update('user_stats', { ...current, ...stats, userId });
+    }
+
+    static async incrementStats(userId, { gamesDelta = 0, simulationsDelta = 0, resultsAnalyzed = null } = {}) {
+        if (Database.useApi) {
+            const updated = await Database.incrementStats({ gamesDelta, simulationsDelta, resultsAnalyzed });
+            if (updated) return updated;
+        }
+        const current = await this.getStats(userId);
+        const next = {
+            ...current,
+            userId,
+            gamesGenerated: (current.gamesGenerated || 0) + (gamesDelta || 0),
+            simulations: (current.simulations || 0) + (simulationsDelta || 0),
+            resultsAnalyzed: resultsAnalyzed !== null && resultsAnalyzed !== undefined ? resultsAnalyzed : (current.resultsAnalyzed || 0)
+        };
+        await Database.update('user_stats', next);
+        return next;
     }
 }

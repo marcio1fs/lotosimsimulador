@@ -6,7 +6,6 @@ export class AuthController {
     static async login(email, password, remember) {
         const result = await UserModel.login(email, password, remember);
         if (result.success) {
-            // Garante que o registro de estatísticas exista sem zerar dados anteriores do usuário
             const existingStats = await Database.get('user_stats', result.user.id);
             if (!existingStats) {
                 await UserModel.updateStats(result.user.id, { gamesGenerated: 0, simulations: 0, resultsAnalyzed: 0 });
@@ -36,5 +35,9 @@ export class AuthController {
 
     static async changePassword(userId, currentPass, newPass) {
         return await UserModel.changePassword(userId, currentPass, newPass);
+    }
+
+    static async deleteAccount(userId, password) {
+        return await UserModel.deleteAccount(userId, password);
     }
 }

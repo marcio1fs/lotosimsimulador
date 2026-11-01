@@ -134,7 +134,6 @@ export class StatisticalAnalyzer {
 
         // Suavização Dirichlet-Laplace (prior alpha = 1)
         const priorAlpha = 1.0;
-        const priorDenom = total * (priorAlpha / Math.max(1, drawn));
 
         for (let j = 1; j <= total; j++) {
             if (lastDraw.length === 0) {
@@ -150,7 +149,6 @@ export class StatisticalAnalyzer {
                 if (prevNum >= 1 && prevNum <= total) {
                     const countPrev = prevOccurrences[prevNum] || 0;
                     const transCount = nextDrawGivenPrev[prevNum]?.[j] || 0;
-                    // P(j in t | prevNum in t-1) com suavização Bayesiana
                     const smoothedProb = (transCount + priorAlpha * baselineProb) / (countPrev + priorAlpha);
                     conditionalProbSum += smoothedProb;
                     validTriggers++;
@@ -210,7 +208,6 @@ export class StatisticalAnalyzer {
             };
         }
 
-        // Processa em ordem cronológica (do mais antigo para o mais recente)
         const chronological = [...history].reverse();
         const cycleLengths = [];
         let seenSet = new Set();
@@ -245,7 +242,6 @@ export class StatisticalAnalyzer {
             ? Number((cycleLengths.reduce((a, b) => a + b, 0) / cycleLengths.length).toFixed(2))
             : Math.ceil(total / 5);
 
-        // Calcula urgência de ciclo para cada dezena (dezenas ausentes no ciclo atual ganham impulso proporcional ao avanço do ciclo)
         const cycleProgress = avgCycleLength > 0 ? Math.min(1.5, currentCycleLength / avgCycleLength) : 0.5;
         const cycleUrgencyScore = {};
         for (let n = 1; n <= total; n++) {
@@ -269,8 +265,6 @@ export class StatisticalAnalyzer {
 
     /**
      * Filtra o histórico para a janela temporal desejada
-     * @param {Array} history - Array de concursos (ordenados do mais recente para o mais antigo, ou vice-versa)
-     * @param {number|string} windowSize - Tamanho da janela (ex: 20, 50, 100, 200, 500, 'full')
      */
     static getWindow(history, windowSize = 'full') {
         if (!history || !Array.isArray(history) || history.length === 0) return [];
@@ -279,27 +273,122 @@ export class StatisticalAnalyzer {
     }
 
     /**
+     * Análise leve O(draws * drawn) para uso interno em loops de Backtest / Walk-Forward.
+     * Calcula exatamente os campos consumidos por GameGenerator.generateSingleCandidate
+     * (freqAbsolute, freqWeighted, currentDelay, avgDelay, expectedFreq, lastDrawNumbers,
+     * pairMatrix, cycleStats e markovStats), pulando topTriples/topPairs/chiSquare.
+     */
+    static analyzeFast(history, config) {
+        const total = config.total;
+        const drawCount = history.length;
+        const drawn = config.drawn || config.pick;
+
+        const freqAbsolute = {};
+        const lastSeenIndex = {};
+        const delaySum = new Float64Array(total + 1);
+        const delayCount = new Int32Array(total + 1);
+        const weightedAcc = new Float64Array(total + 1);
+        const pairMatrix = {};
+
+        for (let i = 1; i <= total; i++) {
+            freqAbsolute[i] = 0;
+            lastSeenIndex[i] = -1;
+            pairMatrix[i] = {};
+            for (let j = i + 1; j <= total; j++) {
+                pairMatrix[i][j] = 0;
+            }
+        }
+
+        const alpha = 0.05;
+        let wTotal = 0;
+
+        for (let idx = 0; idx < drawCount; idx++) {
+            const draw = history[idx];
+            const weight = Math.exp(-alpha * idx);
+            wTotal += weight;
+
+            const rawNumbers = Array.isArray(draw.dezenas) ? draw.dezenas.map(Number) : [];
+            const numbers = [...new Set(rawNumbers)].sort((a, b) => a - b);
+
+            for (let k = 0; k < numbers.length; k++) {
+                const n = numbers[k];
+                if (n >= 1 && n <= total) {
+                    freqAbsolute[n]++;
+                    weightedAcc[n] += weight;
+                    if (lastSeenIndex[n] === -1) {
+                        lastSeenIndex[n] = idx;
+                    } else {
+                        delaySum[n] += (idx - lastSeenIndex[n]);
+                        delayCount[n]++;
+                    }
+                }
+            }
+
+            for (let i = 0; i < numbers.length; i++) {
+                const a = numbers[i];
+                if (a < 1 || a > total) continue;
+                const row = pairMatrix[a];
+                for (let j = i + 1; j < numbers.length; j++) {
+                    const b = numbers[j];
+                    if (b >= 1 && b <= total && row[b] !== undefined) {
+                        row[b]++;
+                    }
+                }
+            }
+        }
+
+        const expectedFreq = drawCount * drawn / total;
+        const freqRelative = {};
+        const freqWeighted = {};
+        const expectedDeviation = {};
+        const currentDelay = {};
+        const avgDelay = {};
+
+        for (let i = 1; i <= total; i++) {
+            const f = freqAbsolute[i];
+            freqRelative[i] = drawCount > 0 ? f / drawCount : 0;
+            expectedDeviation[i] = expectedFreq > 0 ? (f - expectedFreq) / expectedFreq : 0;
+            freqWeighted[i] = wTotal > 0 ? weightedAcc[i] / wTotal : 0;
+            const cd = lastSeenIndex[i] === -1 ? drawCount : lastSeenIndex[i];
+            currentDelay[i] = cd;
+            avgDelay[i] = delayCount[i] > 0 ? delaySum[i] / delayCount[i] : cd;
+        }
+
+        return {
+            drawCount,
+            lastDrawNumbers: Array.isArray(history[0]?.dezenas) ? history[0].dezenas.map(Number) : [],
+            freqAbsolute,
+            freqRelative,
+            freqWeighted,
+            expectedFreq,
+            expectedDeviation,
+            currentDelay,
+            avgDelay,
+            pairMatrix,
+            cycleStats: this.analyzeCycles(history, total),
+            markovStats: this.analyzeMarkovTransitions(history, total, drawn)
+        };
+    }
+
+    /**
      * Executa análise estatística completa sobre a janela de concursos fornecida
-     * @param {Array} history - Concursos na janela temporal
-     * @param {Object} config - Configuração da loteria (total, pick, drawn)
      */
     static analyze(history, config) {
         const total = config.total;
         const drawCount = history.length;
         const drawn = config.drawn || config.pick;
 
-        // 1. Inicialização das estruturas de dados
         const freqAbsolute = {};
-        const lastSeenIndex = {}; // 0 = último concurso
+        const lastSeenIndex = {};
         const delayDistribution = {};
-        
+        const weightedAcc = new Float64Array(total + 1);
+
         for (let i = 1; i <= total; i++) {
             freqAbsolute[i] = 0;
             lastSeenIndex[i] = -1;
             delayDistribution[i] = [];
         }
 
-        // Matriz de Co-ocorrência (Pares)
         const pairMatrix = {};
         for (let i = 1; i <= total; i++) {
             pairMatrix[i] = {};
@@ -308,7 +397,6 @@ export class StatisticalAnalyzer {
             }
         }
 
-        // Histórico de somas, pares, ímpares, primos, fibonacci, moldura, repetições e assinaturas históricas
         const sumList = [];
         const evenList = [];
         const primeList = [];
@@ -320,12 +408,19 @@ export class StatisticalAnalyzer {
         const rangeDistributions = [0, 0, 0, 0, 0];
         const rangeSize = Math.ceil(total / 5);
         const historicalDrawSignatures = new Set();
+        const parsedDraws = new Array(drawCount);
 
+        const alpha = 0.05;
+        let wTotal = 0;
         let prevNumbersSet = null;
 
         history.forEach((draw, idx) => {
+            const weight = Math.exp(-alpha * idx);
+            wTotal += weight;
+
             const rawNumbers = Array.isArray(draw.dezenas) ? draw.dezenas.map(Number) : [];
             const numbers = [...new Set(rawNumbers)].sort((a, b) => a - b);
+            parsedDraws[idx] = numbers;
             const currentSet = new Set(numbers);
 
             if (numbers.length > 0) {
@@ -357,6 +452,7 @@ export class StatisticalAnalyzer {
             numbers.forEach(n => {
                 if (n >= 1 && n <= total) {
                     freqAbsolute[n]++;
+                    weightedAcc[n] += weight;
 
                     if (lastSeenIndex[n] === -1) {
                         lastSeenIndex[n] = idx;
@@ -372,8 +468,8 @@ export class StatisticalAnalyzer {
 
             for (let i = 0; i < numbers.length; i++) {
                 for (let j = i + 1; j < numbers.length; j++) {
-                    const a = Math.min(numbers[i], numbers[j]);
-                    const b = Math.max(numbers[i], numbers[j]);
+                    const a = numbers[i];
+                    const b = numbers[j];
                     if (pairMatrix[a] && pairMatrix[a][b] !== undefined) {
                         pairMatrix[a][b]++;
                     }
@@ -381,31 +477,16 @@ export class StatisticalAnalyzer {
             }
         });
 
-        // 2. Cálculos derivados
         const expectedFreq = drawCount * drawn / total;
-
         const freqRelative = {};
         const freqWeighted = {};
         const expectedDeviation = {};
-
-        const alpha = 0.05;
 
         for (let i = 1; i <= total; i++) {
             const f = freqAbsolute[i];
             freqRelative[i] = drawCount > 0 ? f / drawCount : 0;
             expectedDeviation[i] = expectedFreq > 0 ? (f - expectedFreq) / expectedFreq : 0;
-
-            let wSum = 0;
-            let wTotal = 0;
-            history.forEach((draw, idx) => {
-                const weight = Math.exp(-alpha * idx);
-                const numbers = Array.isArray(draw.dezenas) ? draw.dezenas.map(Number) : [];
-                if (numbers.includes(i)) {
-                    wSum += weight;
-                }
-                wTotal += weight;
-            });
-            freqWeighted[i] = wTotal > 0 ? wSum / wTotal : 0;
+            freqWeighted[i] = wTotal > 0 ? weightedAcc[i] / wTotal : 0;
         }
 
         const currentDelay = {};
@@ -436,8 +517,8 @@ export class StatisticalAnalyzer {
         const markovStats = this.analyzeMarkovTransitions(history, total, drawn);
 
         const halfCount = Math.floor(history.length / 2);
-        const recentHistory = history.slice(0, halfCount);
-        const olderHistory = history.slice(halfCount);
+        const recentSets = parsedDraws.slice(0, halfCount).map(arr => new Set(arr));
+        const olderSets = parsedDraws.slice(halfCount).map(arr => new Set(arr));
 
         const topPairs = [];
         for (let i = 1; i <= total; i++) {
@@ -464,53 +545,60 @@ export class StatisticalAnalyzer {
 
             let recentCount = 0;
             let olderCount = 0;
-            recentHistory.forEach(d => {
-                const nums = (d.dezenas || []).map(Number);
-                if (nums.includes(p.pair[0]) && nums.includes(p.pair[1])) recentCount++;
-            });
-            olderHistory.forEach(d => {
-                const nums = (d.dezenas || []).map(Number);
-                if (nums.includes(p.pair[0]) && nums.includes(p.pair[1])) olderCount++;
-            });
-            const rRate = recentHistory.length > 0 ? recentCount / recentHistory.length : 0;
-            const oRate = olderHistory.length > 0 ? olderCount / olderHistory.length : 0;
+            for (const s of recentSets) {
+                if (s.has(p.pair[0]) && s.has(p.pair[1])) recentCount++;
+            }
+            for (const s of olderSets) {
+                if (s.has(p.pair[0]) && s.has(p.pair[1])) olderCount++;
+            }
+            const rRate = recentSets.length > 0 ? recentCount / recentSets.length : 0;
+            const oRate = olderSets.length > 0 ? olderCount / olderSets.length : 0;
             const maxRate = Math.max(rRate, oRate);
             p.stability = maxRate > 0 ? Number((1 - Math.abs(rRate - oRate) / maxRate).toFixed(4)) : 1;
         });
 
-        const tripleCounts = {};
+        const tripleMap = new Map();
         const expectedTripleCount = drawCount * ((drawn * (drawn - 1) * (drawn - 2)) / (total * (total - 1) * (total - 2)));
-        
-        for (const draw of history) {
-            const nums = Array.isArray(draw.dezenas) ? draw.dezenas.map(Number).sort((a, b) => a - b) : [];
-            for (let i = 0; i < nums.length; i++) {
-                for (let j = i + 1; j < nums.length; j++) {
-                    for (let k = j + 1; k < nums.length; k++) {
-                        const key = `${nums[i]}-${nums[j]}-${nums[k]}`;
-                        tripleCounts[key] = (tripleCounts[key] || 0) + 1;
+
+        for (let dIdx = 0; dIdx < drawCount; dIdx++) {
+            const nums = parsedDraws[dIdx];
+            const nLen = nums.length;
+            for (let i = 0; i < nLen - 2; i++) {
+                const aShift = nums[i] << 16;
+                for (let j = i + 1; j < nLen - 1; j++) {
+                    const abShift = aShift | (nums[j] << 8);
+                    for (let k = j + 1; k < nLen; k++) {
+                        const key = abShift | nums[k];
+                        tripleMap.set(key, (tripleMap.get(key) || 0) + 1);
                     }
                 }
             }
         }
-        const topTriples = Object.entries(tripleCounts)
-            .map(([key, count]) => {
-                const numbers = key.split('-').map(Number);
-                const freqA = (freqAbsolute[numbers[0]] || 0) / (drawCount || 1);
-                const freqB = (freqAbsolute[numbers[1]] || 0) / (drawCount || 1);
-                const freqC = (freqAbsolute[numbers[2]] || 0) / (drawCount || 1);
-                const tripleFreq = count / (drawCount || 1);
-                const lift = (freqA > 0 && freqB > 0 && freqC > 0) ? Number((tripleFreq / (freqA * freqB * freqC)).toFixed(4)) : 1;
-                
-                return { 
-                    numbers, 
-                    count,
-                    expected: Number(expectedTripleCount.toFixed(2)),
-                    support: Number((count / (drawCount || 1)).toFixed(4)),
-                    lift
-                };
-            })
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 20);
+
+        const topTriplesRaw = [];
+        for (const [key, count] of tripleMap.entries()) {
+            topTriplesRaw.push({ key, count });
+        }
+        topTriplesRaw.sort((a, b) => b.count - a.count);
+
+        const topTriples = topTriplesRaw.slice(0, 20).map(({ key, count }) => {
+            const n0 = (key >>> 16) & 0xff;
+            const n1 = (key >>> 8) & 0xff;
+            const n2 = key & 0xff;
+            const numbers = [n0, n1, n2];
+            const freqA = (freqAbsolute[n0] || 0) / (drawCount || 1);
+            const freqB = (freqAbsolute[n1] || 0) / (drawCount || 1);
+            const freqC = (freqAbsolute[n2] || 0) / (drawCount || 1);
+            const tripleFreq = count / (drawCount || 1);
+            const lift = (freqA > 0 && freqB > 0 && freqC > 0) ? Number((tripleFreq / (freqA * freqB * freqC)).toFixed(4)) : 1;
+            return {
+                numbers,
+                count,
+                expected: Number(expectedTripleCount.toFixed(2)),
+                support: Number((count / (drawCount || 1)).toFixed(4)),
+                lift
+            };
+        });
 
         const chiSquare = this.chiSquareUniformity(freqAbsolute, total, drawCount, drawn);
 
@@ -555,7 +643,7 @@ export class StatisticalAnalyzer {
             chiSq += expected > 0 ? Math.pow(observed - expected, 2) / expected : 0;
         }
         const df = total - 1;
-        const z = Math.pow(chiSq / df, 1/3) - (1 - 2 / (9 * df));
+        const z = Math.pow(chiSq / df, 1 / 3) - (1 - 2 / (9 * df));
         const se = Math.sqrt(2 / (9 * df));
         const zScore = z / se;
         const pValue = 1 - 0.5 * (1 + Math.tanh(zScore * 0.7978845608));

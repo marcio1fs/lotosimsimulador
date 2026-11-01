@@ -370,7 +370,7 @@ export class GameGenerator {
             const subHistory = StatisticalAnalyzer.getWindow(fullHistory, w);
             if (subHistory.length >= 15) {
                 const generatorFn = (past, cfg) => {
-                    const subAnalysis = StatisticalAnalyzer.analyze(past, cfg);
+                    const subAnalysis = StatisticalAnalyzer.analyzeFast(past, cfg);
                     return this.generateSingleCandidate(cfg.apiName, subAnalysis, 'adaptive', [], [], cfg, null, prng);
                 };
                 const bt = BacktestEngine.runBacktest(subHistory, config, generatorFn, { windowSize: 30, seed });
@@ -428,7 +428,7 @@ export class GameGenerator {
         const finalWeights = optWeightsResult.optimizedWeights;
 
         const generatorFn = (past, cfg) => {
-            const subAnalysis = StatisticalAnalyzer.analyze(past, cfg);
+            const subAnalysis = StatisticalAnalyzer.analyzeFast(past, cfg);
             const stepRng = new SeededRandom(seed + past.length);
             return this.generateSingleCandidate(cfg.apiName, subAnalysis, 'maximum_precision', [], [], cfg, finalWeights, stepRng);
         };

@@ -12,26 +12,27 @@ import { StatisticalAnalyzer } from './engine/statisticalAnalyzer.js';
 
 let currentUser = null;
 let currentSession = null;
-const appState = { 
-    currentLottery: 'lotofacil', 
-    currentStrategy: 'wheeling', 
+const appState = {
+    currentLottery: 'lotofacil',
+    currentStrategy: 'wheeling',
     currentTimeWindow: 100,
     currentBatchSize: 10,
-    generatedGames: [], 
-    simulationHistory: [], 
-    resultsData: {}, 
+    generatedGames: [],
+    simulationHistory: [],
+    resultsData: {},
     fixedNumbers: [],
     excludedNumbers: [],
-    totalGamesGenerated: 0, 
-    totalSimulations: 0, 
-    dataReady: false 
+    totalGamesGenerated: 0,
+    totalSimulations: 0,
+    dataReady: false
 };
 
 class AppController {
     static async init() {
         try {
             await Database.init();
-            AuthView.updateDbStatus(true, '✅ Banco de dados conectado');
+            const label = Database.useApi ? '✅ Banco Nuvem (Neon Segura) conectado' : '✅ Banco Local (IndexedDB) conectado';
+            AuthView.updateDbStatus(true, label);
         } catch (e) {
             AuthView.updateDbStatus(false, '❌ Erro ao conectar banco de dados');
             return;
@@ -48,51 +49,59 @@ class AppController {
     }
 
     static async afterLogin(user, session) {
-        currentUser = user; 
+        currentUser = user;
         currentSession = session;
         AppView.setUser(user);
         AuthView.hide();
 
-        const stats = await UserModel.getStats(user.id);
-        appState.totalGamesGenerated = stats.gamesGenerated;
-        appState.totalSimulations = stats.simulations;
+        const [stats, sims, games] = await Promise.all([
+            UserModel.getStats(user.id),
+            Database.getAllByIndex('simulations', 'userId', user.id),
+            Database.getAllByIndex('games', 'userId', user.id)
+        ]);
+
+        appState.totalGamesGenerated = stats.gamesGenerated || 0;
+        appState.totalSimulations = stats.simulations || 0;
         AppView.updateStats(stats);
 
-        const sims = await Database.getAllByIndex('simulations', 'userId', user.id);
-        appState.simulationHistory = sims.reverse().map(x => ({ 
-            date: new Date(x.createdAt).toLocaleString('pt-BR'), 
-            lottery: LotteryModel.CONFIG[x.lotteryType]?.name || x.lotteryType, 
-            strategy: x.strategy, 
-            games: x.gamesCount||10, 
-            resultsAnalyzed: x.resultsCount||0 
+        const sortedSims = [...(sims || [])].sort((a, b) => (b.id || 0) - (a.id || 0));
+        appState.simulationHistory = sortedSims.map(x => ({
+            date: new Date(x.createdAt).toLocaleString('pt-BR'),
+            lottery: LotteryModel.CONFIG[x.lotteryType]?.name || x.lotteryType,
+            strategy: x.strategy,
+            games: x.gamesCount || x.totalGames || 10,
+            resultsAnalyzed: x.resultsCount || 0
         }));
         AppView.renderHistory(appState.simulationHistory);
 
-        const games = await Database.getAllByIndex('games', 'userId', user.id);
         if (games && games.length > 0) {
-            appState.generatedGames = games.slice(-10).map(x => {
+            const recentGames = [...games]
+                .sort((a, b) => (b.id || 0) - (a.id || 0))
+                .slice(0, 10)
+                .reverse();
+            appState.generatedGames = recentGames.map(x => {
                 let numbers = x.numbers;
                 if (typeof numbers === 'string') {
                     try { numbers = JSON.parse(numbers); } catch (_) {}
                 }
-                let stats = x.stats;
-                if (typeof stats === 'string') {
-                    try { stats = JSON.parse(stats); } catch (_) {}
+                let statsObj = x.stats;
+                if (typeof statsObj === 'string') {
+                    try { statsObj = JSON.parse(statsObj); } catch (_) {}
                 }
                 let explanations = x.explanations;
                 if (typeof explanations === 'string') {
                     try { explanations = JSON.parse(explanations); } catch (_) {}
                 }
-                return { 
-                    numbers: Array.isArray(numbers) ? numbers : [], 
+                return {
+                    numbers: Array.isArray(numbers) ? numbers : [],
                     modelScore: x.modelScore || x.model_score,
                     historicalPerformance: x.historicalPerformance || x.historical_performance,
                     expectedHits: x.expectedHits || x.expected_hits,
                     confidenceLevel: x.confidenceLevel || x.confidence_level,
                     probabilityType: x.probabilityType || x.probability_type,
                     explanations: Array.isArray(explanations) ? explanations : [],
-                    stats: stats || null,
-                    id: x.id 
+                    stats: statsObj || null,
+                    id: x.id
                 };
             });
             AppView.renderGames(appState.generatedGames, appState.currentLottery);
@@ -101,41 +110,41 @@ class AppController {
         if (AutomationModel.state.active) {
             AutomationController.start(() => this.runAutoCycle());
         }
-        
+
         if (AutomationModel.state.autoFetch) {
             setTimeout(() => this.runAutoCycle(), 1000);
         }
     }
 
     static bindEvents() {
-        document.querySelectorAll('.auth-tab').forEach(tab => tab.addEventListener('click', () => { 
-            AuthView.clearErrors(); 
-            AuthView.showForm(tab.dataset.view); 
+        document.querySelectorAll('.auth-tab').forEach(tab => tab.addEventListener('click', () => {
+            AuthView.clearErrors();
+            AuthView.showForm(tab.dataset.view);
         }));
-        
-        document.querySelectorAll('[data-action="switch-register"]').forEach(l => l.addEventListener('click', (e) => { 
-            e.preventDefault(); 
-            AuthView.clearErrors(); 
-            AuthView.showForm('register'); 
+
+        document.querySelectorAll('[data-action="switch-register"]').forEach(l => l.addEventListener('click', (e) => {
+            e.preventDefault();
+            AuthView.clearErrors();
+            AuthView.showForm('register');
         }));
-        
-        document.querySelectorAll('[data-action="switch-login"]').forEach(l => l.addEventListener('click', (e) => { 
-            e.preventDefault(); 
-            AuthView.clearErrors(); 
-            AuthView.showForm('login'); 
+
+        document.querySelectorAll('[data-action="switch-login"]').forEach(l => l.addEventListener('click', (e) => {
+            e.preventDefault();
+            AuthView.clearErrors();
+            AuthView.showForm('login');
         }));
 
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault(); 
+            e.preventDefault();
             AuthView.clearErrors();
             const email = document.getElementById('loginEmail').value.trim().toLowerCase();
             const password = document.getElementById('loginPassword').value;
             const remember = document.getElementById('rememberMe').checked;
-            
+
             AuthView.setLoading(true, 'loginBtn');
             const result = await AuthController.login(email, password, remember);
             AuthView.setLoading(false, 'loginBtn');
-            
+
             if (result.success) {
                 AppView.showToast('✅ Login realizado com sucesso!', 'success');
                 setTimeout(() => this.afterLogin(result.user, result.session), 500);
@@ -145,36 +154,36 @@ class AppController {
         });
 
         document.getElementById('registerForm').addEventListener('submit', async (e) => {
-            e.preventDefault(); 
+            e.preventDefault();
             AuthView.clearErrors();
             const name = document.getElementById('regName').value.trim();
             const email = document.getElementById('regEmail').value.trim().toLowerCase();
             const password = document.getElementById('regPassword').value;
             const confirm = document.getElementById('regPasswordConfirm').value;
-            
+
             let hasError = false;
             if (name.length < 3) { AuthView.showError('regName', 'Nome deve ter pelo menos 3 caracteres'); hasError = true; }
             if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { AuthView.showError('regEmail', 'E-mail inválido'); hasError = true; }
-            if (password.length < 6) { AuthView.showError('regPassword', 'Mínimo 6 caracteres'); hasError = true; }
+            if (password.length < 8) { AuthView.showError('regPassword', 'Mínimo 8 caracteres'); hasError = true; }
             if (password !== confirm) { AuthView.showError('regPasswordConfirm', 'Senhas não coincidem'); hasError = true; }
             if (hasError) return;
-            
+
             AuthView.setLoading(true, 'regBtn');
             try {
                 const result = await AuthController.register(name, email, password);
                 AuthView.setLoading(false, 'regBtn');
-                
+
                 if (result.success) {
                     AppView.showToast('✅ Conta criada com sucesso!', 'success');
-                    setTimeout(() => { 
-                        AuthView.showForm('login'); 
-                        document.getElementById('loginEmail').value = email; 
+                    setTimeout(() => {
+                        AuthView.showForm('login');
+                        document.getElementById('loginEmail').value = email;
                     }, 500);
                 } else {
                     AuthView.showError('regEmail', result.error);
                 }
             } catch (err) {
-                console.error("Erro fatal ao registrar:", err);
+                console.error('Erro fatal ao registrar:', err);
                 AuthView.setLoading(false, 'regBtn');
                 AuthView.showError('regEmail', 'Erro no servidor: ' + (err.message || 'Falha ao conectar'));
             }
@@ -182,19 +191,19 @@ class AppController {
 
         document.querySelectorAll('.password-toggle').forEach(btn => btn.addEventListener('click', () => {
             const input = document.getElementById(btn.dataset.target);
-            if (input) { 
-                input.type = input.type === 'password' ? 'text' : 'password'; 
-                btn.textContent = input.type === 'password' ? '👁️' : '🙈'; 
+            if (input) {
+                input.type = input.type === 'password' ? 'text' : 'password';
+                btn.textContent = input.type === 'password' ? '👁️' : '🙈';
             }
         }));
 
         document.querySelectorAll('.nav-tab').forEach(tab => tab.addEventListener('click', () => {
             AppView.showScreen(tab.dataset.screen);
             if (tab.dataset.screen === 'statistics') this.updateStats();
-            if (tab.dataset.screen === 'conference') { 
+            if (tab.dataset.screen === 'conference') {
                 const type = document.getElementById('confLotteryType').value;
-                AppView.renderConferenceInputs(type); 
-                AppView.renderLastResult(type, appState.resultsData[type]?.lastResult); 
+                AppView.renderConferenceInputs(type);
+                AppView.renderLastResult(type, appState.resultsData[type]?.lastResult);
             }
         }));
 
@@ -214,6 +223,7 @@ class AppController {
             AppView.renderLotteryCards(card.dataset.type);
             AppView.renderNumberSelectors(appState.currentLottery, [], []);
             if (appState.resultsData[appState.currentLottery]) {
+                LotteryController.recomputeWindow(appState.resultsData, appState.currentLottery, appState.currentTimeWindow);
                 AppView.renderInsights(appState.currentLottery, appState.resultsData[appState.currentLottery]);
             }
         }));
@@ -221,8 +231,8 @@ class AppController {
         document.addEventListener('click', (e) => {
             const ball = e.target.closest('.selector-ball');
             if (!ball || ball.classList.contains('disabled')) return;
-            
-            const num = parseInt(ball.dataset.num);
+
+            const num = parseInt(ball.dataset.num, 10);
             const type = ball.dataset.type;
             const cfg = LotteryModel.CONFIG[appState.currentLottery];
 
@@ -255,7 +265,14 @@ class AppController {
             const winVal = btn.dataset.window;
             appState.currentTimeWindow = winVal === 'full' ? 'full' : parseInt(winVal, 10);
             if (appState.resultsData[appState.currentLottery]) {
-                this.fetchResults();
+                const updated = LotteryController.recomputeWindow(
+                    appState.resultsData,
+                    appState.currentLottery,
+                    appState.currentTimeWindow
+                );
+                if (updated) {
+                    AppView.renderInsights(appState.currentLottery, updated);
+                }
             }
         }));
 
@@ -273,24 +290,23 @@ class AppController {
             AppView.renderConferenceInputs(type);
             AppView.renderLastResult(type, appState.resultsData[type]?.lastResult);
         });
-        
+
         document.getElementById('useLastBtn').addEventListener('click', () => {
             const type = document.getElementById('confLotteryType').value;
             const last = appState.resultsData[type]?.lastResult;
-            if (!last?.dezenas) { 
-                AppView.showToast('⚠️ Busque os dados primeiro!', 'error'); 
-                return; 
+            if (!last?.dezenas) {
+                AppView.showToast('⚠️ Busque os dados primeiro!', 'error');
+                return;
             }
-            last.dezenas.forEach((d, i) => { 
-                const input = document.getElementById(`conf-${i}`); 
-                if (input) input.value = d; 
+            last.dezenas.forEach((d, i) => {
+                const input = document.getElementById(`conf-${i}`);
+                if (input) input.value = d;
             });
             AppView.showToast('✅ Dezenas copiadas!', 'success');
         });
-        
+
         document.getElementById('confBtn').addEventListener('click', () => this.conferenceCheck());
 
-        // Export Buttons: PDF Real (Volantes Imprimíveis) e TXT
         document.getElementById('exportTxtBtn')?.addEventListener('click', () => this.exportGames('txt'));
         document.getElementById('exportPdfBtn')?.addEventListener('click', () => this.exportGames('pdf'));
 
@@ -298,9 +314,9 @@ class AppController {
             e.stopPropagation();
             AppView.toggleUserDropdown(true);
         });
-        
-        document.addEventListener('click', (e) => { 
-            if (!e.target.closest('.user-menu')) AppView.toggleUserDropdown(false); 
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.user-menu')) AppView.toggleUserDropdown(false);
         });
 
         document.querySelectorAll('.dropdown-item[data-action], .btn[data-action="logout"]').forEach(item => item.addEventListener('click', (e) => {
@@ -308,26 +324,28 @@ class AppController {
             AppView.toggleUserDropdown(false);
             const action = item.dataset.action;
             if (action === 'logout') {
+                AutomationController.stop();
                 document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
-                AuthController.logout(currentSession?.id).then(() => { 
-                    AuthView.show(); 
-                    AppView.showToast('👋 Até logo!', 'success'); 
+                AuthController.logout(currentSession?.id).then(() => {
+                    currentUser = null;
+                    currentSession = null;
+                    AuthView.show();
+                    AppView.showToast('👋 Até logo!', 'success');
                 });
             }
             if (action === 'open-profile') document.getElementById('profileModal').classList.add('active');
-            if (action === 'open-auto') { 
-                document.getElementById('autoModal').classList.add('active'); 
-                AppView.updateAutoUI(AutomationModel.state); 
-                AppView.renderAutoLog(AutomationModel.state.log); 
+            if (action === 'open-auto') {
+                document.getElementById('autoModal').classList.add('active');
+                AppView.updateAutoUI(AutomationModel.state);
+                AppView.renderAutoLog(AutomationModel.state.log);
             }
-            if (action === 'open-db-info') { 
-                document.getElementById('dbInfoModal').classList.add('active'); 
-                this.showDbInfo(); 
+            if (action === 'open-db-info') {
+                document.getElementById('dbInfoModal').classList.add('active');
+                this.showDbInfo();
             }
             if (action === 'export-data') this.exportData();
         }));
 
-        // Alteração de Senha no Modal de Perfil
         document.getElementById('changePassBtn')?.addEventListener('click', async () => {
             if (!currentUser) return;
             const currentPass = document.getElementById('currentPassword').value;
@@ -338,8 +356,8 @@ class AppController {
                 AppView.showToast('⚠️ Preencha todos os campos de senha!', 'error');
                 return;
             }
-            if (newPass.length < 6) {
-                AppView.showToast('⚠️ A nova senha deve ter no mínimo 6 caracteres!', 'error');
+            if (newPass.length < 8) {
+                AppView.showToast('⚠️ A nova senha deve ter no mínimo 8 caracteres!', 'error');
                 return;
             }
             if (newPass !== confirmPass) {
@@ -352,13 +370,37 @@ class AppController {
                 document.getElementById('currentPassword').value = '';
                 document.getElementById('newPassword').value = '';
                 document.getElementById('newPasswordConfirm').value = '';
-                AppView.showToast('🔒 Senha atualizada com criptografia PBKDF2!', 'success');
+                AppView.showToast('🔒 Senha atualizada com segurança!', 'success');
             } else {
                 AppView.showToast(`❌ ${res.error}`, 'error');
             }
         });
 
-        // Botões de Execução Manual e Limpeza do Modal de Automação
+        document.getElementById('deleteAccountBtn')?.addEventListener('click', async () => {
+            if (!currentUser) return;
+            const passInput = document.getElementById('deleteAccountPassword');
+            const password = passInput?.value || '';
+            if (!password) {
+                AppView.showToast('⚠️ Confirme sua senha para excluir a conta!', 'error');
+                return;
+            }
+            if (!window.confirm('Tem certeza absoluta? Todos os seus jogos, simulações e dados pessoais serão removidos permanentemente (LGPD).')) {
+                return;
+            }
+            const res = await AuthController.deleteAccount(currentUser.id, password);
+            if (res.success) {
+                AutomationController.stop();
+                if (passInput) passInput.value = '';
+                document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
+                currentUser = null;
+                currentSession = null;
+                AuthView.show();
+                AppView.showToast('🗑️ Conta e dados excluídos permanentemente.', 'success');
+            } else {
+                AppView.showToast(`❌ ${res.error}`, 'error');
+            }
+        });
+
         document.getElementById('runManualBtn')?.addEventListener('click', async () => {
             if (!currentUser) return;
             AppView.showToast('🤖 Executando ciclo manual de automação...', 'info');
@@ -386,9 +428,9 @@ class AppController {
 
         document.querySelectorAll('.interval-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                const minutes = parseInt(btn.dataset.minutes);
+                const minutes = parseInt(btn.dataset.minutes, 10);
                 AutomationModel.state.intervalMinutes = minutes;
-                
+
                 if (AutomationModel.state.active) {
                     AutomationController.start(() => this.runAutoCycle());
                 }
@@ -405,34 +447,33 @@ class AppController {
         btn.disabled = true;
         AppView.setAgentStatus('Sincronizando...', true);
         AppView.setLoading(true, 'Consultando base de dados oficial e calibrando Cadeias de Markov...');
-        
+
         try {
             const results = await LotteryController.fetchAllResults(
-                currentUser.id, 
-                ['lotofacil','mega','lotomania','quina'],
+                currentUser.id,
+                ['lotofacil', 'mega', 'lotomania', 'quina'],
                 appState.currentTimeWindow
             );
             Object.assign(appState.resultsData, results);
             appState.dataReady = true;
-            
+
             for (const type of Object.keys(results)) {
                 AppView.setLotteryStatus(type, results[type].data.length + ' concursos', true);
             }
-            
+
             const currentData = results[appState.currentLottery];
             AppView.setDataStatus(true, currentData.data.length + ' concursos', 'Atualizado: ' + new Date().toLocaleTimeString());
             AppView.setAgentStatus('✅ Base de dados atualizada', false);
             document.getElementById('generateBtn').disabled = false;
-            
+
             AppView.renderInsights(appState.currentLottery, currentData);
             AppView.renderNumberSelectors(appState.currentLottery, appState.fixedNumbers, appState.excludedNumbers);
-            
-            const stats = await UserModel.getStats(currentUser.id);
-            stats.resultsAnalyzed = Object.values(results).reduce((s, r) => s + r.data.length, 0);
-            await UserModel.updateStats(currentUser.id, stats);
+
+            const totalAnalyzed = Object.values(results).reduce((s, r) => s + r.data.length, 0);
+            const stats = await UserModel.incrementStats(currentUser.id, { resultsAnalyzed: totalAnalyzed });
             AppView.updateStats(stats);
-            
-            AppView.showToast(`✅ Sincronização concluída!`, 'success');
+
+            AppView.showToast('✅ Sincronização concluída!', 'success');
         } catch (e) {
             console.error('Fetch error:', e);
             AppView.showToast('❌ Falha na sincronização', 'error');
@@ -449,36 +490,36 @@ class AppController {
         const type = appState.currentLottery;
         const rd = appState.resultsData[type];
         if (!rd) { AppView.setLoading(false); return; }
-        
+
         try {
             const games = await LotteryController.generateGames(
-                currentUser.id, 
-                type, 
-                appState.currentStrategy, 
-                rd, 
-                appState.fixedNumbers, 
+                currentUser.id,
+                type,
+                appState.currentStrategy,
+                rd,
+                appState.fixedNumbers,
                 appState.excludedNumbers,
                 appState.currentTimeWindow,
                 batchCount
             );
             appState.generatedGames = games;
-            
-            const stats = await UserModel.getStats(currentUser.id);
-            stats.gamesGenerated += games.length; 
-            stats.simulations += 1;
-            await UserModel.updateStats(currentUser.id, stats);
-            
+
+            const stats = await UserModel.incrementStats(currentUser.id, {
+                gamesDelta: games.length,
+                simulationsDelta: 1
+            });
+
             appState.totalGamesGenerated = stats.gamesGenerated;
             appState.totalSimulations = stats.simulations;
             AppView.updateStats(stats);
             AppView.renderGames(games, type);
-            
-            appState.simulationHistory.unshift({ 
-                date: new Date().toLocaleString('pt-BR'), 
-                lottery: LotteryModel.CONFIG[type].name, 
-                strategy: appState.currentStrategy, 
-                games: games.length, 
-                resultsAnalyzed: rd.data.length 
+
+            appState.simulationHistory.unshift({
+                date: new Date().toLocaleString('pt-BR'),
+                lottery: LotteryModel.CONFIG[type].name,
+                strategy: appState.currentStrategy,
+                games: games.length,
+                resultsAnalyzed: rd.data.length
             });
             AppView.renderHistory(appState.simulationHistory);
             AppView.showToast(`✅ ${games.length} jogos de alta precisão gerados!`, 'success');
@@ -490,25 +531,20 @@ class AppController {
         }
     }
 
-    static updateStats() {
+    static async updateStats() {
         const type = appState.currentLottery;
         const rd = appState.resultsData[type];
-        if (!rd || !rd.analysis) { 
-            StatisticsView.showStats(false); 
-            StatisticsView.showPatterns(false); 
-            return; 
+        if (!rd || !rd.analysis) {
+            StatisticsView.showStats(false);
+            StatisticsView.showPatterns(false);
+            return;
         }
-        
+
         StatisticsView.showStats(true);
         StatisticsView.renderFrequency(type, rd);
         StatisticsView.renderParity(rd, type);
         StatisticsView.renderRange(type, rd);
         StatisticsView.renderFreqGrid(type, rd);
-        
-        if (rd.data && rd.data.length > 0) {
-            const benchmark = LotteryController.runStrategyBenchmark(rd.data, LotteryModel.CONFIG[type]);
-            StatisticsView.renderStrategyBenchmark(benchmark);
-        }
 
         if (appState.generatedGames.length > 0) {
             StatisticsView.showPatterns(true);
@@ -527,6 +563,11 @@ class AppController {
             } else if (appState.generatedGames[0]?.monteCarlo) {
                 StatisticsView.renderMonteCarloChart(appState.generatedGames[0].monteCarlo);
             }
+        }
+
+        if (rd.data && rd.data.length > 0) {
+            const benchmark = await LotteryController.runStrategyBenchmarkAsync(rd.data, LotteryModel.CONFIG[type]);
+            StatisticsView.renderStrategyBenchmark(benchmark);
         }
     }
 
@@ -558,7 +599,7 @@ class AppController {
 
         appState.generatedGames.forEach((g, i) => {
             const nums = g.numbers.map(n => String(n).padStart(2, '0')).join(' - ');
-            content += `JOGO #${i+1} [Score: ${g.modelScore}/100 | Gauss: ${g.gaussianQualityIndex || 85}% | EV: ${g.expectedValueMultiplier || 1.1}x]\n`;
+            content += `JOGO #${i + 1} [Score: ${g.modelScore}/100 | Gauss: ${g.gaussianQualityIndex || 85}% | EV: ${g.expectedValueMultiplier || 1.1}x]\n`;
             content += `${nums}\n\n`;
         });
 
@@ -571,10 +612,10 @@ class AppController {
     }
 
     /**
-     * Gera uma Folha de Volantes 2D Real para Impressão / Salvamento em PDF
+     * Gera uma Folha de Volantes 2D Real para Impressão / Salvamento em PDF (100% compatível com CSP estrita)
      */
     static exportPrintableVolanteSheet(cfg, proj, wheelMeta) {
-        const { rows, cols } = StatisticalAnalyzer.getGridDimensions(cfg.total);
+        const { cols } = StatisticalAnalyzer.getGridDimensions(cfg.total);
         const fin = proj?.financial;
 
         const cardsHtml = appState.generatedGames.map((g, idx) => {
@@ -619,7 +660,7 @@ class AppController {
 </head>
 <body>
     <div class="no-print" style="margin-bottom:14px;">
-        <button onclick="window.print()" style="padding:8px 16px;background:#10b981;color:#fff;border:none;border-radius:6px;font-weight:bold;cursor:pointer;">🖨️ Imprimir / Salvar como PDF</button>
+        <button id="printNowBtn" style="padding:8px 16px;background:#10b981;color:#fff;border:none;border-radius:6px;font-weight:bold;cursor:pointer;">🖨️ Imprimir / Salvar como PDF</button>
     </div>
     <div class="header">
         <div>
@@ -636,7 +677,6 @@ class AppController {
         ${wheelMeta ? `<div><strong>Matriz de Fechamento (${wheelMeta.elitePoolSize} dezenas):</strong> [${wheelMeta.elitePool.map(n => String(n).padStart(2, '0')).join(', ')}] — Cobertura de Pares: ${wheelMeta.pairCoverageGuaranteePct}%</div>` : ''}
     </div>
     <div class="grid-wrapper">${cardsHtml}</div>
-    <script>setTimeout(() => window.print(), 350);</script>
 </body>
 </html>`;
 
@@ -644,6 +684,10 @@ class AppController {
         if (win) {
             win.document.write(printHtml);
             win.document.close();
+            win.document.getElementById('printNowBtn')?.addEventListener('click', () => win.print());
+            setTimeout(() => {
+                try { win.focus(); win.print(); } catch (_) {}
+            }, 350);
             AppView.showToast('📄 Folha de Volantes PDF aberta para impressão!', 'success');
         } else {
             const blob = new Blob([printHtml], { type: 'text/html' });
@@ -660,44 +704,44 @@ class AppController {
         const cfg = LotteryModel.CONFIG[type];
         const drawnCount = cfg.drawn || cfg.pick;
         const drawn = [];
-        
+
         for (let i = 0; i < drawnCount; i++) {
-            const val = parseInt(document.getElementById(`conf-${i}`).value);
-            if (!val || val < 1 || val > cfg.total) { 
-                AppView.showToast('⚠️ Informe todas as dezenas!', 'error'); 
-                return; 
+            const val = parseInt(document.getElementById(`conf-${i}`).value, 10);
+            if (!val || val < 1 || val > cfg.total) {
+                AppView.showToast('⚠️ Informe todas as dezenas!', 'error');
+                return;
             }
             drawn.push(val);
         }
-        
-        if (appState.generatedGames.length === 0) { 
-            AppView.showToast('⚠️ Nenhuma simulação ativa!', 'error'); 
-            return; 
+
+        if (appState.generatedGames.length === 0) {
+            AppView.showToast('⚠️ Nenhuma simulação ativa!', 'error');
+            return;
         }
-        
+
         const results = appState.generatedGames.map(g => {
             const hits = g.numbers.filter(n => drawn.includes(n));
             return { ...g, hits, hitCount: hits.length };
         });
-        
+
         AppView.renderConferenceResults(results, type, appState.resultsData[type]?.lastResult);
     }
 
     static toggleAutomation(id) {
-        const key = id.replace('Toggle','').toLowerCase();
+        const key = id.replace('Toggle', '').toLowerCase();
         if (key === 'autofetch') AutomationModel.state.autoFetch = document.getElementById(id).checked;
         else if (key === 'autogenerate') AutomationModel.state.autoGenerate = document.getElementById(id).checked;
         else if (key === 'autoconference') AutomationModel.state.autoConference = document.getElementById(id).checked;
         else if (key === 'autoalllotteries') AutomationModel.state.autoAllLotteries = document.getElementById(id).checked;
-        
+
         AutomationModel.state.active = AutomationModel.state.autoFetch || AutomationModel.state.autoGenerate || AutomationModel.state.autoConference;
-        
+
         if (AutomationModel.state.active) {
             AutomationController.start(() => this.runAutoCycle());
         } else {
             AutomationController.stop();
         }
-        
+
         AutomationModel.save(currentUser.id);
         AppView.updateAutoUI(AutomationModel.state);
         AutomationModel.addLog('info', `Config: ${key} = ${document.getElementById(id).checked ? 'ON' : 'OFF'}`);
@@ -709,50 +753,50 @@ class AppController {
         await AutomationController.executeCycle(currentUser.id, appState);
         AppView.updateAutoUI(AutomationModel.state);
         AppView.renderAutoLog(AutomationModel.state.log);
-        
+
         if (document.getElementById('screen-simulation').classList.contains('active')) {
             AppView.renderGames(appState.generatedGames, appState.currentLottery);
         }
     }
 
     static async showDbInfo() {
-        const userCount = await Database.count('users');
-        const sessionCount = await Database.count('sessions');
-        const gameCount = currentUser ? (await Database.getAllByIndex('games', 'userId', currentUser.id)).length : 0;
-        const simCount = currentUser ? (await Database.getAllByIndex('simulations', 'userId', currentUser.id)).length : 0;
-        const resultsCount = await Database.count('lottery_results');
-        
+        const [gameCount, simCount, resultsCount] = await Promise.all([
+            currentUser ? Database.count('games') : 0,
+            currentUser ? Database.count('simulations') : 0,
+            Database.count('lottery_results')
+        ]);
+
         document.getElementById('dbStatsContent').innerHTML = `
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">
-                <div>👤 Usuários: <strong>${userCount}</strong></div>
-                <div>🔑 Sessões: <strong>${sessionCount}</strong></div>
-                <div>🎲 Jogos: <strong>${gameCount}</strong></div>
-                <div>📊 Sims: <strong>${simCount}</strong></div>
-                <div>📋 Resultados: <strong>${resultsCount}</strong></div>
-                <div>💾 Storage: <strong>${Database.useNeon ? 'Neon PostgreSQL' : 'IndexedDB Local'}</strong></div>
+                <div>🎲 Seus Jogos: <strong>${gameCount}</strong></div>
+                <div>📊 Suas Sims: <strong>${simCount}</strong></div>
+                <div>📋 Concursos em Cache: <strong>${resultsCount}</strong></div>
+                <div>🔒 Backend: <strong>${Database.useApi ? 'API Serverless (Neon)' : 'IndexedDB Local'}</strong></div>
             </div>`;
     }
 
     static async exportData() {
         try {
-            const games = await Database.getAllByIndex('games', 'userId', currentUser.id);
-            const sims = await Database.getAllByIndex('simulations', 'userId', currentUser.id);
-            const stats = await UserModel.getStats(currentUser.id);
-            const data = { 
-                user: { name: currentUser.name, email: currentUser.email }, 
-                exportDate: new Date().toISOString(), 
-                games, 
-                simulations: sims, 
-                stats 
+            const [games, sims, stats] = await Promise.all([
+                Database.getAllByIndex('games', 'userId', currentUser.id),
+                Database.getAllByIndex('simulations', 'userId', currentUser.id),
+                UserModel.getStats(currentUser.id)
+            ]);
+            const data = {
+                user: { name: currentUser.name, email: currentUser.email },
+                exportDate: new Date().toISOString(),
+                games,
+                simulations: sims,
+                stats
             };
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const a = document.createElement('a'); 
+            const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
             a.download = `loto_mais_export_${new Date().toISOString().split('T')[0]}.json`;
             a.click();
             AppView.showToast('📥 Exportação concluída!', 'success');
-        } catch (e) { 
-            AppView.showToast('❌ Erro ao exportar dados', 'error'); 
+        } catch (e) {
+            AppView.showToast('❌ Erro ao exportar dados', 'error');
         }
     }
 }

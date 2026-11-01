@@ -1,4 +1,5 @@
 import { LotteryModel } from '../models/lottery.js';
+import { escapeHtml } from '../utils/sanitize.js';
 
 /**
  * View: Statistics - Data visualization and charts
@@ -85,14 +86,14 @@ export class StatisticsView {
             const isDiffPos = item.diff > 0;
             const diffText = isDiffPos ? `+${item.diff.toFixed(4)}` : `${(item.diff || 0).toFixed(4)}`;
             const badgeCls = isDiffPos ? 'badge-green' : item.diff === 0 ? 'badge-purple' : 'badge-red';
-            const pVal = item.pValue !== undefined ? item.pValue.toFixed(4) : '-';
+            const pVal = typeof item.adjustedPValue === 'number' ? item.adjustedPValue.toFixed(4) : (item.pValue !== undefined ? item.pValue.toFixed(4) : '-');
             const sigIcon = item.isSignificant ? '✅' : '⚠️';
             const ciText = item.confidenceInterval 
                 ? `[${item.confidenceInterval.lower} — ${item.confidenceInterval.upper}]` 
                 : '-';
             return `
                 <tr>
-                    <td><strong>${item.strategy}</strong></td>
+                    <td><strong>${escapeHtml(item.strategy)}</strong></td>
                     <td>${item.meanHits.toFixed(2)} acertos</td>
                     <td>${item.baselineMean.toFixed(2)} acertos</td>
                     <td><span class="badge ${badgeCls}">${diffText}</span></td>

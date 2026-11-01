@@ -1,5 +1,6 @@
 import { LotteryModel } from '../models/lottery.js';
 import { StatisticalAnalyzer } from '../engine/statisticalAnalyzer.js';
+import { escapeHtml } from '../utils/sanitize.js';
 
 /**
  * View: App - Main dashboard and screens
@@ -43,7 +44,7 @@ export class AppView {
         const existing = document.querySelector('.toast'); if (existing) existing.remove();
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
-        toast.innerHTML = message;
+        toast.textContent = message;
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 3000);
     }
@@ -336,7 +337,7 @@ export class AppView {
                 ${explanations && explanations.length > 0 ? `
                 <div class="game-explanations" style="margin-top:0.75rem; font-size:0.72rem; color:var(--text-muted); border-top:1px dashed rgba(255,255,255,0.1); padding-top:0.5rem;">
                     <div style="font-weight:600; color:var(--text-main); margin-bottom:0.25rem;">🔍 Motivos da Seleção:</div>
-                    ${explanations.slice(0, 4).map(exp => `<div style="margin-bottom:0.15rem;">${exp}</div>`).join('')}
+                    ${explanations.slice(0, 4).map(exp => `<div style="margin-bottom:0.15rem;">${escapeHtml(exp)}</div>`).join('')}
                 </div>
                 ` : ''}
 
@@ -401,13 +402,13 @@ export class AppView {
     static renderHistory(history) {
         const tbody = document.getElementById('historyBody');
         if (!history.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">Nenhuma simulação registrada</td></tr>'; return; }
-        tbody.innerHTML = history.map(h => `<tr><td>${h.date}</td><td><span class="badge badge-purple">${h.lottery}</span></td><td>${h.strategy}</td><td>${h.games}</td><td><span class="badge badge-green">Concluído</span></td></tr>`).join('');
+        tbody.innerHTML = history.map(h => `<tr><td>${escapeHtml(h.date)}</td><td><span class="badge badge-purple">${escapeHtml(h.lottery)}</span></td><td>${escapeHtml(h.strategy)}</td><td>${escapeHtml(h.games)}</td><td><span class="badge badge-green">Concluído</span></td></tr>`).join('');
     }
 
     static renderAutoLog(log) {
         const container = document.getElementById('autoLog');
         if (!container) return;
-        container.innerHTML = log.map(e => `<div class="auto-log-entry"><span class="auto-log-time">${e.time}</span><span class="auto-log-type ${e.type}">${e.type==='fetch'?'🔄':e.type==='generate'?'⚡':e.type==='conference'?'🔍':e.type==='error'?'❌':'ℹ️'} ${e.message}</span></div>`).join('');
+        container.innerHTML = log.map(e => `<div class="auto-log-entry"><span class="auto-log-time">${escapeHtml(e.time)}</span><span class="auto-log-type ${escapeHtml(e.type)}">${e.type==='fetch'?'🔄':e.type==='generate'?'⚡':e.type==='conference'?'🔍':e.type==='error'?'❌':'ℹ️'} ${escapeHtml(e.message)}</span></div>`).join('');
     }
 
     static updateAutoUI(state) {

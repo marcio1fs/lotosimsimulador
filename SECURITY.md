@@ -1,21 +1,23 @@
-# Security Policy
+# Política de Segurança — Loto Mais
 
-## Supported Versions
+## Versões Suportadas
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+| Versão | Suportada |
+| :--- | :--- |
+| `1.x` | ✅ Sim |
+| `< 1.0` | ❌ Não |
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+## Arquitetura de Segurança
 
-## Reporting a Vulnerability
+- **Credenciais isoladas no servidor**: `DATABASE_URL` é lida exclusivamente em funções serverless (`server/handler.js`). Nenhuma variável `VITE_*` deve conter segredos.
+- **Autenticação**: Senhas armazenadas com `bcrypt` (custo 12). Sessões em cookies `HttpOnly; SameSite=Lax` (`Secure` em HTTPS), com tokens armazenados no banco apenas como hash `SHA-256`.
+- **Proteção contra força bruta**: Limite de 5 falhas em 15 minutos por IP ou e-mail (`login_attempts`).
+- **Isolamento de dados**: Whitelist estrita de tabelas e colunas (`server/tables.js`) e escopo automático por `user_id` da sessão autenticada.
+- **Cabeçalhos de defesa**: `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` e `Referrer-Policy` configurados em `vercel.json`.
 
-Use this section to tell people how to report a vulnerability.
+## Como Reportar uma Vulnerabilidade
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+Caso encontre uma vulnerabilidade, **não abra uma issue pública**. Entre em contato de forma privada com o mantenedor do repositório informando:
+1. Descrição técnica do problema e impacto potencial;
+2. Passos mínimos para reprodução;
+3. Sugestão de mitigação (opcional).
