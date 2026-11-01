@@ -1,5 +1,6 @@
 import { LotteryModel } from '../models/lottery.js';
 import { SeededRandom } from '../engine/prng.js';
+import { resolveLatest, resolveHistory, validateDraw, DRAW_SOURCES } from './drawSourcePolicy.js';
 
 export class LotteryAPIService {
     /**
@@ -38,31 +39,35 @@ export class LotteryAPIService {
         const config = LotteryModel.CONFIG[type];
         if (!config) return [];
 
-        const historyUrl = this.HISTORY_ENDPOINTS[type] || `https://loteriascaixa-api.herokuapp.com/api/${config.apiName}`;
+        // O histórico completo só existe no espelho comunitário — a API oficial
+        // publica apenas o último concurso. A política de fontes torna essa
+        // dependência explícita (supportsHistory) em vez de escondida numa URL.
         try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 8000);
-            const resp = await fetch(historyUrl, {
-                mode: 'cors',
-                headers: { 'Accept': 'application/json' },
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
+            const result = await resolveHistory({ type, timeoutMs: 8000, retries: 1, maxDraws });
 
-            if (resp.ok) {
-                const json = await resp.json();
-                if (Array.isArray(json) && json.length > 0) {
-                    const validDraws = [];
-                    for (const item of json) {
-                        const parsed = this.parseAndValidateResult(item, type);
-                        if (parsed) validDraws.push(parsed);
-                        if (validDraws.length >= maxDraws) break;
-                    }
-                    if (validDraws.length > 0) {
-                        validDraws.sort((a, b) => b.concurso - a.concurso);
-                        return validDraws;
-                    }
-                }
+            this.lastResolution = this.lastResolution || {};
+            this.lastResolution[`${type}:history`] = {
+                sourceId: result.sourceId,
+                degraded: result.degraded,
+                rejected: result.rejected.length,
+                sourcesTried: result.sourcesTried
+            };
+
+            if (result.rejected.length > 0) {
+                console.warn(
+                    `${result.rejected.length} concurso(s) de ${type} rejeitado(s) na validação de esquema:`,
+                    result.rejected.slice(0, 3)
+                );
+            }
+
+            if (result.draws.length > 0) {
+                return result.draws.map(d => ({
+                    concurso: d.concurso,
+                    data: d.data,
+                    dezenas: d.dezenas,
+                    acumulado: d.acumulou,
+                    valor: d.valorEstimado ?? ''
+                }));
             }
         } catch (e) {
             console.warn(`Aviso ao buscar histórico completo de ${type}, tentando fallback:`, e.message);
@@ -130,94 +135,67 @@ export class LotteryAPIService {
     }
 
     /**
-     * Busca o último concurso de uma loteria com retries, timeout e validação rigorosa
-     * @param {string} type - Modalidade da loteria ('lotofacil', 'mega', 'lotomania', 'quina')
-     * @param {number} retriesPerUrl - Quantidade de tentativas por URL
+     * Busca o último concurso, tentando as fontes em ORDEM DE PRIORIDADE.
+     *
+     * Oficial (Caixa) primeiro, espelho depois — sequencial, não em corrida:
+     * quem responde primeiro não é quem é mais confiável. No navegador a fonte
+     * oficial costuma falhar por CORS; essa falha é imediata e cai para o
+     * espelho sem custo perceptível (ver `drawSourcePolicy.js`).
+     *
+     * @param {string} type
+     * @param {number} retriesPerUrl - tentativas por fonte
+     * @returns {Promise<object|null>}
      */
     static async fetchLatest(type, retriesPerUrl = 2) {
         const config = LotteryModel.CONFIG[type];
         if (!config) return null;
 
-        const urls = this.ENDPOINTS[type] || [
-            `https://loteriascaixa-api.herokuapp.com/api/${config.apiName}/latest`
-        ];
+        const result = await resolveLatest({
+            type,
+            timeoutMs: 6000,
+            retries: Math.max(1, retriesPerUrl)
+        });
 
-        for (const url of urls) {
-            for (let attempt = 0; attempt < retriesPerUrl; attempt++) {
-                try {
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s timeout
+        this.lastResolution = this.lastResolution || {};
+        this.lastResolution[type] = result;
 
-                    const resp = await fetch(url, {
-                        mode: 'cors',
-                        headers: { 'Accept': 'application/json' },
-                        signal: controller.signal
-                    });
-
-                    clearTimeout(timeoutId);
-
-                    if (resp.ok) {
-                        const json = await resp.json();
-                        const parsed = this.parseAndValidateResult(json, type);
-                        if (parsed) {
-                            return parsed; // Resposta válida encontrada!
-                        }
-                    }
-                } catch (e) {
-                    const isTimeout = e.name === 'AbortError';
-                    console.warn(`Tentativa ${attempt + 1} falhou para ${url} (${type}):`, isTimeout ? 'Timeout' : e.message);
-                    // Pausa breve antes do retry
-                    if (attempt < retriesPerUrl - 1) {
-                        await new Promise(res => setTimeout(res, 500 * (attempt + 1)));
-                    }
-                }
-            }
+        if (!result.draw) {
+            console.error(
+                `Não foi possível obter dados oficiais para ${type}. Tentativas: ` +
+                result.errors.map(e => `${e.source}: ${e.error}`).join(' | ')
+            );
+            return null;
         }
 
-        console.error(`Não foi possível obter dados da API externa para ${type} em nenhuma das URLs.`);
-        return null;
+        const { draw } = result;
+        return {
+            concurso: draw.concurso,
+            data: draw.data,
+            dezenas: draw.dezenas,
+            acumulado: draw.acumulou,
+            valor: draw.valorEstimado ?? '',
+            source: result.sourceId
+        };
+    }
+
+    /** Fontes disponíveis e suas capacidades (para diagnóstico/UI). */
+    static getSources() {
+        return DRAW_SOURCES.map(s => ({ ...s }));
     }
 
     /**
      * Sanitiza e valida estruturalmente o resultado obtido da API externa
      */
     static parseAndValidateResult(apiData, type) {
-        if (!apiData || typeof apiData !== 'object') return null;
-
-        const config = LotteryModel.CONFIG[type];
-        const expectedDrawnCount = config.drawn || config.pick;
-
-        // Extração flexível do concurso
-        const concurso = parseInt(apiData.concurso || apiData.numero) || 0;
-        if (concurso <= 0) return null;
-
-        // Extração flexível das dezenas
-        let rawDezenas = [];
-        if (Array.isArray(apiData.listaDezenas)) rawDezenas = apiData.listaDezenas;
-        else if (Array.isArray(apiData.dezenas)) rawDezenas = apiData.dezenas;
-        else if (Array.isArray(apiData.dezenasOrdemSorteio)) rawDezenas = apiData.dezenasOrdemSorteio;
-        else if (Array.isArray(apiData.dezenasSorteadasOrdemSorteio)) rawDezenas = apiData.dezenasSorteadasOrdemSorteio;
-
-        if (!rawDezenas || rawDezenas.length === 0) return null;
-
-        // Validação e normalização de números
-        const numericNumbers = rawDezenas.map(d => parseInt(d, 10)).filter(n => !isNaN(n) && n >= 1 && n <= config.total);
-        const uniqueNumbers = [...new Set(numericNumbers)].sort((a, b) => a - b);
-
-        // Valida se a quantidade de dezenas bate com a regra do jogo
-        if (uniqueNumbers.length !== expectedDrawnCount) {
-            console.warn(`Quantidade de dezenas inválida (${uniqueNumbers.length} vs esperada ${expectedDrawnCount}) para ${type} concurso #${concurso}`);
-            return null;
-        }
-
-        const formattedDezenas = uniqueNumbers.map(n => String(n).padStart(2, '0'));
-
+        const validation = validateDraw(apiData, type);
+        if (!validation.ok) return null;
+        const { draw } = validation;
         return {
-            concurso,
-            data: apiData.dataApuracao || apiData.data || new Date().toLocaleDateString('pt-BR'),
-            dezenas: formattedDezenas,
-            acumulado: Boolean(apiData.acumulado),
-            valor: apiData.valorEstimadoProximoConcurso || apiData.valorEstimado || ''
+            concurso: draw.concurso,
+            data: draw.data || new Date().toLocaleDateString('pt-BR'),
+            dezenas: draw.dezenas,
+            acumulado: draw.acumulou,
+            valor: draw.valorEstimado ?? ''
         };
     }
 }

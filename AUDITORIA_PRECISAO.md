@@ -289,7 +289,42 @@ significativo" que na prática significa "faltou permutação".
 O teste roda **sob demanda**, nunca no caminho de geração: cada estatística executa o
 pipeline completo sobre um histórico embaralhado (~1,3 ms por concurso avaliado).
 
-**6.7 Fonte oficial dos dados.** O espelho `loteriascaixa-api.herokuapp.com` é um serviço de terceiros em Heroku (risco de descontinuação). O endpoint oficial da Caixa (`servicebus2.caixa.gov.br`) está na CSP mas é usado só como fallback. Inverter a ordem e cachear no Neon com validação de esquema.
+**6.7 Fonte oficial dos dados — ✅ implementado.** O espelho `loteriascaixa-api.herokuapp.com` é um serviço de terceiros em Heroku (risco de descontinuação). O endpoint oficial da Caixa (`servicebus2.caixa.gov.br`) está na CSP mas é usado só como fallback. Inverter a ordem e cachear no Neon com validação de esquema.
+
+*Implementado* em `js/services/drawSourcePolicy.js` (compartilhado entre navegador e
+servidor), com 34 testes e nenhuma chamada de rede nos testes.
+
+**O achado principal: a prioridade era fictícia.** No servidor, a escolha entre fontes era
+`Promise.any([caixa, mirror])` — que retorna **a primeira resposta que chegar**, não a
+primeira da lista. O espelho, sendo mais rápido, vencia quase sempre. A ordem do array
+sugeria "oficial primeiro" e não significava nada. Agora a resolução é **sequencial**:
+tenta a oficial, só então a seguinte. Um teste de regressão garante que o espelho
+respondendo em 1 ms não derrota a oficial respondendo em 20 ms — e que o espelho nem
+chega a ser consultado quando a oficial responde.
+
+**A limitação real que precisava ser dita:** o endpoint oficial **não publica histórico
+completo** (só o último concurso) e **não envia cabeçalhos CORS**, então no navegador ele
+falha por política do browser. A política declara isso como capacidade
+(`supportsHistory`, `corsFromBrowser`) em vez de deixar escondido numa URL. Consequências:
+no servidor a ordem é oficial → espelho; no navegador a oficial é tentada primeiro mesmo
+assim (a falha de CORS é imediata, custa uma viagem de rede) e cai para o espelho — se um
+dia a Caixa habilitar CORS, nada precisa mudar. E o **histórico completo depende do
+espelho**: isso é uma dependência real, agora documentada.
+
+**Validação de esquema estrita** (`validateDraw`): concurso inteiro positivo, exatamente
+`drawn` dezenas, dentro do intervalo, sem repetição. O registro inválido é **rejeitado com
+motivo** (`esperadas 15 dezenas, recebidas 3`, `dezena fora do intervalo 1..25`, …) em vez
+de ser filtrado até "parecer válido" — aceitar parcialmente um sorteio corrompido contamina
+todas as estatísticas calculadas depois.
+
+**Degradação é declarada, não silenciosa.** `resolveLatest` devolve `sourcesTried`,
+`errors` e `degraded`; `/api/lottery/sync` repassa isso. Servir cache sem avisar seria
+pior que falhar: o usuário analisaria uma base desatualizada sem saber.
+
+**Bug latente encontrado no caminho:** o cliente lia `serverSync.synced[type].latest`, mas
+o servidor devolve `lotteries[type].draws`. A chave nunca existiu — o concurso
+recém-sincronizado era descartado em silêncio e `lastResult` era sempre `null` em modo
+servidor. Corrigido, com aviso de degradação no console quando todas as fontes falham.
 
 ### Prioridade média — anti-crowd com base empírica
 
@@ -317,7 +352,7 @@ exigem uma passada de formatação sobre todo o código, que merece commit próp
 
 **6.13 CSRF/Origin.** `SameSite=Lax` já bloqueia POST cross-site; adicionar verificação de `Origin`/`Sec-Fetch-Site` nos endpoints de mutação fecha a borda.
 
-**6.14 Atualizar a documentação.** `AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 21 arquivos de teste e 262 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
+**6.14 Atualizar a documentação.** `AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 22 arquivos de teste e 296 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
 
 ---
 

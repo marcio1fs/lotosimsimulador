@@ -1,17 +1,14 @@
 /**
  * Sincronização rápida de resultados oficiais no servidor:
- * - Disputa espelhos em paralelo (Promise.any) sem bloqueio de CORS do navegador
+ * - Prioridade SEQUENCIAL entre fontes (oficial → espelho), nunca corrida
  * - Cache em memória com TTL de 5 minutos por modalidade
  * - Backfill automático de histórico quando a base tem poucos concursos
  * - Grava acumulou e valor_estimado normalizados
  */
 
-const LOTTERY_RULES = {
-    lotofacil: { apiName: 'lotofacil', total: 25, drawn: 15 },
-    mega: { apiName: 'megasena', total: 60, drawn: 6 },
-    lotomania: { apiName: 'lotomania', total: 100, drawn: 20 },
-    quina: { apiName: 'quina', total: 80, drawn: 5 }
-};
+import { DRAW_RULES, resolveLatest, DRAW_SOURCES } from '../js/services/drawSourcePolicy.js';
+
+const LOTTERY_RULES = DRAW_RULES;
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const latestCache = new Map(); // type -> { at, parsed }
@@ -87,6 +84,18 @@ async function fetchJsonWithTimeout(url, timeoutMs, externalSignal) {
     }
 }
 
+/**
+ * Busca o último concurso nas fontes externas, **em ordem de prioridade**.
+ *
+ * Antes isto era um `Promise.any([caixa, mirror])`: quem respondesse primeiro
+ * ganhava — e o espelho, mais rápido, vencia quase sempre. A ordem do array
+ * sugeria "oficial primeiro" sem significar nada. Agora as fontes são tentadas
+ * sequencialmente (ver `js/services/drawSourcePolicy.js`), com validação de
+ * esquema e motivo de falha por fonte.
+ *
+ * @param {string} type
+ * @returns {Promise<object|null>} concurso normalizado, ou null
+ */
 export async function fetchLatestExternal(type) {
     const rule = LOTTERY_RULES[type];
     if (!rule) return null;
@@ -96,25 +105,28 @@ export async function fetchLatestExternal(type) {
         return cached.parsed;
     }
 
-    const urls = [
-        `https://servicebus2.caixa.gov.br/portaldeloterias/api/${rule.apiName}`,
-        `https://loteriascaixa-api.herokuapp.com/api/${rule.apiName}/latest`
-    ];
-
-    const raceAbort = new AbortController();
-    try {
-        const winner = await Promise.any(urls.map(async (url) => {
-            const json = await fetchJsonWithTimeout(url, 4500, raceAbort.signal);
-            const parsed = normalizeDrawPayload(json, type);
-            if (!parsed) throw new Error('Payload inválido');
-            return parsed;
-        }));
-        raceAbort.abort();
-        latestCache.set(type, { at: Date.now(), parsed: winner });
-        return winner;
-    } catch {
-        return null;
+    const result = await resolveLatest({ type, timeoutMs: 4500, retries: 1 });
+    if (result.draw) {
+        latestCache.set(type, { at: Date.now(), parsed: result.draw });
+        lastResolution.set(type, result);
+        return result.draw;
     }
+
+    lastResolution.set(type, result);
+    lastResolutionError.set(type, result.errors);
+    return null;
+}
+
+/** Diagnóstico da última resolução por modalidade (fonte usada, tentativas). */
+const lastResolution = new Map();
+const lastResolutionError = new Map();
+
+export function getLastResolution(type) {
+    return lastResolution.get(type) || null;
+}
+
+export function getSourceCatalog() {
+    return DRAW_SOURCES.map(s => ({ id: s.id, label: s.label, priority: s.priority }));
 }
 
 async function bulkInsertDraws(sql, draws) {
@@ -211,6 +223,10 @@ export async function syncLotteries(sql, { types = [], since = {} } = {}) {
             [type, sinceConcurso]
         );
 
+        // A resposta diz de onde vieram os dados e se houve degradação. Servir
+        // cache silenciosamente seria pior que falhar: o usuário analisaria uma
+        // base que não é a mais recente sem saber.
+        const resolution = getLastResolution(type);
         out[type] = {
             draws: rows.map(r => ({
                 lotteryType: type,
@@ -221,7 +237,11 @@ export async function syncLotteries(sql, { types = [], since = {} } = {}) {
                 acumulado: Boolean(r.acumulou),
                 valor: r.valor_estimado ? Number(r.valor_estimado).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : ''
             })),
-            syncedFromApi: Boolean(latest)
+            syncedFromApi: Boolean(latest),
+            source: latest ? (resolution?.sourceId ?? null) : null,
+            degraded: !latest,
+            sourcesTried: resolution?.sourcesTried ?? [],
+            errors: latest ? [] : (lastResolutionError.get(type) ?? [])
         };
     }));
 
