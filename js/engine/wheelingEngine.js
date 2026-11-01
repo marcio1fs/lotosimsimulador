@@ -17,6 +17,7 @@ import { GaussianFilterEngine } from './gaussianFilterEngine.js';
 import { ScoringEngine } from './scoringEngine.js';
 import { AntiCrowdEngine } from './antiCrowdEngine.js';
 import { SeededRandom } from './prng.js';
+import { pairCount } from './pairMatrix.js';
 
 export class WheelingEngine {
     /**
@@ -106,7 +107,7 @@ export class WheelingEngine {
                     if (m === n || excludedSet.has(m)) continue;
                     const a = Math.min(n, m);
                     const b = Math.max(n, m);
-                    pairStrength += (analysis.pairMatrix[a]?.[b] || 0);
+                    pairStrength += pairCount(analysis.pairMatrix, a, b);
                 }
                 pairStrength = pairStrength / Math.max(1, total * (analysis.expectedFreq || 1));
             }
@@ -522,7 +523,7 @@ export class WheelingEngine {
                     selected.forEach(s => {
                         const a = Math.min(n, s);
                         const b = Math.max(n, s);
-                        pairSum += (analysis.pairMatrix[a]?.[b] || 0);
+                        pairSum += pairCount(analysis.pairMatrix, a, b);
                     });
                     const avgPair = pairSum / selected.size;
                     synergyBonus = 1 + Math.min(0.5, avgPair / Math.max(1, analysis.expectedFreq || 10));

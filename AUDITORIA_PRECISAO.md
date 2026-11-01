@@ -405,7 +405,40 @@ O guarda de `Math.random` já reprovou um defeito real: `tests/backtest.test.js`
 gerava histórico mock sem semente. **ESLint + Prettier seguem pendentes** —
 exigem uma passada de formatação sobre todo o código, que merece commit próprio.
 
-**6.10 Performance de memória.** `analyze()` monta matrizes O(N²) de objetos (`pairMatrix` = 4.950 objetos na Mega, 4.950 na Quina, 10.000 na Lotomania) mais um array de todos os pares ordenado. *Correção:* `Int32Array(total*total)` triangular + memoização por `(últimoConcurso, janela)`.
+**6.10 Performance de memória — ✅ implementado.**
+`analyze()` monta matrizes O(N²) de objetos (`pairMatrix` = 4.950 objetos na Mega, 4.950 na Quina, 10.000 na Lotomania) mais um array de todos os pares ordenado. *Correção:* `Int32Array(total*total)` triangular + memoização por `(últimoConcurso, janela)`.
+
+*Correção do diagnóstico acima:* os números de objetos citados na primeira versão desta
+auditoria estão errados. Pares são `C(total,2)` — **1.770** na Mega, **3.160** na Quina,
+**4.950** na Lotomania. O valor 10.000 atribuído à Lotomania é a matriz **de Markov**
+(`nextDrawGivenPrev`, `total²`), que a auditoria não contou e que era construída com um
+objeto por célula tanto em `analyze()` quanto em `analyzeFast()`. Total real por chamada
+na Lotomania: **19.900 objetos** (4.950 pares + 4.950 `topPairs` + 10.000 Markov).
+
+*Implementado* em `js/engine/pairMatrix.js` e `js/engine/statisticalAnalyzer.js`
+(18 testes; medições em [DESEMPENHO_ANALISE.md](./DESEMPENHO_ANALISE.md)):
+
+- **`PairCountMatrix`**: um `Int32Array` de `(total+1)²` — **40 KB** no pior caso, em vez
+  de milhares de objetos. `get`/`increment` normalizam `{a,b}`/`{b,a}` para a mesma célula.
+- **Top-30 por seleção estável**, sem materializar `C(n,2)` objetos e ordená-los — a ordem
+  é idêntica à de um `sort` decrescente estável, empates inclusive.
+- **Markov em `Int32Array`**: a matriz `total × total` de contadores deixou de ser um objeto
+  por célula. Como ela nunca saía da função, nada mais precisava saber.
+- **`analyzeCached()`**: LRU de 4 janelas, chave `(total, pick, drawn, tamanho, concurso
+  mais recente, mais antigo)`. Explícita (não escondida dentro de `analyze`), com
+  `invalidateAnalysisCache()`, retorno em cópia defensiva das listas mutáveis e a
+  heurística da chave documentada — se o miolo do histórico mudar sem alterar as pontas
+  nem o tamanho, a cache não percebe.
+
+O ganho é de **churn de alocação**, não de complexidade: o laço continua O(total²). Medido
+no mesmo hardware, commit anterior × atual — heap retido 1,19 → 0,89 MB (Lotomania, 300
+concursos), backtest de 200 concursos 3.802 → 3.416 ms (−10%), e cinco cálculos da mesma
+janela 613 → 1 ms. Uma chamada isolada de `analyze` fica no mesmo patamar (117 → 111 ms),
+e afirmar mais que isso seria inventar.
+
+Um backtest de 200 concursos da Lotomania alocava ~2,99 milhões de objetos descartáveis;
+agora aloca 200 buffers. Os resultados **não** mudaram: os testes comparam contagens,
+top-30 e probabilidades de Markov contra implementações de referência escritas à parte.
 
 **6.11 Decompor a interface.** `index.html` tem 32 KB com markup e lógica de apresentação embutidos. Separar em componentes (ou ao menos templates) facilita auditar e testar a camada visual, hoje sem cobertura.
 
@@ -415,7 +448,7 @@ exigem uma passada de formatação sobre todo o código, que merece commit próp
 
 **6.13 CSRF/Origin.** `SameSite=Lax` já bloqueia POST cross-site; adicionar verificação de `Origin`/`Sec-Fetch-Site` nos endpoints de mutação fecha a borda.
 
-**6.14 Atualizar a documentação.** `AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 24 arquivos de teste e 344 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
+**6.14 Atualizar a documentação.** `AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 25 arquivos de teste e 362 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
 
 ---
 

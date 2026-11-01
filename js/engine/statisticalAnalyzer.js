@@ -6,11 +6,17 @@
  */
 
 import { StatisticalInference } from './statisticalInference.js';
+import { PairCountMatrix } from './pairMatrix.js';
 
 export const PRIMES = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97];
 export const FIBONACCI = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
 
 export class StatisticalAnalyzer {
+
+    /** Cache de análises completas (LRU de 4 janelas). */
+    static _analysisCache = new Map();
+    static ANALYSIS_CACHE_SIZE = 4;
+    static _analysisCacheStats = { hits: 0, misses: 0, evictions: 0 };
     /**
      * Retorna dimensões da matriz do volante oficial para cada modalidade
      */
@@ -87,16 +93,12 @@ export class StatisticalAnalyzer {
      * Aplica suavização Bayesiana de Laplace-Dirichlet para evitar probabilidades zero em amostras curtas.
      */
     static analyzeMarkovTransitions(history, total, drawn) {
-        const nextDrawGivenPrev = {};
-        const prevOccurrences = {};
-
-        for (let i = 1; i <= total; i++) {
-            prevOccurrences[i] = 0;
-            nextDrawGivenPrev[i] = {};
-            for (let j = 1; j <= total; j++) {
-                nextDrawGivenPrev[i][j] = 0;
-            }
-        }
+        // Contadores em Int32Array em vez de uma matriz total×total de objetos:
+        // na Lotomania eram 10.000 objetos por chamada — e esta função roda uma
+        // vez por concurso em cada backtest, mesmo quando nada sobrevive ao FDR.
+        const stride = total + 1;
+        const nextDrawGivenPrev = new Int32Array(stride * stride);
+        const prevOccurrences = new Int32Array(stride);
 
         if (!history || history.length < 2) {
             const uniformProb = drawn / Math.max(1, total);
@@ -118,9 +120,10 @@ export class StatisticalAnalyzer {
             prevDraw.forEach(prevNum => {
                 if (prevNum >= 1 && prevNum <= total) {
                     prevOccurrences[prevNum]++;
+                    const row = prevNum * stride;
                     currentDraw.forEach(currNum => {
                         if (currNum >= 1 && currNum <= total) {
-                            nextDrawGivenPrev[prevNum][currNum]++;
+                            nextDrawGivenPrev[row + currNum]++;
                         }
                     });
                 }
@@ -150,8 +153,8 @@ export class StatisticalAnalyzer {
 
             lastDraw.forEach(prevNum => {
                 if (prevNum >= 1 && prevNum <= total) {
-                    const countPrev = prevOccurrences[prevNum] || 0;
-                    const transCount = nextDrawGivenPrev[prevNum]?.[j] || 0;
+                    const countPrev = prevOccurrences[prevNum];
+                    const transCount = nextDrawGivenPrev[prevNum * stride + j];
                     const smoothedProb = (transCount + priorAlpha * baselineProb) / (countPrev + priorAlpha);
                     conditionalProbSum += smoothedProb;
                     validTriggers++;
@@ -323,16 +326,15 @@ export class StatisticalAnalyzer {
         const delaySum = new Float64Array(total + 1);
         const delayCount = new Int32Array(total + 1);
         const weightedAcc = new Float64Array(total + 1);
-        const pairMatrix = {};
+        // Int32Array triangular em vez de um objeto por par: esta função roda uma
+        // vez por concurso em TODO backtest, então a alocação por par era o maior
+        // custo de memória do app (ver cabeçalho de pairMatrix.js).
+        const pairMatrix = new PairCountMatrix(total);
 
         for (let i = 1; i <= total; i++) {
             freqAbsolute[i] = 0;
             lastSeenIndex[i] = -1;
             mostRecentIndex[i] = -1;
-            pairMatrix[i] = {};
-            for (let j = i + 1; j <= total; j++) {
-                pairMatrix[i][j] = 0;
-            }
         }
 
         const alpha = 0.05;
@@ -363,12 +365,8 @@ export class StatisticalAnalyzer {
             for (let i = 0; i < numbers.length; i++) {
                 const a = numbers[i];
                 if (a < 1 || a > total) continue;
-                const row = pairMatrix[a];
                 for (let j = i + 1; j < numbers.length; j++) {
-                    const b = numbers[j];
-                    if (b >= 1 && b <= total && row[b] !== undefined) {
-                        row[b]++;
-                    }
+                    pairMatrix.increment(a, numbers[j]);
                 }
             }
         }
@@ -407,6 +405,104 @@ export class StatisticalAnalyzer {
     }
 
     /**
+     * Análise completa com memoização por (último concurso, tamanho da janela).
+     *
+     * Trocar de aba, reabrir o painel de estatísticas ou recalcular a janela
+     * refazia a análise inteira — em Lotomania são ~100 ms e a estrutura de
+     * pares de 400 concursos — mesmo quando nada mudou.
+     *
+     * A chave é (total, pick, drawn, tamanho, concurso mais recente, concurso
+     * mais antigo). Duas janelas diferentes com os mesmos quatro números são a
+     * mesma janela na prática; se o histórico mudar no meio sem alterar as
+     * pontas nem o tamanho, a cache NÃO percebe — por isso ela é explícita
+     * (`analyzeCached`), com invalidação disponível, e não um efeito colateral
+     * escondido dentro de `analyze`.
+     *
+     * O objeto devolvido é uma **cópia defensiva**: além do nível superior, as
+     * listas que o chamador tende a mexer (`topPairs`, `topTriples`, transições
+     * de Markov, assinaturas) são clonadas — mutar `analysis.topPairs.length = 0`
+     * não destrói a cache para as próximas chamadas. Os mapas internos
+     * (`freqAbsolute`, `pairMatrix`) seguem compartilhados e são somente
+     * leitura por contrato: copiá-los custaria mais que refazer a análise.
+     */
+    static analyzeCached(history, config) {
+        if (!Array.isArray(history) || history.length === 0) {
+            return this.analyze(history, config);
+        }
+        const key = this.analysisCacheKey(history, config);
+        const cached = this._analysisCache.get(key);
+        if (cached) {
+            // LRU: renova a posição do acerto.
+            this._analysisCache.delete(key);
+            this._analysisCache.set(key, cached);
+            this._analysisCacheStats.hits++;
+            return this._cloneAnalysisResult(cached);
+        }
+        const result = this.analyze(history, config);
+        this._analysisCache.set(key, result);
+        this._analysisCacheStats.misses++;
+        while (this._analysisCache.size > this.ANALYSIS_CACHE_SIZE) {
+            const oldest = this._analysisCache.keys().next().value;
+            this._analysisCache.delete(oldest);
+            this._analysisCacheStats.evictions++;
+        }
+        return this._cloneAnalysisResult(result);
+    }
+
+    /**
+     * Cópia defensiva do resultado da análise: nível superior + listas que o
+     * chamador pode querer alterar. Custa dezenas de objetos, não 4.950.
+     */
+    static _cloneAnalysisResult(result) {
+        const clone = { ...result };
+        clone.topPairs = Array.isArray(result.topPairs)
+            ? result.topPairs.map(p => ({ ...p, pair: Array.isArray(p.pair) ? [...p.pair] : p.pair }))
+            : result.topPairs;
+        clone.topTriples = Array.isArray(result.topTriples)
+            ? result.topTriples.map(t => ({ ...t, numbers: Array.isArray(t.numbers) ? [...t.numbers] : t.numbers }))
+            : result.topTriples;
+        if (result.markovStats) {
+            const mkv = result.markovStats;
+            clone.markovStats = {
+                ...mkv,
+                topTransitions: Array.isArray(mkv.topTransitions) ? mkv.topTransitions.map(t => ({ ...t })) : mkv.topTransitions,
+                topTriggeredNumbers: Array.isArray(mkv.topTriggeredNumbers)
+                    ? mkv.topTriggeredNumbers.map(t => ({ ...t }))
+                    : mkv.topTriggeredNumbers
+            };
+        }
+        if (result.historicalDrawSignatures instanceof Set) {
+            clone.historicalDrawSignatures = new Set(result.historicalDrawSignatures);
+        }
+        return clone;
+    }
+
+    /** Chave da memoização: identifica a janela sem percorrer o histórico. */
+    static analysisCacheKey(history, config) {
+        const n = history.length;
+        const first = history[0]?.concurso;
+        const last = history[n - 1]?.concurso;
+        return [
+            config?.total, config?.pick, config?.drawn ?? config?.pick,
+            n, first ?? 'n/d', last ?? 'n/d'
+        ].join('|');
+    }
+
+    /** Esvazia a cache de análises (chamado quando o histórico é substituído). */
+    static invalidateAnalysisCache() {
+        this._analysisCache.clear();
+    }
+
+    /** Estatísticas da cache, para diagnóstico e testes. */
+    static getAnalysisCacheStats() {
+        return {
+            size: this._analysisCache.size,
+            capacity: this.ANALYSIS_CACHE_SIZE,
+            ...this._analysisCacheStats
+        };
+    }
+
+    /**
      * Executa análise estatística completa sobre a janela de concursos fornecida
      */
     static analyze(history, config) {
@@ -427,13 +523,7 @@ export class StatisticalAnalyzer {
             delayDistribution[i] = [];
         }
 
-        const pairMatrix = {};
-        for (let i = 1; i <= total; i++) {
-            pairMatrix[i] = {};
-            for (let j = i + 1; j <= total; j++) {
-                pairMatrix[i][j] = 0;
-            }
-        }
+        const pairMatrix = new PairCountMatrix(total);
 
         const sumList = [];
         const evenList = [];
@@ -509,11 +599,7 @@ export class StatisticalAnalyzer {
 
             for (let i = 0; i < numbers.length; i++) {
                 for (let j = i + 1; j < numbers.length; j++) {
-                    const a = numbers[i];
-                    const b = numbers[j];
-                    if (pairMatrix[a] && pairMatrix[a][b] !== undefined) {
-                        pairMatrix[a][b]++;
-                    }
+                    pairMatrix.increment(numbers[i], numbers[j]);
                 }
             }
         });
@@ -561,25 +647,18 @@ export class StatisticalAnalyzer {
         const recentSets = parsedDraws.slice(0, halfCount).map(arr => new Set(arr));
         const olderSets = parsedDraws.slice(halfCount).map(arr => new Set(arr));
 
-        const topPairs = [];
+        // Só os 30 maiores viram objeto. Antes, C(total,2) objetos eram alocados
+        // (4.950 na Lotomania) e ordenados só para descobrir os 30 primeiros.
         const pairNullProbability = (drawn * (drawn - 1)) / (total * (total - 1));
-        for (let i = 1; i <= total; i++) {
-            for (let j = i + 1; j <= total; j++) {
-                const count = pairMatrix[i][j];
-                const expectedPairCount = drawCount * pairNullProbability;
-                topPairs.push({
-                    pair: [i, j],
-                    count,
-                    expected: Number(expectedPairCount.toFixed(2)),
-                    support: Number((count / (drawCount || 1)).toFixed(4)),
-                    ratio: expectedPairCount > 0 ? Number((count / expectedPairCount).toFixed(4)) : 1
-                });
-            }
-        }
-        topPairs.sort((a, b) => b.count - a.count);
-        const totalPairsExamined = topPairs.length;
-
-        const topPairsSliced = topPairs.slice(0, 30);
+        const expectedPairCount = drawCount * pairNullProbability;
+        const totalPairsExamined = pairMatrix.size;
+        const topPairsSliced = pairMatrix.topEntries(30).map(({ a, b, count }) => ({
+            pair: [a, b],
+            count,
+            expected: Number(expectedPairCount.toFixed(2)),
+            support: Number((count / (drawCount || 1)).toFixed(4)),
+            ratio: expectedPairCount > 0 ? Number((count / expectedPairCount).toFixed(4)) : 1
+        }));
         topPairsSliced.forEach(p => {
             const freqA = (freqAbsolute[p.pair[0]] || 0) / (drawCount || 1);
             const freqB = (freqAbsolute[p.pair[1]] || 0) / (drawCount || 1);

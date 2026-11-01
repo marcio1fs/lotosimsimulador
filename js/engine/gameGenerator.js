@@ -4,6 +4,7 @@
  */
 
 import { StatisticalAnalyzer } from './statisticalAnalyzer.js';
+import { pairCount } from './pairMatrix.js';
 import { ScoringEngine, DEFAULT_WEIGHTS } from './scoringEngine.js';
 import { EvidenceWeightingEngine } from './evidenceWeightingEngine.js';
 import { BacktestEngine } from './backtestEngine.js';
@@ -323,7 +324,7 @@ export class GameGenerator {
                     selected.forEach(s => {
                         const a = Math.min(item.num, s);
                         const b = Math.max(item.num, s);
-                        pairAcc += (analysis.pairMatrix[a]?.[b] || 0);
+                        pairAcc += pairCount(analysis.pairMatrix, a, b);
                     });
                     const avgCooc = pairAcc / selected.size;
                     const expectedCooc = Math.max(1, (analysis.expectedFreq || 1) * ((config.drawn || pick) / total));
