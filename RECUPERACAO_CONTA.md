@@ -179,6 +179,7 @@ em vez de passar despercebido. Cobrem:
 ## 11. Status
 
 Item **concluído** (01/11/2026): rotas, políticas, tokens, transporte, telas e testes acima.
-Permanece pendente da mesma lista original: observabilidade. (Já resolvidos: Chart.js saiu do
-CDN — [INTERFACE.md](./INTERFACE.md); migrações versionadas — [MIGRACOES.md](./MIGRACOES.md);
-limite nas rotas restantes — [LIMITES_DE_REQUISICAO.md](./LIMITES_DE_REQUISICAO.md).)
+Nada da lista original permanece pendente. Resolvidos junto: Chart.js saiu do CDN —
+[INTERFACE.md](./INTERFACE.md); migrações versionadas — [MIGRACOES.md](./MIGRACOES.md);
+limite nas rotas restantes — [LIMITES_DE_REQUISICAO.md](./LIMITES_DE_REQUISICAO.md);
+observabilidade do `/api/health` — [OBSERVABILIDADE.md](./OBSERVABILIDADE.md).

@@ -44,7 +44,7 @@ suíte de 4 casos sustentava afirmações grandes. O que mudou:
 `AUDITORIA_PRECISAO.md` carrega o marcador:
 
 ```html
-<!-- suite: arquivos=35 testes=541 -->
+<!-- suite: arquivos=36 testes=574 -->
 ```
 
 e a **seção 11 (Estado atual)** lista cada item do roadmap com status e onde ele
@@ -67,6 +67,7 @@ se fossem estado presente.
 | [RECUPERACAO_CONTA.md](./RECUPERACAO_CONTA.md) | redefinição de senha e verificação de e-mail: tokens, anti-enumeração, transporte de e-mail, limites | produção |
 | [MIGRACOES.md](./MIGRACOES.md) | migrações versionadas do banco, `npm run migrate`, detecção de deriva e `schema.sql` gerado | produção |
 | [LIMITES_DE_REQUISICAO.md](./LIMITES_DE_REQUISICAO.md) | limite por rota: chave de IP não forjável, janela fixa, 429 com `Retry-After` | produção |
+| [OBSERVABILIDADE.md](./OBSERVABILIDADE.md) | `/api/health` com estado real: banco, migrações e e-mail, com `200`/`503` e códigos estáveis | produção |
 | [DOCUMENTACAO.md](./DOCUMENTACAO.md) | este arquivo | 6.14 |
 
 ## 4. O que o teste verifica

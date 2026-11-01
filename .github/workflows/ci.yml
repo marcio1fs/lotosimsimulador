@@ -122,3 +122,9 @@ jobs:
       # aplicar a próxima migração em cima de um schema que não é o real.
       - name: schema.sql em dia com as migrações
         run: npm run check:schema
+
+      # O manifesto é o que permite o /api/health comparar banco e código sem ler
+      # o disco em tempo de requisição. Manifesto velho = health mentindo para
+      # baixo (espera menos migrações do que existem).
+      - name: manifesto de migrações em dia
+        run: npm run check:manifest
