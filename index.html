@@ -377,6 +377,15 @@
                             <div id="modelReportPanel" style="padding:0.5rem;"><div style="text-align:center;color:var(--text-muted);font-size:0.8rem;">Gere jogos no modo Máxima Precisão para visualizar o relatório completo de validação estatística.</div></div>
                         </div>
                         <div class="stat-card" style="grid-column:1/-1;">
+                            <div class="stat-card-title"><span>🎲</span> Teste de Permutação — a ordem temporal carrega informação?</div>
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:0.6rem; line-height:1.5;">
+                                Embaralha a ordem dos concursos 99 vezes, roda o pipeline inteiro em cada versão e compara com o desempenho na ordem real.
+                                Se o resultado real cai no meio da distribuição nula, o pipeline <strong>não extrai nada</strong> da ordem do histórico — que é o esperado em sorteio idôneo.
+                            </div>
+                            <button class="btn btn-secondary btn-sm" id="btnPermutationTest">▶ Rodar teste (99 permutações)</button>
+                            <div id="permutationResult" style="margin-top:0.75rem;"></div>
+                        </div>
+                        <div class="stat-card" style="grid-column:1/-1;">
                             <div class="stat-card-title"><span>🎯</span> Ranking de Estratégias vs Baseline Aleatória (Backtest Histórico)</div>
                             <table class="history-table">
                                 <thead><tr><th>Estratégia</th><th>Média de Acertos</th><th>Baseline Aleatória</th><th>Diferença</th><th>Evolução Relativa</th><th>Significância</th><th>IC 95%</th></tr></thead>
