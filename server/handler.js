@@ -5,6 +5,7 @@ import {
     parseCookies, buildCookie, clearCookie, isValidEmail
 } from './security.js';
 import { syncLotteries } from './lotterySync.js';
+import { evaluateSameSiteRequest, parseAllowedOrigins, hasJsonContentType } from './originPolicy.js';
 
 const MAX_BODY = 512 * 1024;
 const MAX_FAILS = 5;              // tentativas de login falhas...
@@ -379,11 +380,18 @@ export async function handler(req, res) {
             throw new HttpError(405, 'Método não permitido');
         }
         if (method === 'POST') {
-            if (!String(req.headers['content-type'] || '').includes('application/json')) {
+            if (!hasJsonContentType(req)) {
                 throw new HttpError(415, 'Content-Type deve ser application/json');
             }
-            const origin = req.headers.origin;
-            if (origin && new URL(origin).host !== req.headers.host) throw new HttpError(403, 'Origem não permitida');
+            // Item 6.13: a checagem anterior era `if (origin && ...)` — passava sem
+            // Origin (fail-open) e devolvia 500 para `Origin: null`. Agora é
+            // fail-closed e olha também o Sec-Fetch-Site, que a página não forja.
+            const originCheck = evaluateSameSiteRequest(req, {
+                allowedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS)
+            });
+            if (!originCheck.allowed) {
+                throw new HttpError(403, 'Origem não permitida', { reason: originCheck.reason });
+            }
         }
 
         let body = {};

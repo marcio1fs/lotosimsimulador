@@ -2,8 +2,8 @@
 
 **Data:** 01/11/2026
 **Escopo:** 61 arquivos · ~8.700 linhas de JavaScript · 12 módulos de motor estatístico · API serverless (Neon) · interface SPA
-**Suíte de testes:** 113 → **389 testes em 27 arquivos** (100% passando), `npm run build` OK
-<!-- suite: arquivos=27 testes=389 -->
+**Suíte de testes:** 113 → **411 testes em 28 arquivos** (100% passando), `npm run build` OK
+<!-- suite: arquivos=28 testes=411 -->
 **Pergunta que guiou a auditoria:** *onde este projeto perde precisão — e como recuperá-la?*
 
 ---
@@ -476,10 +476,30 @@ texto que precisa existir sempre.
 
 **6.12 Encerrar o `legacyHash`.** O hash legado (`h_…`, baseado em deslocamento de bits + base64 da senha) é reversível em milissegundos. Ele existe para migrar contas antigas — mas sem prazo, é uma porta aberta permanente. Definir data-limite e forçar redefinição de senha.
 
-**6.13 CSRF/Origin.** `SameSite=Lax` já bloqueia POST cross-site; adicionar verificação de `Origin`/`Sec-Fetch-Site` nos endpoints de mutação fecha a borda.
+**6.13 CSRF/Origin — ✅ implementado.** `SameSite=Lax` já bloqueia POST cross-site; adicionar verificação de `Origin`/`Sec-Fetch-Site` nos endpoints de mutação fecha a borda.
+
+*Implementado:* a checagem que existia era pior que nenhuma — `if (origin && new URL(origin).host !== req.headers.host)`
+é **fail-open** (requisição sem `Origin` passava direto), estourava 500 com `Origin: null`
+e ignorava `Sec-Fetch-Site`. A política saiu do handler para `server/originPolicy.js`, uma
+função pura e sem dependências, e virou **fail-closed** para `POST`, `PUT`, `PATCH` e `DELETE`:
+
+- `Sec-Fetch-Site: cross-site` → nega, sem olhar mais nada;
+- `Origin` ausente, vazio, `null`, malformado ou com esquema não-HTTP(S) → nega;
+- `Origin` em `ALLOWED_ORIGINS` (lista opcional por env, separada por vírgula) → aceita;
+- caso contrário, o host do `Origin` precisa estar entre `Host` e `X-Forwarded-Host` da requisição.
+
+Mutação também passa a exigir `Content-Type: application/json` (415 se faltar), o que fecha
+o furo do formulário HTML simples — o único tipo de requisição cross-site que não sofre
+preflight. O 403 agora devolve `{ reason }`, para o log dizer *por que* negou em vez de só
+*que* negou. `tests/csrf.test.js` cobre 22 casos: as decisões da política isoladas (inclusive
+`Origin: null`, host desconhecido e `ALLOWED_ORIGINS`) e a borda do handler com requisição
+falsa, sem tocar no banco. A defesa em camadas está descrita em
+[SECURITY.md](./SECURITY.md): `SameSite=Lax` (cookie) → `Origin`/`Sec-Fetch-Site` (borda) →
+`Content-Type` (anti-formulário).
+
 
 **6.14 Atualizar a documentação — ✅ implementado.**
-`AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 27 arquivos de teste e 389 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
+`AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 28 arquivos de teste e 411 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
 
 *Implementado:* o `AUDIT_REPORT.md` foi **mantido como registro histórico e corrigido**
 (ver [DOCUMENTACAO.md](./DOCUMENTACAO.md)). Três decisões:
@@ -530,7 +550,7 @@ O valor real deste software é o que ele já faz bem: **demonstrar com rigor que
 
 ```bash
 npm install
-npm test            # 389 testes em 27 arquivos, incluindo tests/precisionAudit.test.js (38)
+npm test            # 411 testes em 28 arquivos, incluindo tests/precisionAudit.test.js (38)
 npm run build       # build de produção
 ```
 
@@ -622,13 +642,13 @@ links internos precisam apontar para arquivos que existem.
 | 6.10 | Memória da análise | ✅ | [DESEMPENHO_ANALISE.md](./DESEMPENHO_ANALISE.md) |
 | 6.11 | Interface decomposta e testada | ✅ | [INTERFACE.md](./INTERFACE.md) |
 | 6.12 | Encerrar o `legacyHash` | 📋 pendente | seção 6 |
-| 6.13 | CSRF / Origin | 📋 pendente | seção 6 |
+| 6.13 | CSRF / Origin | ✅ | [SECURITY.md](./SECURITY.md) |
 | 6.14 | Documentação atualizada | ✅ | [DOCUMENTACAO.md](./DOCUMENTACAO.md) |
 | — | Módulo de projeções futuras | ✅ | [PROJECOES.md](./PROJECOES.md) |
 
-**Contagem atual:** 27 arquivos de teste, 389 testes, `npm audit` 0, build
+**Contagem atual:** 28 arquivos de teste, 411 testes, `npm audit` 0, build
 limpo, CI com 6 verificações.
 
 O que **continua em aberto**, sem enfeite: ESLint/formatador no CI, o hash legado
-de senha (6.12), a proteção CSRF/Origin (6.13) e a calibração brasileira do
-Anti-Crowd — que depende de dado público que não existe, não de código.
+de senha (6.12) e a calibração brasileira do Anti-Crowd — que depende de dado
+público que não existe, não de código.
