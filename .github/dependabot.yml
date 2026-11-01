@@ -1,0 +1,74 @@
+# Dependabot — atualização de dependências sob controle de versão.
+#
+# POR QUE ESTE ARQUIVO EXISTE
+# ---------------------------
+# Até aqui a configuração de dependências vivia nas *settings* do repositório, fora
+# do histórico: ninguém revisava, ninguém versionava e o resultado ficou visível.
+# O PR #1 (`ws` 8.20.0 → 8.21.0) nasceu em maio, o `ws` saiu da árvore de
+# dependências no meio do caminho, e o pull request passou cinco meses aberto até
+# virar conflito — o Dependabot não tinha como saber que o alvo tinha sumido. Com o
+# arquivo versionado, mudar o comportamento de atualização passa a ser um commit
+# revisável, como qualquer outra decisão do projeto.
+#
+# AS ESCOLHAS (e por quê)
+# -----------------------
+# - **Semanal, não diário.** O projeto tem três dependências de runtime e cinco de
+#   desenvolvimento. Diário produz ruído sem reduzir risco; semanal é o ritmo em
+#   que alguém realmente vai olhar.
+# - **minor e patch agrupados, major separado.** Um PR com dez bumps de patch é
+#   revisável e a CI diz se quebrou. Um bump de major precisa de leitura própria
+#   (mudança de comportamento, mesmo com SemVer prometendo o contrário) — por isso
+#   fica de fora do grupo `minor-e-patch` e vira PR individual.
+# - **Segurança agrupada à parte.** Correção de vulnerabilidade não espera a
+#   janela semanal nem o cooldown: `applies-to: security-updates` mantém esses PRs
+#   num grupo próprio, criados assim que o alerta aparece.
+# - **`cooldown`.** O padrão do GitHub hoje já é 3 dias; aqui é 7 para versões
+#   comuns e 30 para major. O motivo é supply chain: um pacote comprometido
+#   costuma ser descoberto em dias, e adiar a adoção é a defesa mais barata que
+#   existe. Não vale para atualização de segurança — lá a demora é o risco.
+# - **`versioning-strategy: increase`.** É aplicação, não biblioteca: o que importa
+#   é o `package-lock.json` avançar, não alargar faixa de versão no `package.json`.
+# - **`open-pull-requests-limit: 5`.** Teto de ruído. Acima disso o Dependabot
+#   deixa de abrir PR novo, e o que sobra não fica escondido para sempre: ele
+#   volta quando algum dos abertos for mesclado ou fechado.
+#
+# O QUE ELE NÃO FAZ
+# -----------------
+# Não mescla nada sozinho e não roda `npm audit` no lugar da CI — a verificação de
+# vulnerabilidades de alto risco continua em `.github/workflows/ci.yml`
+# (`npm audit --audit-level=high`). Também não cobre as GitHub Actions usadas em
+# `.github/workflows/`: para isso seria preciso um segundo bloco
+# (`package-ecosystem: github-actions`), que não está aqui de propósito — as
+# actions estão presas em `@v4` e o bump é decisão consciente, não automática.
+
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+    commit-message:
+      prefix: 'build(deps)'
+    labels:
+      - dependencies
+    groups:
+      # Patch e minor juntos: o mesmo PR, a mesma rodada de CI.
+      minor-e-patch:
+        applies-to: version-updates
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+      # Correção de segurança não espera a janela semanal.
+      seguranca:
+        applies-to: security-updates
+        patterns:
+          - '*'

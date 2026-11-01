@@ -120,3 +120,65 @@ describe('Lint e formatação — fiação', () => {
         assert.deepEqual(prettierConfigs, ['.prettierrc.json'], `configs de Prettier ambíguas: ${prettierConfigs}`);
     });
 });
+
+describe('Dependabot — configuração versionada', () => {
+    /** Linhas de um bloco YAML: a chave e tudo que estiver mais indentado que ela. */
+    const blocoDe = (texto, chave) => {
+        const linhas = texto.split('\n');
+        const inicio = linhas.findIndex(linha => linha.trim().startsWith(`${chave}:`));
+        assert.notEqual(inicio, -1, `falta a chave \`${chave}\` no dependabot.yml`);
+        const indentacao = linhas[inicio].search(/\S/);
+        const bloco = [];
+        for (let i = inicio + 1; i < linhas.length; i++) {
+            const linha = linhas[i];
+            if (linha.trim() === '') continue;
+            if (linha.search(/\S/) <= indentacao) break;
+            // `- minor` vira `minor`: o teste olha o valor, não o marcador de lista.
+            bloco.push(linha.trim().replace(/^-\s+/, ''));
+        }
+        return bloco;
+    };
+
+    it('existe, é versionado e cobre npm na raiz com janela semanal', async () => {
+        const config = await read('.github/dependabot.yml');
+        assert.match(config, /^version:\s*2\s*$/m, 'o dependabot.yml precisa declarar version: 2');
+        assert.match(config, /package-ecosystem:\s*npm\s*$|package-ecosystem:\s*"npm"/m, 'falta o ecossistema npm');
+        // Prettier escreve `directory: '/'` com aspas simples; aceite as duas formas.
+        assert.match(config, /directory:\s*['"]?\/['"]?\s*$/m, 'o manifest é o da raiz');
+        assert.match(config, /interval:\s*weekly\s*$/m, 'a janela combinada é semanal');
+
+        // Config viva nas settings do GitHub não é revisável — foi assim que o PR
+        // do `ws` envelheceu cinco meses sem ninguém notar que o alvo sumira.
+        assert.match(
+            config,
+            /open-pull-requests-limit:\s*\d+/m,
+            'falta o equilíbrio entre manter em dia e não inundar de PRs'
+        );
+    });
+
+    it('major fica fora do grupo de minor/patch (bump de major é PR próprio)', async () => {
+        const config = await read('.github/dependabot.yml');
+        const grupo = blocoDe(config, 'minor-e-patch');
+        assert.ok(grupo.includes('minor') && grupo.includes('patch'), 'o grupo precisa cobrir minor e patch');
+        assert.ok(!grupo.includes('major'), 'major não pode entrar no grupo: precisa de leitura própria');
+        assert.ok(
+            grupo.some(linha => linha.startsWith('applies-to: version-updates')),
+            'o grupo é de atualização de versão, não de segurança'
+        );
+    });
+
+    it('atualização de segurança tem grupo próprio e não espera a janela semanal', async () => {
+        const config = await read('.github/dependabot.yml');
+        const grupo = blocoDe(config, 'seguranca');
+        assert.ok(
+            grupo.some(linha => linha.startsWith('applies-to: security-updates')),
+            'sem `security-updates`, a correção de vulnerabilidade entra na fila semanal'
+        );
+        // Cooldown é para adoção de versão nova, não para corrigir falha conhecida.
+        const cooldown = blocoDe(config, 'cooldown');
+        assert.ok(
+            cooldown.length > 0,
+            'o cooldown contra versão recém-publicada (supply chain) precisa estar declarado'
+        );
+    });
+});
