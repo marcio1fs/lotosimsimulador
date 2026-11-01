@@ -16,6 +16,37 @@
 - **Borda contra CSRF (`Origin` + `Sec-Fetch-Site`)**: toda requisição de mutação (`POST`, `PUT`, `PATCH`, `DELETE`) passa por `server/originPolicy.js` **antes** de qualquer acesso ao banco. A regra é *fail-closed*: recusa quando `Sec-Fetch-Site: cross-site`, quando falta `Origin` (ou ele vem `null`, vazio ou malformado), quando o esquema não é `http(s)` e quando o host do `Origin` não é o `Host`/`X-Forwarded-Host` da requisição. `ALLOWED_ORIGINS` (lista separada por vírgula, opcional) libera origens extras — útil em domínio de preview. Mutação também exige `Content-Type: application/json` (415 caso contrário), o que impede o envio de formulário HTML simples entre sites. O `SameSite=Lax` do cookie continua sendo a primeira camada; esta é a segunda.
 - **Cabeçalhos de defesa**: `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` e `Referrer-Policy` configurados em `vercel.json`.
 
+## Hash legado de senha: prazo até 31/01/2027
+
+As primeiras versões guardavam a senha como `h_<hash de 32 bits>_<base64 da senha>`. Os 12
+caracteres de base64 são **9 bytes da senha em claro** e o hash de 32 bits é revertido por
+tentativa em milissegundos: não é um hash fraco, é a senha com um enfeite. Quem obtém um dump
+do banco — ou do IndexedDB do navegador — lê a senha.
+
+O formato continuou aceito para migrar contas antigas no login. Isso alcança só quem faz
+login: sem prazo, a conta dormente fica com a senha reversível para sempre, e o verificador
+fica no código como oráculo para quem tem um dump antigo.
+
+| Fase | O que acontece |
+| :--- | :--- |
+| Até **31/01/2027** (`LEGACY_HASH_SUNSET_ISO`) | O login com hash legado é aceito, a senha é convertida na mesma requisição (bcrypt na API, PBKDF2 no modo offline) e a interface avisa o usuário. A resposta traz `passwordUpgraded: true`. |
+| A partir de **01/02/2027** | A verificação é recusada **sem calcular o hash antigo**. O 401 é o mesmo de senha errada (mensagem específica viraria oráculo de existência de conta); o motivo real vai para o log. |
+| No dia do vencimento | `tests/legacyHashSunset.test.js` **falha** se o verificador legado ainda estiver em `server/security.js` ou `js/models/user.js`. Prazo que não quebra nada não é prazo. |
+
+O prazo vive em **`shared/passwordPolicy.js`**, importado pelos dois lados — servidor e
+cliente. `change-password` e `delete-account` já autenticados recebem mensagem específica
+quando o formato venceu.
+
+**Antes do vencimento, conte as contas ainda no formato antigo:**
+
+```sql
+SELECT COUNT(*) AS contas_legadas FROM users WHERE password LIKE 'h\_%' ESCAPE '\';
+```
+
+Conta que não fizer login até a data fica sem acesso e precisa de redefinição pelo suporte —
+é o custo honesto de encerrar um formato cuja senha já pode ter vazado. O caminho barato é
+avisar esses usuários antes.
+
 ## Como Reportar uma Vulnerabilidade
 
 Caso encontre uma vulnerabilidade, **não abra uma issue pública**. Entre em contato de forma privada com o mantenedor do repositório informando:

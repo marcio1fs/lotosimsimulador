@@ -1,4 +1,5 @@
 import { Database } from '../db/database.js';
+import { isLegacyHash, legacyDeadlineReached, LEGACY_HASH_SUNSET_LABEL } from '../../shared/passwordPolicy.js';
 
 async function authFetch(path, method = 'POST', body = undefined) {
     const opts = { method, credentials: 'include', headers: {} };
@@ -17,7 +18,11 @@ async function authFetch(path, method = 'POST', body = undefined) {
  */
 export class UserModel {
     /**
-     * Hash legado apenas para retrocompatibilidade de migração transparente de contas antigas
+     * Hash legado (reversível) das versões antigas do app.
+     *
+     * @deprecated Item 6.12: existe só para converter contas antigas no login e
+     * deixa de ser aceito em 31/01/2027 (`LEGACY_HASH_SUNSET_LABEL`). O prazo é o
+     * mesmo do servidor e vive em `shared/passwordPolicy.js`.
      */
     static _legacyHashPassword(password) {
         let hash = 0;
@@ -72,9 +77,16 @@ export class UserModel {
     }
 
     /**
-     * Verifica uma senha contra o hash armazenado no modo local (suporta PBKDF2 e migra hashes legados)
+     * Verifica uma senha contra o hash armazenado no modo local.
+     *
+     * PBKDF2 é o formato atual. O hash legado (`h_…`) só é aceito até o prazo do
+     * item 6.12 — e, quando aceito, a conta é convertida para PBKDF2 em seguida
+     * (`needsUpgrade`). Depois do prazo a verificação é recusada sem sequer
+     * calcular o hash antigo.
+     *
+     * `now` existe para o teste simular os dois lados do prazo.
      */
-    static async verifyPasswordAsync(password, storedHash) {
+    static async verifyPasswordAsync(password, storedHash, { now = Date.now() } = {}) {
         if (!storedHash || typeof storedHash !== 'string') return { valid: false, needsUpgrade: false };
 
         if (storedHash.startsWith('pbkdf2$')) {
@@ -85,8 +97,11 @@ export class UserModel {
             return { valid: computed === storedHash, needsUpgrade: false };
         }
 
+        if (!isLegacyHash(storedHash)) return { valid: false, needsUpgrade: false };
+        if (legacyDeadlineReached(now)) return { valid: false, needsUpgrade: false, legacyExpired: true };
+
         const legacyValid = storedHash === this._legacyHashPassword(password);
-        return { valid: legacyValid, needsUpgrade: legacyValid };
+        return { valid: legacyValid, needsUpgrade: legacyValid, legacy: legacyValid };
     }
 
     static generateToken() {
@@ -132,7 +147,13 @@ export class UserModel {
         if (Database.useApi) {
             const { ok, data } = await authFetch('/api/auth/login', 'POST', { email, password, remember });
             return ok
-                ? { success: true, user: data.user, session: data.session }
+                ? {
+                    success: true,
+                    user: data.user,
+                    session: data.session,
+                    // Senha vinha do formato antigo e foi convertida agora (item 6.12).
+                    passwordUpgraded: Boolean(data.passwordUpgraded)
+                }
                 : { success: false, error: data.error || 'E-mail ou senha incorretos', field: data.field || 'password' };
         }
 
@@ -141,6 +162,14 @@ export class UserModel {
         if (!user) return { success: false, error: 'E-mail ou senha incorretos', field: 'password' };
 
         const verification = await this.verifyPasswordAsync(password, user.password);
+        if (verification.legacyExpired) {
+            return {
+                success: false,
+                field: 'password',
+                error: `Esta conta usa o formato de senha antigo, desativado em ${LEGACY_HASH_SUNSET_LABEL}. ` +
+                    'Crie uma conta nova — o formato antigo permitia recuperar a senha a partir do banco local.'
+            };
+        }
         if (!verification.valid) {
             return { success: false, error: 'E-mail ou senha incorretos', field: 'password' };
         }
@@ -166,7 +195,7 @@ export class UserModel {
         }
 
         const { password: _ignored, ...safeUser } = user;
-        return { success: true, user: safeUser, session: { id: sessionId } };
+        return { success: true, user: safeUser, session: { id: sessionId }, passwordUpgraded: Boolean(verification.legacy) };
     }
 
     static async validateSession() {

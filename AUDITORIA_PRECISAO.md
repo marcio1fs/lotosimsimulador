@@ -2,8 +2,8 @@
 
 **Data:** 01/11/2026
 **Escopo:** 61 arquivos · ~8.700 linhas de JavaScript · 12 módulos de motor estatístico · API serverless (Neon) · interface SPA
-**Suíte de testes:** 113 → **411 testes em 28 arquivos** (100% passando), `npm run build` OK
-<!-- suite: arquivos=28 testes=411 -->
+**Suíte de testes:** 113 → **429 testes em 29 arquivos** (100% passando), `npm run build` OK
+<!-- suite: arquivos=29 testes=429 -->
 **Pergunta que guiou a auditoria:** *onde este projeto perde precisão — e como recuperá-la?*
 
 ---
@@ -53,7 +53,7 @@ Três números resumem o ganho:
 | 12 | 🟡 Médio | Constantes do `AntiCrowdEngine` ("~65% das apostas…") sem fonte verificável | `js/engine/antiCrowdEngine.js` | ✅ Corrigido (6.8) |
 | 13 | 🟢 Baixo | `AUDIT_REPORT.md` desatualizado ("4 suítes", "12/12 resolvidos") | raiz | ✅ Corrigido (6.14) |
 | 14 | 🟢 Baixo | Sem CI, sem lint/format configurado; `.vscode/settings.json` só tem preferências de extensão | raiz | 🟡 CI pronto; lint pendente |
-| 15 | 🟢 Baixo | `legacyHash` (hash trivialmente reversível) continua aceito indefinidamente | `server/security.js` | 📋 Pendente (6.12) |
+| 15 | 🟢 Baixo | `legacyHash` (hash trivialmente reversível) continua aceito indefinidamente | `server/security.js` | ✅ Corrigido (6.12) |
 | 16 | 🟢 Baixo | `analyze()` aloca matrizes O(N²) de objetos a cada chamada; `index.html` monolítico de 32 KB | `statisticalAnalyzer.js`, `index.html` | ✅ Corrigido (6.10 e 6.11) |
 
 ---
@@ -474,7 +474,38 @@ texto que precisa existir sempre.
 
 ### Prioridade baixa
 
-**6.12 Encerrar o `legacyHash`.** O hash legado (`h_…`, baseado em deslocamento de bits + base64 da senha) é reversível em milissegundos. Ele existe para migrar contas antigas — mas sem prazo, é uma porta aberta permanente. Definir data-limite e forçar redefinição de senha.
+**6.12 Encerrar o `legacyHash` — ✅ implementado.** O hash legado (`h_…`, baseado em deslocamento de bits + base64 da senha) é reversível em milissegundos. Ele existe para migrar contas antigas — mas sem prazo, é uma porta aberta permanente. Definir data-limite e forçar redefinição de senha.
+
+*Implementado:* a data-limite é **31/01/2027** (`LEGACY_HASH_SUNSET_ISO`), e ela vive num
+módulo só — `shared/passwordPolicy.js` — importado pelo servidor (`server/security.js`) e
+pelo cliente (`js/models/user.js`). Duas cópias da mesma data seriam duas chances de esquecer
+uma delas.
+
+- **antes do prazo**: o formato é aceito, a senha é convertida para bcrypt (API) ou PBKDF2
+  (offline) no mesmo login, e a resposta leva `passwordUpgraded: true` — a interface avisa o
+  usuário e manda definir uma senha nova enquanto ainda dá;
+- **a partir do prazo**: a verificação é recusada **sem calcular o hash antigo**. O prazo é
+  checado antes do cálculo justamente para não deixar no código um oráculo que confirme
+  senhas a partir de um dump antigo. Há teste estrutural para essa ordem, não só para o
+  resultado;
+- **o resto do sistema não muda**: bcrypt e PBKDF2 continuam valendo depois do prazo, e uma
+  conta convertida antes dele nunca mais esbarra na data.
+
+Duas decisões de discrição: o login devolve a **mesma** mensagem de senha errada quando o
+formato venceu — dizer "sua conta é antiga" transformaria qualquer senha num oráculo de
+existência de conta; o motivo real vai para o log. Já em `change-password` e
+`delete-account`, onde a sessão já está autenticada, a mensagem pode ser específica, e é.
+
+E o prazo tem um alarme: `tests/legacyHashSunset.test.js` passa hoje com um diagnóstico
+dizendo quantos dias faltam e, **no dia do vencimento, falha** se o verificador legado ainda
+estiver no código. Prazo que não quebra nada não é prazo — é intenção. O teste também cobre
+os dois lados da data com relógio injetado, para a suíte não envelhecer junto.
+
+**Antes do vencimento, o dono do projeto precisa saber quantas contas ainda estão no formato
+antigo** — a consulta está em [SECURITY.md](./SECURITY.md). Conta dormente que não fizer
+login até a data fica sem acesso e precisa de redefinição pelo suporte: é o custo honesto de
+encerrar um formato cuja senha já pode ter vazado.
+
 
 **6.13 CSRF/Origin — ✅ implementado.** `SameSite=Lax` já bloqueia POST cross-site; adicionar verificação de `Origin`/`Sec-Fetch-Site` nos endpoints de mutação fecha a borda.
 
@@ -499,7 +530,7 @@ falsa, sem tocar no banco. A defesa em camadas está descrita em
 
 
 **6.14 Atualizar a documentação — ✅ implementado.**
-`AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 28 arquivos de teste e 411 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
+`AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 29 arquivos de teste e 429 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
 
 *Implementado:* o `AUDIT_REPORT.md` foi **mantido como registro histórico e corrigido**
 (ver [DOCUMENTACAO.md](./DOCUMENTACAO.md)). Três decisões:
@@ -550,7 +581,7 @@ O valor real deste software é o que ele já faz bem: **demonstrar com rigor que
 
 ```bash
 npm install
-npm test            # 411 testes em 28 arquivos, incluindo tests/precisionAudit.test.js (38)
+npm test            # 429 testes em 29 arquivos, incluindo tests/precisionAudit.test.js (38)
 npm run build       # build de produção
 ```
 
@@ -641,14 +672,15 @@ links internos precisam apontar para arquivos que existem.
 | 6.9 | CI + lint | 🟡 CI completo; **ESLint pendente** | `.github/workflows/ci.yml` |
 | 6.10 | Memória da análise | ✅ | [DESEMPENHO_ANALISE.md](./DESEMPENHO_ANALISE.md) |
 | 6.11 | Interface decomposta e testada | ✅ | [INTERFACE.md](./INTERFACE.md) |
-| 6.12 | Encerrar o `legacyHash` | 📋 pendente | seção 6 |
+| 6.12 | Encerrar o `legacyHash` | ✅ (prazo: 31/01/2027) | [SECURITY.md](./SECURITY.md) |
 | 6.13 | CSRF / Origin | ✅ | [SECURITY.md](./SECURITY.md) |
 | 6.14 | Documentação atualizada | ✅ | [DOCUMENTACAO.md](./DOCUMENTACAO.md) |
 | — | Módulo de projeções futuras | ✅ | [PROJECOES.md](./PROJECOES.md) |
 
-**Contagem atual:** 28 arquivos de teste, 411 testes, `npm audit` 0, build
+**Contagem atual:** 29 arquivos de teste, 429 testes, `npm audit` 0, build
 limpo, CI com 6 verificações.
 
-O que **continua em aberto**, sem enfeite: ESLint/formatador no CI, o hash legado
-de senha (6.12) e a calibração brasileira do Anti-Crowd — que depende de dado
-público que não existe, não de código.
+O que **continua em aberto**, sem enfeite: ESLint/formatador no CI e a calibração
+brasileira do Anti-Crowd — que depende de dado público que não existe, não de código.
+O hash legado tem prazo correndo: em **31/01/2027** o verificador precisa sair do
+código, e há um teste que falha nesse dia se ele ainda estiver lá.

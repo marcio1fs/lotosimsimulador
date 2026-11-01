@@ -1,10 +1,18 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
+import { isLegacyHash, legacyDeadlineReached, LEGACY_HASH_SUNSET_LABEL } from '../shared/passwordPolicy.js';
+
+export { isLegacyHash };
 
 export const COOKIE_NAME = 'lm_session';
 export const SESSION_DAYS = 30;
 
-/** Hash legado (inseguro) usado pelas versões antigas do app. Só serve para migrar contas. */
+/**
+ * Hash legado (inseguro) usado pelas versões antigas do app.
+ *
+ * @deprecated Item 6.12: só é calculado para converter contas antigas e deixa de
+ * existir em 31/01/2027 (`LEGACY_HASH_SUNSET_LABEL`). Não use em conta nova.
+ */
 export function legacyHash(password) {
     let hash = 0;
     for (let i = 0; i < password.length; i++) {
@@ -14,7 +22,6 @@ export function legacyHash(password) {
     return 'h_' + Math.abs(hash).toString(36) + '_' + Buffer.from(password).toString('base64').substring(0, 12);
 }
 
-export const isLegacyHash = (stored) => typeof stored === 'string' && stored.startsWith('h_');
 export const isPbkdf2Hash = (stored) => typeof stored === 'string' && stored.startsWith('pbkdf2$');
 
 export async function hashPassword(password) {
@@ -23,9 +30,16 @@ export async function hashPassword(password) {
 
 /**
  * Verifica senha contra bcrypt ($2a$/$2b$), PBKDF2-SHA256 (pbkdf2$iter$salt$hash) ou hash legado (h_...).
- * Retorna { ok, upgradedHash? } — upgradedHash é preenchido quando um hash legado ou PBKDF2 migra para bcrypt.
+ *
+ * Retorna `{ ok, upgradedHash?, legacy?, legacyExpired? }` — `upgradedHash` vem
+ * preenchido quando um hash legado ou PBKDF2 migra para bcrypt.
+ *
+ * O hash legado tem prazo (item 6.12): até `LEGACY_HASH_SUNSET_LABEL` ele é
+ * verificado e convertido; depois disso a verificação é **recusada** e o hash
+ * nem chega a ser calculado — não sobra oráculo para confirmar senha antiga.
+ * `now` existe para o teste conseguir simular os dois lados do prazo.
  */
-export async function verifyPassword(password, stored) {
+export async function verifyPassword(password, stored, { now = Date.now() } = {}) {
     if (!stored || typeof stored !== 'string') return { ok: false };
 
     if (isPbkdf2Hash(stored)) {
@@ -42,10 +56,11 @@ export async function verifyPassword(password, stored) {
     }
 
     if (isLegacyHash(stored)) {
+        if (legacyDeadlineReached(now)) return { ok: false, legacyExpired: true };
         const a = Buffer.from(legacyHash(password));
         const b = Buffer.from(stored);
         const ok = a.length === b.length && crypto.timingSafeEqual(a, b);
-        return ok ? { ok: true, upgradedHash: await hashPassword(password) } : { ok: false };
+        return ok ? { ok: true, upgradedHash: await hashPassword(password), legacy: true } : { ok: false };
     }
 
     return { ok: await bcrypt.compare(password, stored) };

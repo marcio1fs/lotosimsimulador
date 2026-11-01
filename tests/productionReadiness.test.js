@@ -23,10 +23,16 @@ describe('Production Readiness: Cryptographic PBKDF2 Auth & Database SQL Injecti
 
     it('UserModel.verifyPasswordAsync transparently detects and flags legacy hashes for automatic PBKDF2 migration', async () => {
         const legacyHash = UserModel._legacyHashPassword('senhaAntiga123');
-        const check = await UserModel.verifyPasswordAsync('senhaAntiga123', legacyHash);
+        // Relógio fixo antes do prazo do item 6.12 — depois de
+        // LEGACY_HASH_SUNSET_ISO o formato deixa de ser aceito
+        // (ver tests/legacyHashSunset.test.js).
+        const check = await UserModel.verifyPasswordAsync('senhaAntiga123', legacyHash, {
+            now: Date.parse('2027-01-15T12:00:00.000Z')
+        });
 
         assert.equal(check.valid, true);
         assert.equal(check.needsUpgrade, true);
+        assert.equal(check.legacy, true);
     });
 
     it('Database rejects unauthorized table/store names to prevent SQL injection', async () => {
