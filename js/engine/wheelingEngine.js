@@ -112,15 +112,14 @@ export class WheelingEngine {
                 pairStrength = pairStrength / Math.max(1, total * (analysis.expectedFreq || 1));
             }
 
-            const compositeNumberScore = (
+            const compositeNumberScore =
                 fNorm * 0.24 +
-                rNorm * 0.20 +
+                rNorm * 0.2 +
                 delayScore * 0.16 +
                 cycleScore * 0.14 +
                 markovNorm * 0.12 +
                 Math.min(1, pairStrength) * 0.08 +
-                antiCrowdNorm * 0.06
-            );
+                antiCrowdNorm * 0.06;
 
             scoredNumbers.push({
                 num: n,
@@ -164,7 +163,16 @@ export class WheelingEngine {
     /**
      * Gera uma Matriz de Fechamento Combinatório (Covering Design) com Otimização por Simulated Annealing
      */
-    static generateWheelingMatrix(config, analysis, fixed = [], excluded = [], count = 10, customWeights = null, backtestSummary = null, seed = 123456) {
+    static generateWheelingMatrix(
+        config,
+        analysis,
+        fixed = [],
+        excluded = [],
+        count = 10,
+        customWeights = null,
+        backtestSummary = null,
+        seed = 123456
+    ) {
         const rng = new SeededRandom(seed);
         const availableCount = config.total - excluded.length;
         const poolSize = this.getOptimalPoolSize(config, availableCount, count);
@@ -175,7 +183,9 @@ export class WheelingEngine {
         const coveredPairs = new Set();
         const coveredTriples = new Set();
         const usageCount = {};
-        elitePool.forEach(n => { usageCount[n] = 0; });
+        elitePool.forEach(n => {
+            usageCount[n] = 0;
+        });
 
         const selectedTickets = [];
         const candidatesPerStep = Math.max(45, Math.min(120, Math.ceil(400 / Math.max(1, count / 10))));
@@ -228,16 +238,18 @@ export class WheelingEngine {
                     minHammingRatio = minHamming / pick;
                 }
 
-                const scoreObj = ScoringEngine.evaluateGame(candidateNums, config, analysis, customWeights, backtestSummary);
+                const scoreObj = ScoringEngine.evaluateGame(
+                    candidateNums,
+                    config,
+                    analysis,
+                    customWeights,
+                    backtestSummary
+                );
                 const normModelScore = (scoreObj.modelScore || 50) / 100;
                 const normGaussian = (gaussianEval.gaussianQualityIndex || 50) / 100;
 
-                const wheelObjective = (
-                    pairCoverageGain * 0.38 +
-                    minHammingRatio * 0.27 +
-                    normModelScore * 0.20 +
-                    normGaussian * 0.15
-                );
+                const wheelObjective =
+                    pairCoverageGain * 0.38 + minHammingRatio * 0.27 + normModelScore * 0.2 + normGaussian * 0.15;
 
                 if (wheelObjective > bestWheelObjective) {
                     bestWheelObjective = wheelObjective;
@@ -253,7 +265,9 @@ export class WheelingEngine {
             if (bestCandidate) {
                 selectedTickets.push(bestCandidate);
                 const nums = bestCandidate.numbers;
-                nums.forEach(n => { usageCount[n] = (usageCount[n] || 0) + 1; });
+                nums.forEach(n => {
+                    usageCount[n] = (usageCount[n] || 0) + 1;
+                });
                 for (let i = 0; i < nums.length; i++) {
                     for (let j = i + 1; j < nums.length; j++) {
                         coveredPairs.add(`${nums[i]}-${nums[j]}`);
@@ -300,9 +314,10 @@ export class WheelingEngine {
         });
 
         const totalPossiblePairsInPool = (elitePool.length * (elitePool.length - 1)) / 2;
-        const pairGuaranteePct = totalPossiblePairsInPool > 0
-            ? Number(Math.min(100, (finalPairs.size / totalPossiblePairsInPool) * 100).toFixed(1))
-            : 100;
+        const pairGuaranteePct =
+            totalPossiblePairsInPool > 0
+                ? Number(Math.min(100, (finalPairs.size / totalPossiblePairsInPool) * 100).toFixed(1))
+                : 100;
 
         const schoenheimBound = this.calculateSchoenheimLowerBound(elitePool.length, pick);
         const conditionalGuarantees = this.evaluateConditionalGuarantees(
@@ -336,7 +351,16 @@ export class WheelingEngine {
      * Realiza micro-trocas de 1 dezena entre um bilhete e o Grupo de Elite para eliminar
      * pares duplicados/redundantes e expandir a cobertura única de pares da carteira.
      */
-    static optimizeMatrixWithSimulatedAnnealing(tickets, elitePool, fixed = [], config, analysis, customWeights, backtestSummary, rng) {
+    static optimizeMatrixWithSimulatedAnnealing(
+        tickets,
+        elitePool,
+        fixed = [],
+        config,
+        analysis,
+        customWeights,
+        backtestSummary,
+        rng
+    ) {
         if (!tickets || tickets.length <= 1 || elitePool.length <= config.pick) {
             return { acceptedSwaps: 0, iterations: 0 };
         }
@@ -358,8 +382,6 @@ export class WheelingEngine {
         tickets.forEach(t => addTicketPairs(t.numbers, 1));
 
         const maxIterations = Math.min(160, tickets.length * 14);
-        let temperature = 1.0;
-        const coolingRate = 0.96;
         let acceptedSwaps = 0;
 
         for (let iter = 0; iter < maxIterations; iter++) {
@@ -406,11 +428,16 @@ export class WheelingEngine {
                     addTicketPairs(newNums, 1);
                     currentTicket.numbers = newNums;
                     currentTicket.gaussianEval = newGaussian;
-                    currentTicket.scoreObj = ScoringEngine.evaluateGame(newNums, config, analysis, customWeights, backtestSummary);
+                    currentTicket.scoreObj = ScoringEngine.evaluateGame(
+                        newNums,
+                        config,
+                        analysis,
+                        customWeights,
+                        backtestSummary
+                    );
                     acceptedSwaps++;
                 }
             }
-            temperature *= coolingRate;
         }
 
         return {
@@ -435,7 +462,7 @@ export class WheelingEngine {
         const total = config.total;
 
         // Define cenários de acertos dentro do Grupo de Elite (ex: acertar 14 ou 15 na Lotofácil; 5 ou 6 na Mega; 4 ou 5 na Quina)
-        let scenarios = [];
+        let scenarios;
         if (total === 25) {
             scenarios = [13, 14, 15].filter(m => m <= elitePool.length);
         } else if (total === 60) {
@@ -465,7 +492,7 @@ export class WheelingEngine {
             let sumBestHit = 0;
             let prizeTicketsTotal = 0;
             let trialsWithPrize = 0;
-            const minPrizeTier = total === 25 ? 11 : (total === 60 ? 4 : (total === 80 ? 2 : 15));
+            const minPrizeTier = total === 25 ? 11 : total === 60 ? 4 : total === 80 ? 2 : 15;
 
             for (let t = 0; t < sampleTrials; t++) {
                 const poolDraw = rng.shuffle(elitePool).slice(0, mHitsInPool);
@@ -506,7 +533,17 @@ export class WheelingEngine {
     /**
      * Constrói um bilhete equilibrado dentro do Grupo de Elite priorizando dezenas menos usadas na matriz
      */
-    static _buildBalancedCandidateFromPool(elitePool, fixed, pick, usageCount, numberScores, analysis, rng, stepIdx, candidateIdx) {
+    static _buildBalancedCandidateFromPool(
+        elitePool,
+        fixed,
+        pick,
+        usageCount,
+        numberScores,
+        analysis,
+        rng,
+        _stepIdx,
+        _candidateIdx
+    ) {
         const selected = new Set(fixed);
         const candidates = elitePool.filter(n => !selected.has(n));
 

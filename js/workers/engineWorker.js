@@ -66,7 +66,10 @@ export function executeBenchmark(fullHistory, config, windowSize = 50) {
     for (const strat of strategies) {
         if (strat.id === 'random') {
             const generatorFn = (past, cfg) => BaselineEngine.generateRandomGame(cfg);
-            const bt = BacktestEngine.runBacktest(fullHistory, config, generatorFn, { windowSize, bootstrapIterations: 1500 });
+            const bt = BacktestEngine.runBacktest(fullHistory, config, generatorFn, {
+                windowSize,
+                bootstrapIterations: 1500
+            });
             results.push({
                 strategyId: strat.id,
                 strategy: strat.name,
@@ -84,7 +87,10 @@ export function executeBenchmark(fullHistory, config, windowSize = 50) {
                 const analysis = StatisticalAnalyzer.analyzeFast(past, cfg);
                 return GameGenerator.generateSingleCandidate(cfg.apiName, analysis, strat.id, [], [], cfg);
             };
-            const bt = BacktestEngine.runBacktest(fullHistory, config, generatorFn, { windowSize, bootstrapIterations: 1500 });
+            const bt = BacktestEngine.runBacktest(fullHistory, config, generatorFn, {
+                windowSize,
+                bootstrapIterations: 1500
+            });
             results.push({
                 strategyId: strat.id,
                 strategy: strat.name,
@@ -105,7 +111,7 @@ export function executeBenchmark(fullHistory, config, windowSize = 50) {
 }
 
 if (typeof self !== 'undefined' && typeof self.postMessage === 'function') {
-    self.onmessage = (event) => {
+    self.onmessage = event => {
         const { taskId, action, payload } = event.data || {};
         try {
             if (action === 'GENERATE_GAMES') {

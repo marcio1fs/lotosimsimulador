@@ -92,9 +92,7 @@ export function urlFor(source, apiName, options = {}) {
         return `${source.baseUrl}/${apiName}`;
     }
     // A Caixa publica o último concurso na própria raiz; o espelho em /latest.
-    return source.id === 'caixa'
-        ? `${source.baseUrl}/${apiName}`
-        : `${source.baseUrl}/${apiName}/latest`;
+    return source.id === 'caixa' ? `${source.baseUrl}/${apiName}` : `${source.baseUrl}/${apiName}/latest`;
 }
 
 /**
@@ -222,7 +220,7 @@ async function trySource(source, url, fetchImpl, timeoutMs, retries, externalSig
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             return { json: await resp.json(), error: null };
         } catch (err) {
-            lastError = err?.name === 'AbortError' ? 'timeout' : (err?.message || String(err));
+            lastError = err?.name === 'AbortError' ? 'timeout' : err?.message || String(err);
         } finally {
             clearTimeout(timer);
             externalSignal?.removeEventListener?.('abort', onAbort);
@@ -252,9 +250,7 @@ export async function resolveLatest(params = {}) {
     if (!rule) throw new TypeError(`modalidade desconhecida: ${type}`);
     if (typeof fetchImpl !== 'function') throw new TypeError('fetch indisponível');
 
-    const sources = (params.sources || DRAW_SOURCES)
-        .slice()
-        .sort((a, b) => a.priority - b.priority);
+    const sources = (params.sources || DRAW_SOURCES).slice().sort((a, b) => a.priority - b.priority);
 
     const sourcesTried = [];
     const errors = [];

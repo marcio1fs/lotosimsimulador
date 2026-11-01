@@ -28,12 +28,10 @@ export class UserModel {
         let hash = 0;
         for (let i = 0; i < password.length; i++) {
             const char = password.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
+            hash = (hash << 5) - hash + char;
             hash = hash & hash;
         }
-        const b64 = typeof btoa === 'function'
-            ? btoa(password)
-            : Buffer.from(password, 'utf-8').toString('base64');
+        const b64 = typeof btoa === 'function' ? btoa(password) : Buffer.from(password, 'utf-8').toString('base64');
         return 'h_' + Math.abs(hash).toString(36) + '_' + b64.substring(0, 12);
     }
 
@@ -116,11 +114,14 @@ export class UserModel {
             return ok ? { success: true } : { success: false, error: data.error || 'Falha ao criar conta' };
         }
 
-        const normalizedEmail = String(email || '').trim().toLowerCase();
+        const normalizedEmail = String(email || '')
+            .trim()
+            .toLowerCase();
         const exists = await Database.getByIndex('users', 'email', normalizedEmail);
         if (exists) return { success: false, error: 'E-mail já cadastrado' };
         if (!name || name.trim().length < 3) return { success: false, error: 'Nome deve ter pelo menos 3 caracteres' };
-        if (!password || password.length < 8) return { success: false, error: 'Senha deve ter pelo menos 8 caracteres' };
+        if (!password || password.length < 8)
+            return { success: false, error: 'Senha deve ter pelo menos 8 caracteres' };
 
         const securePasswordHash = await this.hashPasswordAsync(password);
         const userId = await Database.add('users', {
@@ -148,16 +149,22 @@ export class UserModel {
             const { ok, data } = await authFetch('/api/auth/login', 'POST', { email, password, remember });
             return ok
                 ? {
-                    success: true,
-                    user: data.user,
-                    session: data.session,
-                    // Senha vinha do formato antigo e foi convertida agora (item 6.12).
-                    passwordUpgraded: Boolean(data.passwordUpgraded)
-                }
-                : { success: false, error: data.error || 'E-mail ou senha incorretos', field: data.field || 'password' };
+                      success: true,
+                      user: data.user,
+                      session: data.session,
+                      // Senha vinha do formato antigo e foi convertida agora (item 6.12).
+                      passwordUpgraded: Boolean(data.passwordUpgraded)
+                  }
+                : {
+                      success: false,
+                      error: data.error || 'E-mail ou senha incorretos',
+                      field: data.field || 'password'
+                  };
         }
 
-        const normalizedEmail = String(email || '').trim().toLowerCase();
+        const normalizedEmail = String(email || '')
+            .trim()
+            .toLowerCase();
         const user = await Database.getByIndex('users', 'email', normalizedEmail);
         if (!user) return { success: false, error: 'E-mail ou senha incorretos', field: 'password' };
 
@@ -166,7 +173,8 @@ export class UserModel {
             return {
                 success: false,
                 field: 'password',
-                error: `Esta conta usa o formato de senha antigo, desativado em ${LEGACY_HASH_SUNSET_LABEL}. ` +
+                error:
+                    `Esta conta usa o formato de senha antigo, desativado em ${LEGACY_HASH_SUNSET_LABEL}. ` +
                     'Crie uma conta nova — o formato antigo permitia recuperar a senha a partir do banco local.'
             };
         }
@@ -195,7 +203,12 @@ export class UserModel {
         }
 
         const { password: _ignored, ...safeUser } = user;
-        return { success: true, user: safeUser, session: { id: sessionId }, passwordUpgraded: Boolean(verification.legacy) };
+        return {
+            success: true,
+            user: safeUser,
+            session: { id: sessionId },
+            passwordUpgraded: Boolean(verification.legacy)
+        };
     }
 
     static async validateSession() {
@@ -239,7 +252,8 @@ export class UserModel {
 
         const verification = await this.verifyPasswordAsync(currentPass, user.password);
         if (!verification.valid) return { success: false, error: 'Senha atual incorreta' };
-        if (!newPass || newPass.length < 8) return { success: false, error: 'A nova senha deve ter no mínimo 8 caracteres' };
+        if (!newPass || newPass.length < 8)
+            return { success: false, error: 'A nova senha deve ter no mínimo 8 caracteres' };
 
         user.password = await this.hashPasswordAsync(newPass);
         await Database.update('users', user);
@@ -266,7 +280,14 @@ export class UserModel {
     }
 
     static async getStats(userId) {
-        return await Database.get('user_stats', userId) || { userId, gamesGenerated: 0, simulations: 0, resultsAnalyzed: 0 };
+        return (
+            (await Database.get('user_stats', userId)) || {
+                userId,
+                gamesGenerated: 0,
+                simulations: 0,
+                resultsAnalyzed: 0
+            }
+        );
     }
 
     static async updateStats(userId, stats) {
@@ -285,7 +306,10 @@ export class UserModel {
             userId,
             gamesGenerated: (current.gamesGenerated || 0) + (gamesDelta || 0),
             simulations: (current.simulations || 0) + (simulationsDelta || 0),
-            resultsAnalyzed: resultsAnalyzed !== null && resultsAnalyzed !== undefined ? resultsAnalyzed : (current.resultsAnalyzed || 0)
+            resultsAnalyzed:
+                resultsAnalyzed !== null && resultsAnalyzed !== undefined
+                    ? resultsAnalyzed
+                    : current.resultsAnalyzed || 0
         };
         await Database.update('user_stats', next);
         return next;

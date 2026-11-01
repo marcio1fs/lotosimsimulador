@@ -32,7 +32,9 @@ class AppController {
     static async init() {
         try {
             await Database.init();
-            const label = Database.useApi ? '✅ Banco Nuvem (Neon Segura) conectado' : '✅ Banco Local (IndexedDB) conectado';
+            const label = Database.useApi
+                ? '✅ Banco Nuvem (Neon Segura) conectado'
+                : '✅ Banco Local (IndexedDB) conectado';
             AuthView.updateDbStatus(true, label);
         } catch (e) {
             AuthView.updateDbStatus(false, '❌ Erro ao conectar banco de dados');
@@ -83,15 +85,21 @@ class AppController {
             appState.generatedGames = recentGames.map(x => {
                 let numbers = x.numbers;
                 if (typeof numbers === 'string') {
-                    try { numbers = JSON.parse(numbers); } catch (_) {}
+                    try {
+                        numbers = JSON.parse(numbers);
+                    } catch (_) {}
                 }
                 let statsObj = x.stats;
                 if (typeof statsObj === 'string') {
-                    try { statsObj = JSON.parse(statsObj); } catch (_) {}
+                    try {
+                        statsObj = JSON.parse(statsObj);
+                    } catch (_) {}
                 }
                 let explanations = x.explanations;
                 if (typeof explanations === 'string') {
-                    try { explanations = JSON.parse(explanations); } catch (_) {}
+                    try {
+                        explanations = JSON.parse(explanations);
+                    } catch (_) {}
                 }
                 return {
                     numbers: Array.isArray(numbers) ? numbers : [],
@@ -118,24 +126,30 @@ class AppController {
     }
 
     static bindEvents() {
-        document.querySelectorAll('.auth-tab').forEach(tab => tab.addEventListener('click', () => {
-            AuthView.clearErrors();
-            AuthView.showForm(tab.dataset.view);
-        }));
+        document.querySelectorAll('.auth-tab').forEach(tab =>
+            tab.addEventListener('click', () => {
+                AuthView.clearErrors();
+                AuthView.showForm(tab.dataset.view);
+            })
+        );
 
-        document.querySelectorAll('[data-action="switch-register"]').forEach(l => l.addEventListener('click', (e) => {
-            e.preventDefault();
-            AuthView.clearErrors();
-            AuthView.showForm('register');
-        }));
+        document.querySelectorAll('[data-action="switch-register"]').forEach(l =>
+            l.addEventListener('click', e => {
+                e.preventDefault();
+                AuthView.clearErrors();
+                AuthView.showForm('register');
+            })
+        );
 
-        document.querySelectorAll('[data-action="switch-login"]').forEach(l => l.addEventListener('click', (e) => {
-            e.preventDefault();
-            AuthView.clearErrors();
-            AuthView.showForm('login');
-        }));
+        document.querySelectorAll('[data-action="switch-login"]').forEach(l =>
+            l.addEventListener('click', e => {
+                e.preventDefault();
+                AuthView.clearErrors();
+                AuthView.showForm('login');
+            })
+        );
 
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        document.getElementById('loginForm').addEventListener('submit', async e => {
             e.preventDefault();
             AuthView.clearErrors();
             const email = document.getElementById('loginEmail').value.trim().toLowerCase();
@@ -160,7 +174,7 @@ class AppController {
             }
         });
 
-        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+        document.getElementById('registerForm').addEventListener('submit', async e => {
             e.preventDefault();
             AuthView.clearErrors();
             const name = document.getElementById('regName').value.trim();
@@ -169,10 +183,22 @@ class AppController {
             const confirm = document.getElementById('regPasswordConfirm').value;
 
             let hasError = false;
-            if (name.length < 3) { AuthView.showError('regName', 'Nome deve ter pelo menos 3 caracteres'); hasError = true; }
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { AuthView.showError('regEmail', 'E-mail inválido'); hasError = true; }
-            if (password.length < 8) { AuthView.showError('regPassword', 'Mínimo 8 caracteres'); hasError = true; }
-            if (password !== confirm) { AuthView.showError('regPasswordConfirm', 'Senhas não coincidem'); hasError = true; }
+            if (name.length < 3) {
+                AuthView.showError('regName', 'Nome deve ter pelo menos 3 caracteres');
+                hasError = true;
+            }
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                AuthView.showError('regEmail', 'E-mail inválido');
+                hasError = true;
+            }
+            if (password.length < 8) {
+                AuthView.showError('regPassword', 'Mínimo 8 caracteres');
+                hasError = true;
+            }
+            if (password !== confirm) {
+                AuthView.showError('regPasswordConfirm', 'Senhas não coincidem');
+                hasError = true;
+            }
             if (hasError) return;
 
             AuthView.setLoading(true, 'regBtn');
@@ -196,46 +222,58 @@ class AppController {
             }
         });
 
-        document.querySelectorAll('.password-toggle').forEach(btn => btn.addEventListener('click', () => {
-            const input = document.getElementById(btn.dataset.target);
-            if (input) {
-                input.type = input.type === 'password' ? 'text' : 'password';
-                btn.textContent = input.type === 'password' ? '👁️' : '🙈';
-            }
-        }));
+        document.querySelectorAll('.password-toggle').forEach(btn =>
+            btn.addEventListener('click', () => {
+                const input = document.getElementById(btn.dataset.target);
+                if (input) {
+                    input.type = input.type === 'password' ? 'text' : 'password';
+                    btn.textContent = input.type === 'password' ? '👁️' : '🙈';
+                }
+            })
+        );
 
-        document.querySelectorAll('.nav-tab').forEach(tab => tab.addEventListener('click', () => {
-            AppView.showScreen(tab.dataset.screen);
-            if (tab.dataset.screen === 'statistics') this.updateStats();
-            if (tab.dataset.screen === 'conference') {
-                const type = document.getElementById('confLotteryType').value;
-                AppView.renderConferenceInputs(type);
-                AppView.renderLastResult(type, appState.resultsData[type]?.lastResult);
-            }
-        }));
+        document.querySelectorAll('.nav-tab').forEach(tab =>
+            tab.addEventListener('click', () => {
+                AppView.showScreen(tab.dataset.screen);
+                if (tab.dataset.screen === 'statistics') this.updateStats();
+                if (tab.dataset.screen === 'conference') {
+                    const type = document.getElementById('confLotteryType').value;
+                    AppView.renderConferenceInputs(type);
+                    AppView.renderLastResult(type, appState.resultsData[type]?.lastResult);
+                }
+            })
+        );
 
-        document.querySelectorAll('.tab-sub-btn').forEach(btn => btn.addEventListener('click', () => {
-            document.querySelectorAll('.tab-sub-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            ['frequency', 'patterns', 'projections', 'history'].forEach(tab => {
-                document.getElementById(`stat-${tab}`).style.display = 'none';
-            });
-            document.getElementById(`stat-${btn.dataset.tab}`).style.display = 'block';
-        }));
+        document.querySelectorAll('.tab-sub-btn').forEach(btn =>
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-sub-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                ['frequency', 'patterns', 'projections', 'history'].forEach(tab => {
+                    document.getElementById(`stat-${tab}`).style.display = 'none';
+                });
+                document.getElementById(`stat-${btn.dataset.tab}`).style.display = 'block';
+            })
+        );
 
-        document.querySelectorAll('.lottery-card').forEach(card => card.addEventListener('click', () => {
-            appState.currentLottery = card.dataset.type;
-            appState.fixedNumbers = [];
-            appState.excludedNumbers = [];
-            AppView.renderLotteryCards(card.dataset.type);
-            AppView.renderNumberSelectors(appState.currentLottery, [], []);
-            if (appState.resultsData[appState.currentLottery]) {
-                LotteryController.recomputeWindow(appState.resultsData, appState.currentLottery, appState.currentTimeWindow);
-                AppView.renderInsights(appState.currentLottery, appState.resultsData[appState.currentLottery]);
-            }
-        }));
+        document.querySelectorAll('.lottery-card').forEach(card =>
+            card.addEventListener('click', () => {
+                appState.currentLottery = card.dataset.type;
+                appState.fixedNumbers = [];
+                appState.excludedNumbers = [];
+                AppView.renderLotteryCards(card.dataset.type);
+                AppView.renderNumberSelectors(appState.currentLottery, [], []);
+                if (appState.resultsData[appState.currentLottery]) {
+                    LotteryController.recomputeWindow(
+                        appState.resultsData,
+                        appState.currentLottery,
+                        appState.currentTimeWindow
+                    );
+                    AppView.renderInsights(appState.currentLottery, appState.resultsData[appState.currentLottery]);
+                }
+            })
+        );
 
-        document.addEventListener('click', (e) => {
+        document.addEventListener('click', e => {
             const ball = e.target.closest('.selector-ball');
             if (!ball || ball.classList.contains('disabled')) return;
 
@@ -261,39 +299,47 @@ class AppController {
             AppView.renderNumberSelectors(appState.currentLottery, appState.fixedNumbers, appState.excludedNumbers);
         });
 
-        document.querySelectorAll('.strategy-option').forEach(opt => opt.addEventListener('click', () => {
-            appState.currentStrategy = opt.dataset.strategy;
-            AppView.renderStrategies(opt.dataset.strategy);
-        }));
+        document.querySelectorAll('.strategy-option').forEach(opt =>
+            opt.addEventListener('click', () => {
+                appState.currentStrategy = opt.dataset.strategy;
+                AppView.renderStrategies(opt.dataset.strategy);
+            })
+        );
 
-        document.querySelectorAll('.window-btn[data-window]').forEach(btn => btn.addEventListener('click', () => {
-            document.querySelectorAll('.window-btn[data-window]').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            const winVal = btn.dataset.window;
-            appState.currentTimeWindow = winVal === 'full' ? 'full' : parseInt(winVal, 10);
-            if (appState.resultsData[appState.currentLottery]) {
-                const updated = LotteryController.recomputeWindow(
-                    appState.resultsData,
-                    appState.currentLottery,
-                    appState.currentTimeWindow
-                );
-                if (updated) {
-                    AppView.renderInsights(appState.currentLottery, updated);
+        document.querySelectorAll('.window-btn[data-window]').forEach(btn =>
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.window-btn[data-window]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                const winVal = btn.dataset.window;
+                appState.currentTimeWindow = winVal === 'full' ? 'full' : parseInt(winVal, 10);
+                if (appState.resultsData[appState.currentLottery]) {
+                    const updated = LotteryController.recomputeWindow(
+                        appState.resultsData,
+                        appState.currentLottery,
+                        appState.currentTimeWindow
+                    );
+                    if (updated) {
+                        AppView.renderInsights(appState.currentLottery, updated);
+                    }
                 }
-            }
-        }));
+            })
+        );
 
-        document.querySelectorAll('.batch-size-btn[data-count]').forEach(btn => btn.addEventListener('click', () => {
-            document.querySelectorAll('.batch-size-btn[data-count]').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            appState.currentBatchSize = parseInt(btn.dataset.count, 10) || 10;
-        }));
+        document.querySelectorAll('.batch-size-btn[data-count]').forEach(btn =>
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.batch-size-btn[data-count]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                appState.currentBatchSize = parseInt(btn.dataset.count, 10) || 10;
+            })
+        );
 
         document.getElementById('fetchBtn').addEventListener('click', () => this.fetchResults());
         document.getElementById('generateBtn').addEventListener('click', () => this.generateGames());
-        document.getElementById('btnPermutationTest')?.addEventListener('click', (e) => this.runPermutationTest(e.currentTarget));
+        document
+            .getElementById('btnPermutationTest')
+            ?.addEventListener('click', e => this.runPermutationTest(e.currentTarget));
 
-        document.getElementById('confLotteryType').addEventListener('change', (e) => {
+        document.getElementById('confLotteryType').addEventListener('change', e => {
             const type = e.target.value;
             AppView.renderConferenceInputs(type);
             AppView.renderLastResult(type, appState.resultsData[type]?.lastResult);
@@ -318,41 +364,43 @@ class AppController {
         document.getElementById('exportTxtBtn')?.addEventListener('click', () => this.exportGames('txt'));
         document.getElementById('exportPdfBtn')?.addEventListener('click', () => this.exportGames('pdf'));
 
-        document.getElementById('userMenu').addEventListener('click', (e) => {
+        document.getElementById('userMenu').addEventListener('click', e => {
             e.stopPropagation();
             AppView.toggleUserDropdown(true);
         });
 
-        document.addEventListener('click', (e) => {
+        document.addEventListener('click', e => {
             if (!e.target.closest('.user-menu')) AppView.toggleUserDropdown(false);
         });
 
-        document.querySelectorAll('.dropdown-item[data-action], .btn[data-action="logout"]').forEach(item => item.addEventListener('click', (e) => {
-            e.stopPropagation();
-            AppView.toggleUserDropdown(false);
-            const action = item.dataset.action;
-            if (action === 'logout') {
-                AutomationController.stop();
-                document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
-                AuthController.logout(currentSession?.id).then(() => {
-                    currentUser = null;
-                    currentSession = null;
-                    AuthView.show();
-                    AppView.showToast('👋 Até logo!', 'success');
-                });
-            }
-            if (action === 'open-profile') document.getElementById('profileModal').classList.add('active');
-            if (action === 'open-auto') {
-                document.getElementById('autoModal').classList.add('active');
-                AppView.updateAutoUI(AutomationModel.state);
-                AppView.renderAutoLog(AutomationModel.state.log);
-            }
-            if (action === 'open-db-info') {
-                document.getElementById('dbInfoModal').classList.add('active');
-                this.showDbInfo();
-            }
-            if (action === 'export-data') this.exportData();
-        }));
+        document.querySelectorAll('.dropdown-item[data-action], .btn[data-action="logout"]').forEach(item =>
+            item.addEventListener('click', e => {
+                e.stopPropagation();
+                AppView.toggleUserDropdown(false);
+                const action = item.dataset.action;
+                if (action === 'logout') {
+                    AutomationController.stop();
+                    document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
+                    AuthController.logout(currentSession?.id).then(() => {
+                        currentUser = null;
+                        currentSession = null;
+                        AuthView.show();
+                        AppView.showToast('👋 Até logo!', 'success');
+                    });
+                }
+                if (action === 'open-profile') document.getElementById('profileModal').classList.add('active');
+                if (action === 'open-auto') {
+                    document.getElementById('autoModal').classList.add('active');
+                    AppView.updateAutoUI(AutomationModel.state);
+                    AppView.renderAutoLog(AutomationModel.state.log);
+                }
+                if (action === 'open-db-info') {
+                    document.getElementById('dbInfoModal').classList.add('active');
+                    this.showDbInfo();
+                }
+                if (action === 'export-data') this.exportData();
+            })
+        );
 
         document.getElementById('changePassBtn')?.addEventListener('click', async () => {
             if (!currentUser) return;
@@ -392,7 +440,11 @@ class AppController {
                 AppView.showToast('⚠️ Confirme sua senha para excluir a conta!', 'error');
                 return;
             }
-            if (!window.confirm('Tem certeza absoluta? Todos os seus jogos, simulações e dados pessoais serão removidos permanentemente (LGPD).')) {
+            if (
+                !window.confirm(
+                    'Tem certeza absoluta? Todos os seus jogos, simulações e dados pessoais serão removidos permanentemente (LGPD).'
+                )
+            ) {
                 return;
             }
             const res = await AuthController.deleteAccount(currentUser.id, password);
@@ -422,9 +474,11 @@ class AppController {
             AppView.showToast('🗑️ Log de operações limpo!', 'info');
         });
 
-        document.querySelectorAll('[data-action="close-modal"]').forEach(btn => btn.addEventListener('click', () => {
-            document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
-        }));
+        document.querySelectorAll('[data-action="close-modal"]').forEach(btn =>
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
+            })
+        );
 
         const autoToggles = ['autoFetchToggle', 'autoGenerateToggle', 'autoConferenceToggle', 'autoAllLotteriesToggle'];
         autoToggles.forEach(id => {
@@ -470,7 +524,11 @@ class AppController {
             }
 
             const currentData = results[appState.currentLottery];
-            AppView.setDataStatus(true, currentData.data.length + ' concursos', 'Atualizado: ' + new Date().toLocaleTimeString());
+            AppView.setDataStatus(
+                true,
+                currentData.data.length + ' concursos',
+                'Atualizado: ' + new Date().toLocaleTimeString()
+            );
             AppView.setAgentStatus('✅ Base de dados atualizada', false);
             document.getElementById('generateBtn').disabled = false;
 
@@ -497,7 +555,10 @@ class AppController {
         AppView.setLoading(true, `Agente IA rodando Poda Gaussiana + Simulated Annealing para ${batchCount} jogos...`);
         const type = appState.currentLottery;
         const rd = appState.resultsData[type];
-        if (!rd) { AppView.setLoading(false); return; }
+        if (!rd) {
+            AppView.setLoading(false);
+            return;
+        }
 
         try {
             const games = await LotteryController.generateGames(
@@ -611,7 +672,10 @@ class AppController {
         }
 
         const original = button ? button.textContent : null;
-        if (button) { button.disabled = true; button.textContent = '⏳ Rodando permutações...'; }
+        if (button) {
+            button.disabled = true;
+            button.textContent = '⏳ Rodando permutações...';
+        }
         try {
             const result = await LotteryController.runPermutationTestAsync(rd.data, LotteryModel.CONFIG[type], {
                 runs: 99,
@@ -625,14 +689,19 @@ class AppController {
                 reason: `Falha ao executar o teste: ${err?.message || err}`
             });
         } finally {
-            if (button) { button.disabled = false; button.textContent = original; }
+            if (button) {
+                button.disabled = false;
+                button.textContent = original;
+            }
         }
     }
 
     static exportGames(format) {
         if (!appState.generatedGames.length) return;
         const cfg = LotteryModel.CONFIG[appState.currentLottery];
-        const proj = appState.generatedGames.portfolioProjection || appState.generatedGames[0]?.futureProjection?.portfolioProjection;
+        const proj =
+            appState.generatedGames.portfolioProjection ||
+            appState.generatedGames[0]?.futureProjection?.portfolioProjection;
         const wheelMeta = appState.generatedGames.wheelMetadata || appState.generatedGames[0]?.wheelMetadata;
 
         if (format === 'pdf') {
@@ -677,14 +746,15 @@ class AppController {
         const { cols } = StatisticalAnalyzer.getGridDimensions(cfg.total);
         const fin = proj?.financial;
 
-        const cardsHtml = appState.generatedGames.map((g, idx) => {
-            const numSet = new Set(g.numbers);
-            let gridCells = '';
-            for (let n = 1; n <= cfg.total; n++) {
-                const marked = numSet.has(n);
-                gridCells += `<div class="cell ${marked ? 'marked' : ''}">${String(n).padStart(2, '0')}</div>`;
-            }
-            return `
+        const cardsHtml = appState.generatedGames
+            .map((g, idx) => {
+                const numSet = new Set(g.numbers);
+                let gridCells = '';
+                for (let n = 1; n <= cfg.total; n++) {
+                    const marked = numSet.has(n);
+                    gridCells += `<div class="cell ${marked ? 'marked' : ''}">${String(n).padStart(2, '0')}</div>`;
+                }
+                return `
                 <div class="volante-card">
                     <div class="volante-header">
                         <strong>JOGO #${idx + 1} (${cfg.name})</strong>
@@ -696,7 +766,8 @@ class AppController {
                     </div>
                 </div>
             `;
-        }).join('');
+            })
+            .join('');
 
         const printHtml = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -745,7 +816,10 @@ class AppController {
             win.document.close();
             win.document.getElementById('printNowBtn')?.addEventListener('click', () => win.print());
             setTimeout(() => {
-                try { win.focus(); win.print(); } catch (_) {}
+                try {
+                    win.focus();
+                    win.print();
+                } catch (_) {}
             }, 350);
             AppView.showToast('📄 Folha de Volantes PDF aberta para impressão!', 'success');
         } else {
@@ -791,9 +865,13 @@ class AppController {
         if (key === 'autofetch') AutomationModel.state.autoFetch = document.getElementById(id).checked;
         else if (key === 'autogenerate') AutomationModel.state.autoGenerate = document.getElementById(id).checked;
         else if (key === 'autoconference') AutomationModel.state.autoConference = document.getElementById(id).checked;
-        else if (key === 'autoalllotteries') AutomationModel.state.autoAllLotteries = document.getElementById(id).checked;
+        else if (key === 'autoalllotteries')
+            AutomationModel.state.autoAllLotteries = document.getElementById(id).checked;
 
-        AutomationModel.state.active = AutomationModel.state.autoFetch || AutomationModel.state.autoGenerate || AutomationModel.state.autoConference;
+        AutomationModel.state.active =
+            AutomationModel.state.autoFetch ||
+            AutomationModel.state.autoGenerate ||
+            AutomationModel.state.autoConference;
 
         if (AutomationModel.state.active) {
             AutomationController.start(() => this.runAutoCycle());

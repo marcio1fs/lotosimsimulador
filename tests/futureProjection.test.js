@@ -69,11 +69,12 @@ describe('Projeções — interseção exata entre dois bilhetes', () => {
     });
 
     it('a interseção deve crescer com o número de dezenas compartilhadas', () => {
-        const valores = [0, 1, 2, 3, 4, 5, 6].map(s =>
-            FutureProjectionEngine.pairIntersectionProbability(MEGA, 4, s));
+        const valores = [0, 1, 2, 3, 4, 5, 6].map(s => FutureProjectionEngine.pairIntersectionProbability(MEGA, 4, s));
         for (let i = 1; i < valores.length; i++) {
-            assert.ok(valores[i] >= valores[i - 1] - 1e-15,
-                `interseção deveria ser monotônica em s (${valores[i - 1]} -> ${valores[i]})`);
+            assert.ok(
+                valores[i] >= valores[i - 1] - 1e-15,
+                `interseção deveria ser monotônica em s (${valores[i - 1]} -> ${valores[i]})`
+            );
         }
     });
 
@@ -124,15 +125,17 @@ describe('Projeções — tempo até a certeza estatística', () => {
         let anterior = 1;
         for (const s of h.survival) {
             assert.ok(s.probabilityNoWin <= anterior + 1e-12);
-            assert.ok(Math.abs((s.probabilityNoWin + s.probabilityAtLeastOneWin) - 1) < 1e-8);
+            assert.ok(Math.abs(s.probabilityNoWin + s.probabilityAtLeastOneWin - 1) < 1e-8);
             anterior = s.probabilityNoWin;
         }
     });
 
     it('o primeiro marco de 50% da Mega-Sena deve levar dezenas de milhões de concursos', () => {
         const h = FutureProjectionEngine.jackpotHorizon(MEGA, 1);
-        assert.ok(h.milestones[0].draws > 30e6 && h.milestones[0].draws < 40e6,
-            `esperado ~34,7 milhões, obteve ${h.milestones[0].draws}`);
+        assert.ok(
+            h.milestones[0].draws > 30e6 && h.milestones[0].draws < 40e6,
+            `esperado ~34,7 milhões, obteve ${h.milestones[0].draws}`
+        );
         assert.ok(h.milestones[0].humanized.includes('mil anos'));
     });
 });
@@ -148,7 +151,10 @@ describe('Projeções — espera por dezena (geométrica)', () => {
         const cfg = { total: 25, pick: 15, drawn: 15 };
         const w = FutureProjectionEngine.numberWaitingTime(cfg, null, 4);
         const manual = 1 - Math.pow(1 - 15 / 25, 4);
-        assert.ok(Math.abs(w.probabilityWithinHorizon - manual) < 1e-9, `esperado ${manual}, obteve ${w.probabilityWithinHorizon}`);
+        assert.ok(
+            Math.abs(w.probabilityWithinHorizon - manual) < 1e-9,
+            `esperado ${manual}, obteve ${w.probabilityWithinHorizon}`
+        );
     });
 
     it('todas as dezenas têm a mesma espera — o atraso não altera a probabilidade', () => {
@@ -177,8 +183,10 @@ describe('Projeções — financeiro', () => {
     it('a taxa de retorno deve ser menor que 100% (loteria é jogo de valor esperado negativo)', () => {
         for (const cfg of [MEGA, LOTOFACIL, QUINA, LOTOMANIA]) {
             const f = FutureProjectionEngine.financialProjection(cfg, 1, 1);
-            assert.ok(f.expectedReturnRate > 0 && f.expectedReturnRate < 1,
-                `${cfg.name}: taxa ${f.expectedReturnRate} deveria estar em (0,1)`);
+            assert.ok(
+                f.expectedReturnRate > 0 && f.expectedReturnRate < 1,
+                `${cfg.name}: taxa ${f.expectedReturnRate} deveria estar em (0,1)`
+            );
             assert.ok(f.expectedNet < 0, `${cfg.name}: resultado esperado deve ser negativo`);
         }
     });
@@ -228,7 +236,9 @@ describe('Projeções — cobertura da carteira', () => {
 
     it('para pick === drawn, o prêmio máximo da carteira é exatamente m × p', () => {
         const tickets = [
-            [1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [13, 14, 15, 16, 17, 18]
+            [1, 2, 3, 4, 5, 6],
+            [7, 8, 9, 10, 11, 12],
+            [13, 14, 15, 16, 17, 18]
         ];
         const c = FutureProjectionEngine.portfolioCoverage(MEGA, tickets);
         const p = ProbabilityEngine.hypergeometric(MEGA, 6).fullHitProbability;
@@ -248,7 +258,9 @@ describe('Projeções — cobertura da carteira', () => {
 
     it('os limites de Bonferroni devem ser válidos e conter a estimativa', () => {
         const tickets = [
-            [1, 2, 3, 4, 5, 6], [4, 5, 6, 7, 8, 9], [1, 7, 13, 19, 25, 31]
+            [1, 2, 3, 4, 5, 6],
+            [4, 5, 6, 7, 8, 9],
+            [1, 7, 13, 19, 25, 31]
         ];
         const c = FutureProjectionEngine.portfolioCoverage(MEGA, tickets);
         const faixa = c.tiers[4];
@@ -261,21 +273,28 @@ describe('Projeções — cobertura da carteira', () => {
 
     it('bilhetes idênticos não devem inflar a probabilidade (interseção = 1)', () => {
         const iguais = [
-            [1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5, 6]
+            [1, 2, 3, 4, 5, 6],
+            [1, 2, 3, 4, 5, 6],
+            [1, 2, 3, 4, 5, 6]
         ];
         const c = FutureProjectionEngine.portfolioCoverage(MEGA, iguais);
         const p = FutureProjectionEngine.probabilityAtLeastHits(MEGA, 4);
         // com bilhetes idênticos, a união é 1 evento, não 3
-        assert.ok(c.anyPrize.lowerBound <= p + 1e-9,
-            `limite inferior (${c.anyPrize.lowerBound}) deveria voltar à probabilidade de 1 bilhete (${p})`);
+        assert.ok(
+            c.anyPrize.lowerBound <= p + 1e-9,
+            `limite inferior (${c.anyPrize.lowerBound}) deveria voltar à probabilidade de 1 bilhete (${p})`
+        );
     });
 });
 
 describe('Projeções — integridade: podar combinações NÃO melhora as odds', () => {
     it('calculatePortfolioProjection não pode alegar ganho de probabilidade pela poda', () => {
         const proj = ProbabilityEngine.calculatePortfolioProjection(MEGA, 10, 6, 85);
-        assert.equal(proj.gaussianCorePortfolioOdds, proj.portfolioDirectOdds,
-            'o "núcleo gaussiano" não pode ter odds melhores que a carteira direta');
+        assert.equal(
+            proj.gaussianCorePortfolioOdds,
+            proj.portfolioDirectOdds,
+            'o "núcleo gaussiano" não pode ter odds melhores que a carteira direta'
+        );
         assert.equal(proj.gaussianCoreOddsAreUnchanged, true);
         assert.ok(proj.spaceReduction.oddsImpact.includes('Nenhum'));
     });
@@ -286,24 +305,35 @@ describe('Projeções — integridade: podar combinações NÃO melhora as odds'
             const pAny = FutureProjectionEngine.probabilityAtLeastHits(MEGA, 4);
             const limite = Math.min(1, pAny * tickets);
             // a probabilidade é serializada com 4 casas decimais de porcentagem
-            assert.ok(proj.anyPrizePortfolioProbability <= limite * 100 + 1e-3,
-                `carteira de ${tickets}: ${proj.anyPrizePortfolioProbability}% excedeu o limite ${limite * 100}%`);
+            assert.ok(
+                proj.anyPrizePortfolioProbability <= limite * 100 + 1e-3,
+                `carteira de ${tickets}: ${proj.anyPrizePortfolioProbability}% excedeu o limite ${limite * 100}%`
+            );
         }
     });
 
     it('o fator de redução de espaço não pode ser apresentado como ganho de acerto', () => {
         const proj = ProbabilityEngine.calculatePortfolioProjection(MEGA, 10, 6, 85);
         assert.ok(typeof proj.totalFactorGain === 'string');
-        assert.ok(/menos combinações/.test(proj.totalFactorGain),
-            'o rótulo deve falar de espaço gerado, não de probabilidade');
+        assert.ok(
+            /menos combinações/.test(proj.totalFactorGain),
+            'o rótulo deve falar de espaço gerado, não de probabilidade'
+        );
     });
 });
 
 describe('Projeções — pacote agregado', () => {
     it('project() deve retornar todas as seções sem valores inválidos', () => {
-        const history = Array.from({ length: 60 }, (_, i) => ({ concurso: 60 - i, dezenas: [1, 2, 3, 4, 5, 6], acumulou: i % 3 === 0 }));
+        const history = Array.from({ length: 60 }, (_, i) => ({
+            concurso: 60 - i,
+            dezenas: [1, 2, 3, 4, 5, 6],
+            acumulou: i % 3 === 0
+        }));
         const p = FutureProjectionEngine.project({
-            config: MEGA, ticketCount: 5, draws: 52, history
+            config: MEGA,
+            ticketCount: 5,
+            draws: 52,
+            history
         });
         assert.ok(p.horizon && p.waitingTime && p.financial && p.accumulation && p.coverage);
         assert.ok(p.disclaimer.includes('Não são previsão de dezenas'));
@@ -341,21 +371,33 @@ describe('Projeções — Monte Carlo determinístico quando Bonferroni é inút
         const tickets = buildLotoTickets(1, 42);
         const mc = FutureProjectionEngine.estimatePortfolioProbability(LOTOFACIL, tickets, 11, { iterations: 40000 });
         const analitico = FutureProjectionEngine.probabilityAtLeastHits(LOTOFACIL, 11);
-        assert.ok(mc.lowerBound <= analitico && analitico <= mc.upperBound,
-            `analítico ${analitico} deveria cair em [${mc.lowerBound}, ${mc.upperBound}]`);
+        assert.ok(
+            mc.lowerBound <= analitico && analitico <= mc.upperBound,
+            `analítico ${analitico} deveria cair em [${mc.lowerBound}, ${mc.upperBound}]`
+        );
     });
 
     it('deve ser reprodutível com a mesma semente', () => {
         const tickets = buildLotoTickets(6, 99);
-        const a = FutureProjectionEngine.estimatePortfolioProbability(LOTOFACIL, tickets, 11, { iterations: 20000, seed: 123 });
-        const b = FutureProjectionEngine.estimatePortfolioProbability(LOTOFACIL, tickets, 11, { iterations: 20000, seed: 123 });
+        const a = FutureProjectionEngine.estimatePortfolioProbability(LOTOFACIL, tickets, 11, {
+            iterations: 20000,
+            seed: 123
+        });
+        const b = FutureProjectionEngine.estimatePortfolioProbability(LOTOFACIL, tickets, 11, {
+            iterations: 20000,
+            seed: 123
+        });
         assert.equal(a.probability, b.probability);
         assert.equal(a.lowerBound, b.lowerBound);
     });
 
     it('aumentar a carteira deve aumentar a probabilidade estimada', () => {
-        const tres = FutureProjectionEngine.estimatePortfolioProbability(LOTOFACIL, buildLotoTickets(3, 7), 11, { iterations: 20000 });
-        const dez = FutureProjectionEngine.estimatePortfolioProbability(LOTOFACIL, buildLotoTickets(10, 7), 11, { iterations: 20000 });
+        const tres = FutureProjectionEngine.estimatePortfolioProbability(LOTOFACIL, buildLotoTickets(3, 7), 11, {
+            iterations: 20000
+        });
+        const dez = FutureProjectionEngine.estimatePortfolioProbability(LOTOFACIL, buildLotoTickets(10, 7), 11, {
+            iterations: 20000
+        });
         assert.ok(dez.probability > tres.probability);
     });
 
@@ -366,8 +408,10 @@ describe('Projeções — Monte Carlo determinístico quando Bonferroni é inút
         assert.equal(faixa11.exact, false);
         assert.ok(faixa11.method.includes('Monte Carlo'), `método obtido: ${faixa11.method}`);
         assert.ok(faixa11.monteCarlo && faixa11.monteCarlo.iterations > 0);
-        assert.ok(faixa11.upperBound - faixa11.lowerBound < 0.10,
-            'o IC não pode ser mais largo que 10 pontos percentuais');
+        assert.ok(
+            faixa11.upperBound - faixa11.lowerBound < 0.1,
+            'o IC não pode ser mais largo que 10 pontos percentuais'
+        );
         assert.ok(faixa11.probability > 0.5, 'com 10 jogos de Lotofácil a chance de ≥11 acertos passa de 50%');
     });
 

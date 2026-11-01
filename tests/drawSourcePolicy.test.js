@@ -31,8 +31,23 @@ function lfPayload(concurso = 3200, dezenas = null) {
     return {
         concurso,
         dataApuracao: '01/11/2026',
-        listaDezenas: dezenas || ['01', '02', '03', '04', '05', '06', '07', '08',
-            '09', '10', '11', '12', '13', '14', '15'],
+        listaDezenas: dezenas || [
+            '01',
+            '02',
+            '03',
+            '04',
+            '05',
+            '06',
+            '07',
+            '08',
+            '09',
+            '10',
+            '11',
+            '12',
+            '13',
+            '14',
+            '15'
+        ],
         acumulado: false,
         valorEstimadoProximoConcurso: 1700000
     };
@@ -40,7 +55,7 @@ function lfPayload(concurso = 3200, dezenas = null) {
 
 /** fetch falso: `respostas` mapeia URL → corpo (ou função/erro). */
 function makeFetch(respostas, registro = []) {
-    return async (url) => {
+    return async url => {
         registro.push(url);
         const entrada = respostas[url];
         const valor = typeof entrada === 'function' ? await entrada() : entrada;
@@ -101,10 +116,28 @@ describe('DrawSourcePolicy — catálogo de fontes', () => {
 
 describe('DrawSourcePolicy — validação de esquema', () => {
     it('aceita payload válido e normaliza as dezenas', () => {
-        const r = validateDraw({ ...lfPayload(), listaDezenas: [15, 3, 7, 1, 2, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14] }, 'lotofacil');
+        const r = validateDraw(
+            { ...lfPayload(), listaDezenas: [15, 3, 7, 1, 2, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14] },
+            'lotofacil'
+        );
         assert.equal(r.ok, true);
-        assert.deepEqual(r.draw.dezenas, ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10',
-            '11', '12', '13', '14', '15']);
+        assert.deepEqual(r.draw.dezenas, [
+            '01',
+            '02',
+            '03',
+            '04',
+            '05',
+            '06',
+            '07',
+            '08',
+            '09',
+            '10',
+            '11',
+            '12',
+            '13',
+            '14',
+            '15'
+        ]);
         assert.equal(r.draw.concurso, 3200);
     });
 
@@ -130,20 +163,29 @@ describe('DrawSourcePolicy — validação de esquema', () => {
     });
 
     it('rejeita: dezena fora do intervalo', () => {
-        const r = validateDraw({ concurso: 10, listaDezenas: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 99] }, 'lotofacil');
+        const r = validateDraw(
+            { concurso: 10, listaDezenas: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 99] },
+            'lotofacil'
+        );
         assert.equal(r.ok, false);
         assert.ok(r.errors.some(e => /fora do intervalo/.test(e)));
     });
 
     it('rejeita: dezena repetida', () => {
-        const r = validateDraw({ concurso: 10, listaDezenas: [1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] }, 'lotofacil');
+        const r = validateDraw(
+            { concurso: 10, listaDezenas: [1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] },
+            'lotofacil'
+        );
         assert.equal(r.ok, false);
         assert.ok(r.errors.some(e => /repetida/.test(e)));
     });
 
     it('rejeita: concurso inválido', () => {
         for (const concurso of [0, -5, 'abc', undefined]) {
-            const r = validateDraw({ concurso, listaDezenas: Array.from({ length: 15 }, (_, i) => i + 1) }, 'lotofacil');
+            const r = validateDraw(
+                { concurso, listaDezenas: Array.from({ length: 15 }, (_, i) => i + 1) },
+                'lotofacil'
+            );
             assert.equal(r.ok, false, `concurso ${concurso} deveria falhar`);
         }
     });
@@ -158,7 +200,10 @@ describe('DrawSourcePolicy — validação de esquema', () => {
         const r = parseDrawList(lista, 'lotofacil');
         assert.equal(r.draws.length, 3);
         assert.equal(r.rejected.length, 1);
-        assert.deepEqual(r.draws.map(d => d.concurso), [3, 2, 1]);
+        assert.deepEqual(
+            r.draws.map(d => d.concurso),
+            [3, 2, 1]
+        );
     });
 
     it('parseDrawList respeita maxDraws', () => {
@@ -209,16 +254,19 @@ describe('DrawSourcePolicy — prioridade na resolução', () => {
         // respondesse primeiro ganhava. O espelho responde em 1ms, a oficial em
         // 20ms — e a resposta precisa continuar sendo a oficial.
         const registro = [];
-        const fetchImpl = makeFetch({
-            [urlCaixa]: async () => {
-                await new Promise(res => setTimeout(res, 20));
-                return lfPayload(4000);
+        const fetchImpl = makeFetch(
+            {
+                [urlCaixa]: async () => {
+                    await new Promise(res => setTimeout(res, 20));
+                    return lfPayload(4000);
+                },
+                [urlMirror]: async () => {
+                    await new Promise(res => setTimeout(res, 1));
+                    return lfPayload(4000);
+                }
             },
-            [urlMirror]: async () => {
-                await new Promise(res => setTimeout(res, 1));
-                return lfPayload(4000);
-            }
-        }, registro);
+            registro
+        );
 
         const r = await resolveLatest({ type: 'lotofacil', fetchImpl });
         assert.equal(r.sourceId, 'caixa');
@@ -227,10 +275,13 @@ describe('DrawSourcePolicy — prioridade na resolução', () => {
 
     it('cai para o espelho quando a oficial falha por rede', async () => {
         const registro = [];
-        const fetchImpl = makeFetch({
-            [urlCaixa]: new Error('CORS bloqueado'),
-            [urlMirror]: lfPayload(3201)
-        }, registro);
+        const fetchImpl = makeFetch(
+            {
+                [urlCaixa]: new Error('CORS bloqueado'),
+                [urlMirror]: lfPayload(3201)
+            },
+            registro
+        );
 
         const r = await resolveLatest({ type: 'lotofacil', fetchImpl });
         assert.equal(r.sourceId, 'mirror');
@@ -255,12 +306,15 @@ describe('DrawSourcePolicy — prioridade na resolução', () => {
     it('respeita retries por fonte', async () => {
         const registro = [];
         let tentativas = 0;
-        const fetchImpl = makeFetch({
-            [urlCaixa]: () => {
-                tentativas++;
-                return tentativas < 3 ? new Error('instável') : lfPayload(3300);
-            }
-        }, registro);
+        const fetchImpl = makeFetch(
+            {
+                [urlCaixa]: () => {
+                    tentativas++;
+                    return tentativas < 3 ? new Error('instável') : lfPayload(3300);
+                }
+            },
+            registro
+        );
 
         const r = await resolveLatest({ type: 'lotofacil', fetchImpl, retries: 3 });
         assert.equal(r.sourceId, 'caixa');
@@ -290,7 +344,10 @@ describe('DrawSourcePolicy — prioridade na resolução', () => {
 describe('DrawSourcePolicy — histórico', () => {
     it('consulta apenas fontes que publicam histórico', async () => {
         const registro = [];
-        const fetchImpl = makeFetch({ [urlFor(MIRROR, 'lotofacil', { history: true })]: [lfPayload(10), lfPayload(11)] }, registro);
+        const fetchImpl = makeFetch(
+            { [urlFor(MIRROR, 'lotofacil', { history: true })]: [lfPayload(10), lfPayload(11)] },
+            registro
+        );
 
         const r = await resolveHistory({ type: 'lotofacil', fetchImpl });
         assert.equal(r.sourceId, 'mirror');
@@ -332,7 +389,10 @@ describe('DrawSourcePolicy — integração com LotteryAPIService', () => {
     });
 
     it('parseAndValidateResult rejeita payload corrompido', () => {
-        assert.equal(LotteryAPIService.parseAndValidateResult({ concurso: 1, listaDezenas: [1, 2] }, 'lotofacil'), null);
+        assert.equal(
+            LotteryAPIService.parseAndValidateResult({ concurso: 1, listaDezenas: [1, 2] }, 'lotofacil'),
+            null
+        );
         const ok = LotteryAPIService.parseAndValidateResult(lfPayload(77), 'lotofacil');
         assert.equal(ok.concurso, 77);
         assert.equal(ok.dezenas.length, 15);

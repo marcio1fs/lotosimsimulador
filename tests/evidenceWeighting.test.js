@@ -108,7 +108,9 @@ describe('EvidenceWeightingEngine — avaliação', () => {
 
 describe('EvidenceWeightingEngine — aplicação dos pesos', () => {
     const semEvidencia = makeAnalysis({
-        testedTransitions: 300, significantTransitions: 0, pairs: makePairs(30, 0)
+        testedTransitions: 300,
+        significantTransitions: 0,
+        pairs: makePairs(30, 0)
     });
 
     it('zera os fatores refutados e renormaliza para somar 1', () => {
@@ -132,7 +134,11 @@ describe('EvidenceWeightingEngine — aplicação dos pesos', () => {
     });
 
     it('com evidência presente, os pesos originais são preservados', () => {
-        const comEvidencia = makeAnalysis({ testedTransitions: 300, significantTransitions: 5, pairs: makePairs(30, 3) });
+        const comEvidencia = makeAnalysis({
+            testedTransitions: 300,
+            significantTransitions: 5,
+            pairs: makePairs(30, 3)
+        });
         const { weights, report } = EvidenceWeightingEngine.applyWeights(DEFAULT_WEIGHTS, comEvidencia);
         assert.deepEqual(weights, DEFAULT_WEIGHTS);
         assert.equal(report.applied, false);
@@ -166,7 +172,10 @@ describe('EvidenceWeightingEngine — aplicação dos pesos', () => {
         const base = { markov: 0.1, cooccurrence: 0.1 };
         const { weights } = EvidenceWeightingEngine.applyWeights(base, semEvidencia);
         assert.ok(Object.values(weights).every(w => Number.isFinite(w)));
-        assert.equal(Object.values(weights).reduce((s, w) => s + w, 0), 0);
+        assert.equal(
+            Object.values(weights).reduce((s, w) => s + w, 0),
+            0
+        );
     });
 
     it('summarize devolve só o essencial', () => {
@@ -220,8 +229,11 @@ describe('EvidenceWeightingEngine — integração', () => {
             assert.ok(Number.isFinite(r.modelScore));
             assert.ok(r.modelScore >= 0 && r.modelScore <= 100);
         }
-        assert.notEqual(withGate.modelScore, withoutGate.modelScore,
-            'o score deveria mudar quando 21% do peso deixa de contar');
+        assert.notEqual(
+            withGate.modelScore,
+            withoutGate.modelScore,
+            'o score deveria mudar quando 21% do peso deixa de contar'
+        );
     });
 
     it('evaluateGame lida com análise parcial (analyzeFast)', () => {
@@ -241,10 +253,32 @@ describe('EvidenceWeightingEngine — integração', () => {
         const original = GameGenerator.evidenceWeightingEnabled;
         try {
             GameGenerator.evidenceWeightingEnabled = false;
-            const semPortao = GameGenerator.generateBatch('lotofacil', analysis, 'adaptive', [], [], 5, cfg, null, null, 4242);
+            const semPortao = GameGenerator.generateBatch(
+                'lotofacil',
+                analysis,
+                'adaptive',
+                [],
+                [],
+                5,
+                cfg,
+                null,
+                null,
+                4242
+            );
 
             GameGenerator.evidenceWeightingEnabled = true;
-            const comPortao = GameGenerator.generateBatch('lotofacil', analysis, 'adaptive', [], [], 5, cfg, null, null, 4242);
+            const comPortao = GameGenerator.generateBatch(
+                'lotofacil',
+                analysis,
+                'adaptive',
+                [],
+                [],
+                5,
+                cfg,
+                null,
+                null,
+                4242
+            );
 
             for (const batch of [semPortao, comPortao]) {
                 assert.equal(batch.length, 5);
@@ -257,7 +291,8 @@ describe('EvidenceWeightingEngine — integração', () => {
             }
 
             const iguais = semPortao.filter(g =>
-                comPortao.some(o => o.numbers.join(',') === g.numbers.join(','))).length;
+                comPortao.some(o => o.numbers.join(',') === g.numbers.join(','))
+            ).length;
             assert.equal(iguais, 0, 'os jogos deveriam mudar quando 21% do peso deixa de contar');
         } finally {
             GameGenerator.evidenceWeightingEnabled = original;
@@ -270,7 +305,10 @@ describe('EvidenceWeightingEngine — integração', () => {
             GameGenerator.evidenceWeightingEnabled = true;
             const a = GameGenerator.generateBatch('lotofacil', analysis, 'adaptive', [], [], 5, cfg, null, null, 99);
             const b = GameGenerator.generateBatch('lotofacil', analysis, 'adaptive', [], [], 5, cfg, null, null, 99);
-            assert.deepEqual(a.map(g => g.numbers), b.map(g => g.numbers));
+            assert.deepEqual(
+                a.map(g => g.numbers),
+                b.map(g => g.numbers)
+            );
         } finally {
             GameGenerator.evidenceWeightingEnabled = original;
         }

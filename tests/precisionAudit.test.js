@@ -68,7 +68,7 @@ describe('CORREÇÃO 1 — Intervalo real entre ocorrências (gap)', () => {
             }
             return h;
         }
-        const media = (draws) => StatisticalAnalyzer.analyze(buildPeriodic(draws), cfgMega).avgDelay[7];
+        const media = draws => StatisticalAnalyzer.analyze(buildPeriodic(draws), cfgMega).avgDelay[7];
         const m50 = media(50);
         const m200 = media(200);
         assert.equal(m50, 5);
@@ -122,7 +122,10 @@ describe('CORREÇÃO 2 — Chi-Quadrado com p-value exato', () => {
         assert.ok(res.pValue < 1e-6, 'desvio grosseiro deve gerar p-value desprezível');
         assert.equal(res.isUniform, false);
         assert.ok(res.cramersV > 0);
-        assert.ok(res.topDeviations.some(d => d.number === 7), 'dezena 7 deve aparecer em topDeviations');
+        assert.ok(
+            res.topDeviations.some(d => d.number === 7),
+            'dezena 7 deve aparecer em topDeviations'
+        );
         assert.ok(res.topDeviations.every(d => Math.abs(d.z) >= 3));
     });
 });
@@ -275,8 +278,11 @@ describe('CORREÇÃO 7 — Sinais de Markov filtrados por significância (FDR)',
     it('em histórico aleatório, nenhuma transição de Markov deve ser significativa', () => {
         const history = syntheticHistory(300, 60, 6, 7);
         const analysis = StatisticalAnalyzer.analyze(history, cfgMega);
-        assert.equal(analysis.markovStats.significantTransitions, 0,
-            'dados aleatórios não devem produzir padrões de Markov com FDR 5%');
+        assert.equal(
+            analysis.markovStats.significantTransitions,
+            0,
+            'dados aleatórios não devem produzir padrões de Markov com FDR 5%'
+        );
         assert.ok(analysis.markovStats.testedTransitions > 0, 'transições devem ter sido testadas');
         assert.equal(analysis.markovStats.hasStatisticallySignificantSignal, false);
     });
@@ -324,8 +330,11 @@ describe('CORREÇÃO 8 — Backtest com nulo analítico e sem vazamento silencio
         assert.ok(Math.abs(res.theoreticalBenchmark.expectedMean - 0.6) < 1e-9);
         assert.ok(res.theoreticalBenchmark.z !== null);
         assert.equal(typeof res.theoreticalBenchmark.statisticallySignificant, 'boolean');
-        assert.equal(res.theoreticalBenchmark.statisticallySignificant, false,
-            'nenhum modelo deve superar o nulo analítico em dados aleatórios');
+        assert.equal(
+            res.theoreticalBenchmark.statisticallySignificant,
+            false,
+            'nenhum modelo deve superar o nulo analítico em dados aleatórios'
+        );
     });
 
     it('deve reportar adequação amostral (MDE e concursos necessários)', () => {
@@ -342,16 +351,22 @@ describe('CORREÇÃO 8 — Backtest com nulo analítico e sem vazamento silencio
     it('a baseline deve usar redução de variância (média de várias apostas)', () => {
         const history = syntheticHistory(80, 60, 6, 19);
         const a = BacktestEngine.runBacktest(history, cfgMega, generatorFn, {
-            windowSize: 30, seed: 1, baselineSimsPerDraw: 1
+            windowSize: 30,
+            seed: 1,
+            baselineSimsPerDraw: 1
         });
         const b = BacktestEngine.runBacktest(history, cfgMega, generatorFn, {
-            windowSize: 30, seed: 1, baselineSimsPerDraw: 40
+            windowSize: 30,
+            seed: 1,
+            baselineSimsPerDraw: 40
         });
         assert.equal(a.baselineSimsPerDraw, 1);
         assert.equal(b.baselineSimsPerDraw, 40);
         // Com mais simulações a baseline fica muito próxima da esperança 0.6
-        assert.ok(Math.abs(b.baselineMean - 0.6) <= Math.abs(a.baselineMean - 0.6) + 0.02,
-            `baseline com 40 simulações (${b.baselineMean}) deve ser mais estável que com 1 (${a.baselineMean})`);
+        assert.ok(
+            Math.abs(b.baselineMean - 0.6) <= Math.abs(a.baselineMean - 0.6) + 0.02,
+            `baseline com 40 simulações (${b.baselineMean}) deve ser mais estável que com 1 (${a.baselineMean})`
+        );
     });
 
     it('dataLeakageDetected deve ser derivado de checagem real, não constante', () => {
@@ -362,7 +377,7 @@ describe('CORREÇÃO 8 — Backtest com nulo analítico e sem vazamento silencio
         assert.equal(limpo.leakageCheck.evaluatedDraws, 30);
 
         // gerador que ignora o passado recebido (simulando acesso a dados futuros)
-        const vazando = (past) => (past.length > 1000 ? [1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6]);
+        const vazando = past => (past.length > 1000 ? [1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6]);
         const res = BacktestEngine.runBacktest(history, cfgMega, vazando, { windowSize: 20, seed: 1 });
         assert.ok(res.leakageCheck, 'leakageCheck deve sempre existir');
     });
@@ -388,7 +403,10 @@ describe('CORREÇÃO 9 — Integridade dos dados (histórico sintético não pod
 
         // Se já existe histórico suficiente, nada é inventado
         const suficiente = LotteryAPIService.ensureMinimumHistoryDepth(
-            syntheticHistory(130, 60, 6, 33).map((d, i) => ({ ...d, concurso: 3200 - i })), 'mega', 120);
+            syntheticHistory(130, 60, 6, 33).map((d, i) => ({ ...d, concurso: 3200 - i })),
+            'mega',
+            120
+        );
         assert.equal(LotteryAPIService.countSynthetic(suficiente), 0);
     });
 
@@ -482,10 +500,8 @@ describe('CORREÇÃO 11 — Multiplicidade na seleção de janelas (best_game)',
 
         // o p-value corrigido nunca pode ser menor que o bruto
         sc.evaluations.forEach(e => {
-            assert.ok(e.adjustedPValue >= e.pValue - 1e-9,
-                `p corrigido (${e.adjustedPValue}) < p bruto (${e.pValue})`);
+            assert.ok(e.adjustedPValue >= e.pValue - 1e-9, `p corrigido (${e.adjustedPValue}) < p bruto (${e.pValue})`);
         });
-        assert.equal(sc.familyAdjustedPValueForWinner,
-            Math.min(...sc.evaluations.map(e => e.adjustedPValue)));
+        assert.equal(sc.familyAdjustedPValueForWinner, Math.min(...sc.evaluations.map(e => e.adjustedPValue)));
     });
 });

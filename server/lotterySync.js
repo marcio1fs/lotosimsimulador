@@ -19,9 +19,7 @@ export function parseMoneyValue(raw) {
     if (typeof raw !== 'string' || !raw.trim()) return null;
     const cleaned = raw.replace(/[^\d,.-]/g, '');
     if (!cleaned) return null;
-    const normalized = cleaned.includes(',')
-        ? cleaned.replace(/\./g, '').replace(',', '.')
-        : cleaned;
+    const normalized = cleaned.includes(',') ? cleaned.replace(/\./g, '').replace(',', '.') : cleaned;
     const num = Number(normalized);
     return Number.isFinite(num) ? num : null;
 }
@@ -41,9 +39,7 @@ export function normalizeDrawPayload(apiData, type) {
 
     if (!rawDezenas || rawDezenas.length === 0) return null;
 
-    const numeric = rawDezenas
-        .map(d => parseInt(d, 10))
-        .filter(n => !Number.isNaN(n) && n >= 1 && n <= rule.total);
+    const numeric = rawDezenas.map(d => parseInt(d, 10)).filter(n => !Number.isNaN(n) && n >= 1 && n <= rule.total);
     const unique = [...new Set(numeric)].sort((a, b) => a - b);
     if (unique.length !== rule.drawn) return null;
 
@@ -71,7 +67,7 @@ async function fetchJsonWithTimeout(url, timeoutMs, externalSignal) {
     try {
         const resp = await fetch(url, {
             headers: {
-                'Accept': 'application/json',
+                Accept: 'application/json',
                 'User-Agent': 'Mozilla/5.0 (compatible; LotoMaisSync/1.0)'
             },
             signal: ctrl.signal
@@ -101,7 +97,7 @@ export async function fetchLatestExternal(type) {
     if (!rule) return null;
 
     const cached = latestCache.get(type);
-    if (cached && (Date.now() - cached.at) < CACHE_TTL_MS) {
+    if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
         return cached.parsed;
     }
 
@@ -170,10 +166,7 @@ async function bulkInsertDraws(sql, draws) {
 
 async function backfillIfSparse(sql, type) {
     if (backfillAttempted.has(type)) return;
-    const countRows = await sql.query(
-        'SELECT COUNT(*)::int AS n FROM lottery_results WHERE lottery_type = $1',
-        [type]
-    );
+    const countRows = await sql.query('SELECT COUNT(*)::int AS n FROM lottery_results WHERE lottery_type = $1', [type]);
     if ((countRows[0]?.n || 0) >= 120) {
         backfillAttempted.add(type);
         return;
@@ -182,10 +175,7 @@ async function backfillIfSparse(sql, type) {
     backfillAttempted.add(type);
     const rule = LOTTERY_RULES[type];
     try {
-        const list = await fetchJsonWithTimeout(
-            `https://loteriascaixa-api.herokuapp.com/api/${rule.apiName}`,
-            7000
-        );
+        const list = await fetchJsonWithTimeout(`https://loteriascaixa-api.herokuapp.com/api/${rule.apiName}`, 7000);
         if (!Array.isArray(list) || list.length === 0) return;
         const normalized = [];
         const slice = list.slice(0, 300);
@@ -202,49 +192,51 @@ async function backfillIfSparse(sql, type) {
 }
 
 export async function syncLotteries(sql, { types = [], since = {} } = {}) {
-    const validTypes = (Array.isArray(types) ? types : [])
-        .filter(t => Object.hasOwn(LOTTERY_RULES, t));
+    const validTypes = (Array.isArray(types) ? types : []).filter(t => Object.hasOwn(LOTTERY_RULES, t));
     if (!validTypes.length) return { lotteries: {} };
 
     const out = {};
-    await Promise.all(validTypes.map(async (type) => {
-        const latest = await fetchLatestExternal(type);
-        if (latest) {
-            await bulkInsertDraws(sql, [latest]);
-        }
-        await backfillIfSparse(sql, type);
+    await Promise.all(
+        validTypes.map(async type => {
+            const latest = await fetchLatestExternal(type);
+            if (latest) {
+                await bulkInsertDraws(sql, [latest]);
+            }
+            await backfillIfSparse(sql, type);
 
-        const sinceConcurso = Math.max(0, parseInt(since?.[type], 10) || 0);
-        const rows = await sql.query(
-            `SELECT concurso, data, data_apuracao, dezenas, acumulou, valor_estimado
+            const sinceConcurso = Math.max(0, parseInt(since?.[type], 10) || 0);
+            const rows = await sql.query(
+                `SELECT concurso, data, data_apuracao, dezenas, acumulou, valor_estimado
                FROM lottery_results
               WHERE lottery_type = $1 AND concurso > $2
               ORDER BY concurso DESC`,
-            [type, sinceConcurso]
-        );
+                [type, sinceConcurso]
+            );
 
-        // A resposta diz de onde vieram os dados e se houve degradação. Servir
-        // cache silenciosamente seria pior que falhar: o usuário analisaria uma
-        // base que não é a mais recente sem saber.
-        const resolution = getLastResolution(type);
-        out[type] = {
-            draws: rows.map(r => ({
-                lotteryType: type,
-                concurso: r.concurso,
-                data: r.data || r.data_apuracao,
-                dataApuracao: r.data_apuracao || r.data,
-                dezenas: r.dezenas,
-                acumulado: Boolean(r.acumulou),
-                valor: r.valor_estimado ? Number(r.valor_estimado).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : ''
-            })),
-            syncedFromApi: Boolean(latest),
-            source: latest ? (resolution?.sourceId ?? null) : null,
-            degraded: !latest,
-            sourcesTried: resolution?.sourcesTried ?? [],
-            errors: latest ? [] : (lastResolutionError.get(type) ?? [])
-        };
-    }));
+            // A resposta diz de onde vieram os dados e se houve degradação. Servir
+            // cache silenciosamente seria pior que falhar: o usuário analisaria uma
+            // base que não é a mais recente sem saber.
+            const resolution = getLastResolution(type);
+            out[type] = {
+                draws: rows.map(r => ({
+                    lotteryType: type,
+                    concurso: r.concurso,
+                    data: r.data || r.data_apuracao,
+                    dataApuracao: r.data_apuracao || r.data,
+                    dezenas: r.dezenas,
+                    acumulado: Boolean(r.acumulou),
+                    valor: r.valor_estimado
+                        ? Number(r.valor_estimado).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                        : ''
+                })),
+                syncedFromApi: Boolean(latest),
+                source: latest ? (resolution?.sourceId ?? null) : null,
+                degraded: !latest,
+                sourcesTried: resolution?.sourcesTried ?? [],
+                errors: latest ? [] : (lastResolutionError.get(type) ?? [])
+            };
+        })
+    );
 
     return { lotteries: out };
 }
-

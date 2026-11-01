@@ -30,21 +30,38 @@ function createMockHistory(count = 40) {
 describe('Reproducibility Suite', () => {
     it('RUN A vs RUN B com mesma semente deve gerar resultados 100% idênticos', () => {
         const history = createMockHistory(40);
-        const config = LotteryModel.CONFIG.lotofacil;
         const seed = 123456;
 
         // Execução A
-        const runA = LotteryModel.generateSmartGames('lotofacil', history, 'maximum_precision', [], [], 10, 'full', seed);
+        const runA = LotteryModel.generateSmartGames(
+            'lotofacil',
+            history,
+            'maximum_precision',
+            [],
+            [],
+            10,
+            'full',
+            seed
+        );
 
         // Execução B
-        const runB = LotteryModel.generateSmartGames('lotofacil', history, 'maximum_precision', [], [], 10, 'full', seed);
+        const runB = LotteryModel.generateSmartGames(
+            'lotofacil',
+            history,
+            'maximum_precision',
+            [],
+            [],
+            10,
+            'full',
+            seed
+        );
 
         // Comparação de jogos gerados
         assert.equal(runA.length, runB.length, 'Quantidade de jogos deve ser igual');
 
         for (let i = 0; i < runA.length; i++) {
-            assert.deepStrictEqual(runA[i].numbers, runB[i].numbers, `Jogo #${i+1} números devem ser idênticos`);
-            assert.equal(runA[i].modelScore, runB[i].modelScore, `Jogo #${i+1} modelScore deve ser idêntico`);
+            assert.deepStrictEqual(runA[i].numbers, runB[i].numbers, `Jogo #${i + 1} números devem ser idênticos`);
+            assert.equal(runA[i].modelScore, runB[i].modelScore, `Jogo #${i + 1} modelScore deve ser idêntico`);
         }
 
         // Comparação de pipeline e metadados estatísticos
@@ -52,12 +69,24 @@ describe('Reproducibility Suite', () => {
         const pipeB = runB.modelPipeline;
 
         assert.equal(pipeA.status, pipeB.status, 'Status do modelo deve ser idêntico');
-        assert.equal(pipeA.backtestResult.meanHits, pipeB.backtestResult.meanHits, 'Média do backtest deve ser idêntica');
+        assert.equal(
+            pipeA.backtestResult.meanHits,
+            pipeB.backtestResult.meanHits,
+            'Média do backtest deve ser idêntica'
+        );
         assert.equal(pipeA.backtestResult.pValue, pipeB.backtestResult.pValue, 'p-value deve ser idêntico');
         assert.equal(pipeA.coverageScore, pipeB.coverageScore, 'Coverage score deve ser idêntico');
         assert.equal(pipeA.diversificationScore, pipeB.diversificationScore, 'Diversification score deve ser idêntico');
-        assert.deepStrictEqual(pipeA.optWeightsResult.objectiveBreakdown, pipeB.optWeightsResult.objectiveBreakdown, 'Objective score breakdown deve ser idêntico');
-        assert.deepStrictEqual(pipeA.optWeightsResult.optimizedWeights, pipeB.optWeightsResult.optimizedWeights, 'Pesos otimizados devem ser idênticos');
+        assert.deepStrictEqual(
+            pipeA.optWeightsResult.objectiveBreakdown,
+            pipeB.optWeightsResult.objectiveBreakdown,
+            'Objective score breakdown deve ser idêntico'
+        );
+        assert.deepStrictEqual(
+            pipeA.optWeightsResult.optimizedWeights,
+            pipeB.optWeightsResult.optimizedWeights,
+            'Pesos otimizados devem ser idênticos'
+        );
     });
 
     it('ScoringEngine.optimizeWeights deve ser 100% determinístico com mesma seed', () => {

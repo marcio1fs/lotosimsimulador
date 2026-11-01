@@ -25,7 +25,7 @@ export class LotteryController {
                 reject(new Error('Worker timeout'));
             }, timeoutMs);
 
-            const handler = (e) => {
+            const handler = e => {
                 if (e.data?.taskId !== taskId) return;
                 this._worker?.removeEventListener('message', handler);
                 clearTimeout(timeout);
@@ -142,117 +142,127 @@ export class LotteryController {
             }
         }
 
-        await Promise.all(types.map(async (type) => {
-            let cachedData = await Database.getAllByIndex('lottery_results', 'lotteryType', type);
+        await Promise.all(
+            types.map(async type => {
+                let cachedData = await Database.getAllByIndex('lottery_results', 'lotteryType', type);
 
-            // O servidor devolve `lotteries[type].draws` — o código lia
-            // `synced[type].latest`, que nunca existiu, então o resultado
-            // recém-sincronizado era descartado silenciosamente.
-            const syncInfo = serverSync?.lotteries?.[type] || null;
-            let lastResult = syncInfo?.draws?.[0] || null;
+                // O servidor devolve `lotteries[type].draws` — o código lia
+                // `synced[type].latest`, que nunca existiu, então o resultado
+                // recém-sincronizado era descartado silenciosamente.
+                const syncInfo = serverSync?.lotteries?.[type] || null;
+                let lastResult = syncInfo?.draws?.[0] || null;
 
-            // Degradação não pode passar em silêncio: se todas as fontes
-            // externas falharam, os dados vieram do cache e o usuário precisa saber.
-            if (syncInfo?.degraded) {
-                console.warn(
-                    `[${type}] Fontes externas indisponíveis — usando cache persistido. ` +
-                    `Tentativas: ${(syncInfo.errors || []).map(e => `${e.source}: ${e.error}`).join(' | ') || 'n/d'}`
-                );
-            }
+                // Degradação não pode passar em silêncio: se todas as fontes
+                // externas falharam, os dados vieram do cache e o usuário precisa saber.
+                if (syncInfo?.degraded) {
+                    console.warn(
+                        `[${type}] Fontes externas indisponíveis — usando cache persistido. ` +
+                            `Tentativas: ${(syncInfo.errors || []).map(e => `${e.source}: ${e.error}`).join(' | ') || 'n/d'}`
+                    );
+                }
 
-            if (!Database.useApi) {
-                try {
-                    if (cachedData.length < 100) {
-                        const batch = await LotteryAPIService.fetchHistoryBatch(type, 150);
-                        if (batch && batch.length > 0) {
-                            lastResult = batch[0];
-                            const existingConcursos = new Set(cachedData.map(r => r.concurso));
-                            const toAdd = [];
-                            for (const item of batch) {
-                                if (!existingConcursos.has(item.concurso)) {
-                                    const newEntry = {
-                                        lotteryType: type,
-                                        concurso: item.concurso,
-                                        data: item.data,
-                                        dezenas: item.dezenas,
-                                        acumulou: Boolean(item.acumulado ?? item.acumulou),
-                                        valorEstimado: item.valorEstimado ?? null,
-                                        fetchedAt: new Date().toISOString()
-                                    };
-                                    toAdd.push(newEntry);
-                                    cachedData.push(newEntry);
-                                    existingConcursos.add(item.concurso);
+                if (!Database.useApi) {
+                    try {
+                        if (cachedData.length < 100) {
+                            const batch = await LotteryAPIService.fetchHistoryBatch(type, 150);
+                            if (batch && batch.length > 0) {
+                                lastResult = batch[0];
+                                const existingConcursos = new Set(cachedData.map(r => r.concurso));
+                                const toAdd = [];
+                                for (const item of batch) {
+                                    if (!existingConcursos.has(item.concurso)) {
+                                        const newEntry = {
+                                            lotteryType: type,
+                                            concurso: item.concurso,
+                                            data: item.data,
+                                            dezenas: item.dezenas,
+                                            acumulou: Boolean(item.acumulado ?? item.acumulou),
+                                            valorEstimado: item.valorEstimado ?? null,
+                                            fetchedAt: new Date().toISOString()
+                                        };
+                                        toAdd.push(newEntry);
+                                        cachedData.push(newEntry);
+                                        existingConcursos.add(item.concurso);
+                                    }
+                                }
+                                if (toAdd.length > 0) {
+                                    await Database.addMany('lottery_results', toAdd);
                                 }
                             }
-                            if (toAdd.length > 0) {
-                                await Database.addMany('lottery_results', toAdd);
+                        } else {
+                            const apiData = await LotteryAPIService.fetchLatest(type);
+                            if (apiData) {
+                                lastResult = apiData;
+                                const exists = cachedData.find(r => r.concurso === lastResult.concurso);
+                                if (!exists) {
+                                    const newEntry = {
+                                        lotteryType: type,
+                                        concurso: lastResult.concurso,
+                                        data: lastResult.data,
+                                        dezenas: lastResult.dezenas,
+                                        acumulou: Boolean(lastResult.acumulado ?? lastResult.acumulou),
+                                        valorEstimado: lastResult.valorEstimado ?? null,
+                                        fetchedAt: new Date().toISOString()
+                                    };
+                                    await Database.add('lottery_results', newEntry);
+                                    cachedData.unshift(newEntry);
+                                }
                             }
                         }
-                    } else {
-                        const apiData = await LotteryAPIService.fetchLatest(type);
-                        if (apiData) {
-                            lastResult = apiData;
-                            const exists = cachedData.find(r => r.concurso === lastResult.concurso);
-                            if (!exists) {
-                                const newEntry = {
-                                    lotteryType: type,
-                                    concurso: lastResult.concurso,
-                                    data: lastResult.data,
-                                    dezenas: lastResult.dezenas,
-                                    acumulou: Boolean(lastResult.acumulado ?? lastResult.acumulou),
-                                    valorEstimado: lastResult.valorEstimado ?? null,
-                                    fetchedAt: new Date().toISOString()
-                                };
-                                await Database.add('lottery_results', newEntry);
-                                cachedData.unshift(newEntry);
-                            }
-                        }
+                    } catch (e) {
+                        console.error(`Erro ao buscar ${type}:`, e);
                     }
-                } catch (e) {
-                    console.error(`Erro ao buscar ${type}:`, e);
                 }
-            }
 
-            if (cachedData.length < 120) {
-                cachedData = LotteryAPIService.ensureMinimumHistoryDepth(cachedData, type, 120);
-            }
-
-            cachedData.sort((a, b) => b.concurso - a.concurso);
-
-            const top = lastResult || cachedData[0];
-            const normalizedLast = top ? {
-                ...top,
-                acumulado: Boolean(top.acumulado ?? top.acumulou),
-                valor: top.valor || (top.valorEstimado
-                    ? Number(top.valorEstimado).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-                    : '')
-            } : null;
-
-            const cfg = LotteryModel.CONFIG[type];
-            const windowData = StatisticalAnalyzer.getWindow(cachedData, timeWindow);
-            const fullAnalysis = StatisticalAnalyzer.analyzeCached(windowData, cfg);
-
-            const syntheticDraws = LotteryAPIService.countSynthetic(cachedData);
-            results[type] = {
-                data: cachedData,
-                windowData,
-                lastResult: normalizedLast,
-                analysis: fullAnalysis,
-                freq: fullAnalysis.freqAbsolute,
-                atraso: fullAnalysis.currentDelay,
-                // Proveniência explícita: o usuário precisa saber se os números
-                // exibidos vêm de resultados oficiais ou de preenchimento.
-                dataQuality: {
-                    totalDraws: cachedData.length,
-                    officialDraws: cachedData.length - syntheticDraws,
-                    syntheticDraws,
-                    isTrustworthyForInference: syntheticDraws === 0 && cachedData.length >= 100,
-                    label: syntheticDraws > 0
-                        ? `${cachedData.length - syntheticDraws} concursos oficiais + ${syntheticDraws} sintéticos (sem valor estatístico)`
-                        : `${cachedData.length} concursos oficiais`
+                if (cachedData.length < 120) {
+                    cachedData = LotteryAPIService.ensureMinimumHistoryDepth(cachedData, type, 120);
                 }
-            };
-        }));
+
+                cachedData.sort((a, b) => b.concurso - a.concurso);
+
+                const top = lastResult || cachedData[0];
+                const normalizedLast = top
+                    ? {
+                          ...top,
+                          acumulado: Boolean(top.acumulado ?? top.acumulou),
+                          valor:
+                              top.valor ||
+                              (top.valorEstimado
+                                  ? Number(top.valorEstimado).toLocaleString('pt-BR', {
+                                        style: 'currency',
+                                        currency: 'BRL'
+                                    })
+                                  : '')
+                      }
+                    : null;
+
+                const cfg = LotteryModel.CONFIG[type];
+                const windowData = StatisticalAnalyzer.getWindow(cachedData, timeWindow);
+                const fullAnalysis = StatisticalAnalyzer.analyzeCached(windowData, cfg);
+
+                const syntheticDraws = LotteryAPIService.countSynthetic(cachedData);
+                results[type] = {
+                    data: cachedData,
+                    windowData,
+                    lastResult: normalizedLast,
+                    analysis: fullAnalysis,
+                    freq: fullAnalysis.freqAbsolute,
+                    atraso: fullAnalysis.currentDelay,
+                    // Proveniência explícita: o usuário precisa saber se os números
+                    // exibidos vêm de resultados oficiais ou de preenchimento.
+                    dataQuality: {
+                        totalDraws: cachedData.length,
+                        officialDraws: cachedData.length - syntheticDraws,
+                        syntheticDraws,
+                        isTrustworthyForInference: syntheticDraws === 0 && cachedData.length >= 100,
+                        label:
+                            syntheticDraws > 0
+                                ? `${cachedData.length - syntheticDraws} concursos oficiais + ${syntheticDraws} sintéticos (sem valor estatístico)`
+                                : `${cachedData.length} concursos oficiais`
+                    }
+                };
+            })
+        );
 
         return results;
     }
@@ -260,7 +270,16 @@ export class LotteryController {
     /**
      * Gera jogos estatísticos inteligentes via Web Worker e salva em lote único (addMany)
      */
-    static async generateGames(userId, type, strategy, resultsData, fixed = [], excluded = [], timeWindow = 'full', gamesCount = 10) {
+    static async generateGames(
+        userId,
+        type,
+        strategy,
+        resultsData,
+        fixed = [],
+        excluded = [],
+        timeWindow = 'full',
+        gamesCount = 10
+    ) {
         const fullHistory = resultsData.data || [];
         const cfg = LotteryModel.CONFIG[type];
         if (!cfg || fullHistory.length === 0) return [];

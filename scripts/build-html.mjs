@@ -30,7 +30,7 @@ if (checkOnly) {
     const firstDiff = [...generated].findIndex((ch, i) => ch !== current[i]);
     console.error(
         `index.html divergiu dos templates (primeira diferença no caractere ${firstDiff}).\n` +
-        'Ele é gerado: edite js/views/templates/*.js e rode `node scripts/build-html.mjs`.'
+            'Ele é gerado: edite js/views/templates/*.js e rode `node scripts/build-html.mjs`.'
     );
     process.exit(1);
 }

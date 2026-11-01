@@ -18,16 +18,17 @@ export default defineConfig(({ mode }) => {
         server: {
             allowedHosts: ['localhost', '127.0.0.1', ...devAllowedHosts]
         },
-        plugins: [{
-            name: 'lotomais-api',
-            configureServer(server) {
-                server.middlewares.use('/api', async (req, res) => {
-                    req.url = '/api' + req.url;            // o Connect remove o prefixo montado
-                    const { handler } = await server.ssrLoadModule('/server/handler.js');
-                    return handler(req, res);
-                });
+        plugins: [
+            {
+                name: 'lotomais-api',
+                configureServer(server) {
+                    server.middlewares.use('/api', async (req, res) => {
+                        req.url = '/api' + req.url; // o Connect remove o prefixo montado
+                        const { handler } = await server.ssrLoadModule('/server/handler.js');
+                        return handler(req, res);
+                    });
+                }
             }
-        }]
+        ]
     };
 });
-

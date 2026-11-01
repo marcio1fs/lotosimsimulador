@@ -13,4 +13,3 @@ export function escapeHtml(value) {
     if (value === null || value === undefined) return '';
     return String(value).replace(/[&<>"']/g, ch => ESCAPE_MAP[ch]);
 }
-

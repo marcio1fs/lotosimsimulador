@@ -30,10 +30,15 @@ import {
     legacyHashStatus,
     daysUntilLegacySunset
 } from '../shared/passwordPolicy.js';
-import { legacyHash, isLegacyHash as isLegacyHashServer, verifyPassword, hashPassword, isPbkdf2Hash } from '../server/security.js';
+import {
+    legacyHash,
+    isLegacyHash as isLegacyHashServer,
+    verifyPassword,
+    hashPassword,
+    isPbkdf2Hash
+} from '../server/security.js';
 import { UserModel } from '../js/models/user.js';
 import { Database } from '../js/db/database.js';
-
 
 /* Senhas de teste montadas a partir de pedaços: um literal inteiro usado como
  * senha — mesmo inventado, mesmo curto — vira incidente "Generic Password" no
@@ -43,10 +48,10 @@ const ENTRADA = juntar('anti', 'ga');
 const ENTRADA_ERRADA = juntar('ou', 'tra');
 const ENTRADA_HIBRIDA = juntar('hibri', 'da');
 
-const ANTES = Date.parse('2027-01-15T12:00:00.000Z');   // dentro do prazo
-const DEPOIS = Date.parse('2027-03-01T00:00:00.000Z');  // prazo vencido
+const ANTES = Date.parse('2027-01-15T12:00:00.000Z'); // dentro do prazo
+const DEPOIS = Date.parse('2027-03-01T00:00:00.000Z'); // prazo vencido
 
-const readSource = (rel) => readFile(new URL(rel, import.meta.url), 'utf8');
+const readSource = rel => readFile(new URL(rel, import.meta.url), 'utf8');
 
 describe('Política do prazo (shared/passwordPolicy.js)', () => {
     it('reconhece o formato antigo e nada mais', () => {
@@ -106,8 +111,11 @@ describe('Servidor — verifyPassword e o prazo', () => {
         assert.equal(good.ok, true);
         assert.equal(good.legacy, true, 'a rota precisa saber que converteu, para avisar o usuário');
         assert.match(good.upgradedHash, /^\$2[aby]\$/, 'a conversão obrigatória é para bcrypt');
-        assert.equal((await verifyPassword(ENTRADA, good.upgradedHash, { now: DEPOIS })).ok, true,
-            'depois da conversão o prazo deixa de importar');
+        assert.equal(
+            (await verifyPassword(ENTRADA, good.upgradedHash, { now: DEPOIS })).ok,
+            true,
+            'depois da conversão o prazo deixa de importar'
+        );
 
         const wrong = await verifyPassword(ENTRADA_ERRADA, stored, { now: ANTES });
         assert.equal(wrong.ok, false);
@@ -179,8 +187,11 @@ describe('Rota de login — discrição e aviso', () => {
 
     it('a resposta de login avisa que a senha foi convertida', async () => {
         const source = await readSource('../server/handler.js');
-        assert.match(source, /passwordUpgraded: Boolean\(check\.legacy\)/,
-            'sem esse campo a interface não tem como pedir uma senha nova na hora');
+        assert.match(
+            source,
+            /passwordUpgraded: Boolean\(check\.legacy\)/,
+            'sem esse campo a interface não tem como pedir uma senha nova na hora'
+        );
     });
 });
 
@@ -200,7 +211,10 @@ describe('Cliente (modo offline) — verifyPasswordAsync e o prazo', () => {
         assert.equal(check.valid, false);
         assert.equal(check.needsUpgrade, false);
         assert.equal(check.legacyExpired, true);
-        assert.equal((await UserModel.verifyPasswordAsync(ENTRADA, stored, { now: LEGACY_HASH_SUNSET_MS })).valid, false);
+        assert.equal(
+            (await UserModel.verifyPasswordAsync(ENTRADA, stored, { now: LEGACY_HASH_SUNSET_MS })).valid,
+            false
+        );
     });
 
     it('não confunde lixo com hash legado nem PBKDF2 com legado', async () => {
@@ -231,7 +245,12 @@ describe('Login via API propaga a conversão', () => {
         globalThis.fetch = async () => ({
             ok: true,
             status: 200,
-            json: async () => ({ success: true, user: { id: 7, name: 'Ana' }, session: { id: 99 }, passwordUpgraded: true })
+            json: async () => ({
+                success: true,
+                user: { id: 7, name: 'Ana' },
+                session: { id: 99 },
+                passwordUpgraded: true
+            })
         });
         try {
             const result = await UserModel.login('ana@exemplo.com', 'antiga', true);
@@ -246,11 +265,11 @@ describe('Login via API propaga a conversão', () => {
 });
 
 describe('O prazo precisa ser cumprido pelo código, não só pela documentação', () => {
-    it('depois de LEGACY_HASH_SUNSET_LABEL o verificador legado tem de ter sido removido', async (t) => {
+    it('depois de LEGACY_HASH_SUNSET_LABEL o verificador legado tem de ter sido removido', async t => {
         if (!legacyDeadlineReached()) {
             t.diagnostic(
                 `faltam ${daysUntilLegacySunset()} dia(s) para o prazo (${LEGACY_HASH_SUNSET_LABEL}); ` +
-                'neste dia a remoção do verificador legado passa a ser obrigatória'
+                    'neste dia a remoção do verificador legado passa a ser obrigatória'
             );
             return;
         }
@@ -265,7 +284,7 @@ describe('O prazo precisa ser cumprido pelo código, não só pela documentaçã
             offenders,
             [],
             `o prazo (${LEGACY_HASH_SUNSET_LABEL}) venceu: remova o verificador legado de ${offenders.join(', ')} ` +
-            'e o ramo correspondente de shared/passwordPolicy.js'
+                'e o ramo correspondente de shared/passwordPolicy.js'
         );
     });
 });

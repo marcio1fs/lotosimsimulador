@@ -29,7 +29,8 @@ export class ForecastPolicy {
             probabilityLabel: `Chance de acertar todas as ${exactOdds.maxHits} dezenas sorteadas`,
             guarantee: false,
             canClaimPositiveReturn: false,
-            disclaimer: 'Nenhuma combinação é previsão de resultado ou garantia de prêmio. Em sorteios idôneos, todas as combinações válidas têm a mesma chance matemática.'
+            disclaimer:
+                'Nenhuma combinação é previsão de resultado ou garantia de prêmio. Em sorteios idôneos, todas as combinações válidas têm a mesma chance matemática.'
         };
 
         // --------------------------------------------------------------
@@ -38,9 +39,7 @@ export class ForecastPolicy {
         // toda a inferência estatística perde validade — os números deixam de
         // representar o sorteio real e sim um gerador uniforme.
         // --------------------------------------------------------------
-        const syntheticDraws = Array.isArray(history)
-            ? history.filter(d => d && d.synthetic === true).length
-            : 0;
+        const syntheticDraws = Array.isArray(history) ? history.filter(d => d && d.synthetic === true).length : 0;
         if (syntheticDraws > 0) {
             return {
                 ...base,
@@ -48,9 +47,10 @@ export class ForecastPolicy {
                 officialDraws: Math.max(0, historySize - syntheticDraws),
                 status: 'SYNTHETIC_DATA',
                 label: 'Histórico incompleto — amostra contém dados sintéticos',
-                detail: `${syntheticDraws} de ${historySize} concursos são de preenchimento e não são resultados oficiais. `
-                    + 'Backtest, p-value e testes de uniformidade foram calculados nessa mistura e NÃO devem ser interpretados como desempenho real. '
-                    + 'Sincronize o histórico oficial para reativar a validação.'
+                detail:
+                    `${syntheticDraws} de ${historySize} concursos são de preenchimento e não são resultados oficiais. ` +
+                    'Backtest, p-value e testes de uniformidade foram calculados nessa mistura e NÃO devem ser interpretados como desempenho real. ' +
+                    'Sincronize o histórico oficial para reativar a validação.'
             };
         }
 

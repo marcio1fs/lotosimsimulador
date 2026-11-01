@@ -21,7 +21,9 @@ export class AutomationController {
     static async executeCycle(userId, appState) {
         AutomationModel.state.execCountToday++;
         AutomationModel.addLog('info', `Execução automática #${AutomationModel.state.execCountToday}`);
-        const types = AutomationModel.state.autoAllLotteries ? ['lotofacil', 'mega', 'lotomania', 'quina'] : [appState.currentLottery];
+        const types = AutomationModel.state.autoAllLotteries
+            ? ['lotofacil', 'mega', 'lotomania', 'quina']
+            : [appState.currentLottery];
 
         try {
             if (AutomationModel.state.autoFetch) {
@@ -47,7 +49,10 @@ export class AutomationController {
                 const last = appState.resultsData[type]?.lastResult;
                 if (last?.dezenas) {
                     const drawn = last.dezenas.map(d => parseInt(d, 10));
-                    const hits = appState.generatedGames.map(g => ({ ...g, hitCount: g.numbers.filter(n => drawn.includes(n)).length }));
+                    const hits = appState.generatedGames.map(g => ({
+                        ...g,
+                        hitCount: g.numbers.filter(n => drawn.includes(n)).length
+                    }));
                     const maxHit = Math.max(...hits.map(h => h.hitCount));
                     AutomationModel.addLog('conference', `Melhor performance: ${maxHit} acertos`);
                 }

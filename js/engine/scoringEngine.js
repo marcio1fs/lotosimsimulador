@@ -17,7 +17,7 @@ export const DEFAULT_WEIGHTS = {
     recency: 0.12,
     trend: 0.09,
     cycle: 0.09,
-    markov: 0.10,
+    markov: 0.1,
     cooccurrence: 0.11,
     distribution: 0.07,
     geometry: 0.08,
@@ -93,10 +93,15 @@ export class ScoringEngine {
         const missingIncludedCount = sortedNumbers.filter(n => missingCycleSet.has(n)).length;
         let cycleScore = 0.75;
         if (missingCycleSet.size > 0) {
-            const targetCycleInclusion = Math.min(missingCycleSet.size, Math.max(1, Math.ceil(missingCycleSet.size * (len / config.total) * 1.35)));
+            const targetCycleInclusion = Math.min(
+                missingCycleSet.size,
+                Math.max(1, Math.ceil(missingCycleSet.size * (len / config.total) * 1.35))
+            );
             cycleScore = Math.min(1.0, 0.45 + 0.55 * (missingIncludedCount / targetCycleInclusion));
             if (missingIncludedCount > 0) {
-                explanations.push(`+ Inclui ${missingIncludedCount}/${missingCycleSet.size} dezena(s) que faltam para fechar o ciclo atual`);
+                explanations.push(
+                    `+ Inclui ${missingIncludedCount}/${missingCycleSet.size} dezena(s) que faltam para fechar o ciclo atual`
+                );
             }
         }
 
@@ -107,7 +112,9 @@ export class ScoringEngine {
             const avgMarkovLift = lifts.reduce((a, b) => a + b, 0) / Math.max(1, len);
             markovScore = Math.max(0.1, Math.min(1.0, (avgMarkovLift - 0.5) / 0.8));
             if (avgMarkovLift > 1.05) {
-                explanations.push(`+ Alta tração estocástica de Markov (Lift ${avgMarkovLift.toFixed(2)}x puxado pelo último concurso)`);
+                explanations.push(
+                    `+ Alta tração estocástica de Markov (Lift ${avgMarkovLift.toFixed(2)}x puxado pelo último concurso)`
+                );
             }
         }
 
@@ -134,7 +141,7 @@ export class ScoringEngine {
                 if (t.numbers.every(n => numSet.has(n))) matchedTriples++;
             }
             if (matchedTriples > 0) {
-                cooccurrenceScore = Math.min(1.0, cooccurrenceScore + Math.min(0.20, matchedTriples * 0.05));
+                cooccurrenceScore = Math.min(1.0, cooccurrenceScore + Math.min(0.2, matchedTriples * 0.05));
             }
         }
         if (cooccurrenceScore > 0.5) {
@@ -150,7 +157,7 @@ export class ScoringEngine {
         });
         const expectedPerRange = len / 5;
         const rangeVariance = rangeCounts.reduce((s, c) => s + Math.pow(c - expectedPerRange, 2), 0) / 5;
-        const distributionScore = Math.max(0, 1 - (rangeVariance / Math.pow(len, 2)));
+        const distributionScore = Math.max(0, 1 - rangeVariance / Math.pow(len, 2));
         if (distributionScore > 0.7) {
             explanations.push(`+ Boa cobertura horizontal entre as 5 faixas numéricas`);
         }
@@ -160,14 +167,18 @@ export class ScoringEngine {
         const gaussianEval = GaussianFilterEngine.evaluateCandidate(sortedNumbers, config, analysis);
         const geometryScore = (gaussianEval.gaussianQualityIndex || 70) / 100;
         if (gaussianEval.passed) {
-            explanations.push(`+ Aprovado no Filtro de Poda Gaussiana (${geom.activeRows} linhas · ${geom.activeCols} colunas · ${geom.frameCount} na moldura)`);
+            explanations.push(
+                `+ Aprovado no Filtro de Poda Gaussiana (${geom.activeRows} linhas · ${geom.activeCols} colunas · ${geom.frameCount} na moldura)`
+            );
         }
 
         // 9. Fator Teoria dos Jogos / Anti-Divisão de Prêmio (Anti-Crowd Bias)
         const antiCrowdEval = AntiCrowdEngine.evaluateTicketAntiCrowd(sortedNumbers, config, analysis);
         const antiCrowdScore = (antiCrowdEval.antiCrowdScore || 70) / 100;
         if (antiCrowdEval.antiCrowdScore >= 72) {
-            explanations.push(`+ Proteção Anti-Multidão (Score ${antiCrowdEval.antiCrowdScore}% · EV ${antiCrowdEval.expectedValueMultiplier}x menor risco de rateio)`);
+            explanations.push(
+                `+ Proteção Anti-Multidão (Score ${antiCrowdEval.antiCrowdScore}% · EV ${antiCrowdEval.expectedValueMultiplier}x menor risco de rateio)`
+            );
         }
 
         // 10. Fator Paridade (Pares vs Ímpares)
@@ -177,16 +188,19 @@ export class ScoringEngine {
         const evenUniverse = Math.floor(config.total / 2);
         const drawnForNull = config.drawn || config.pick;
         const exactEvensMean = len * (evenUniverse / config.total);
-        const exactEvensVariance = config.total > 1
-            ? drawnForNull * (evenUniverse / config.total) * (1 - (evenUniverse / config.total))
-              * ((config.total - drawnForNull) / (config.total - 1))
-            : 0;
+        const exactEvensVariance =
+            config.total > 1
+                ? drawnForNull *
+                  (evenUniverse / config.total) *
+                  (1 - evenUniverse / config.total) *
+                  ((config.total - drawnForNull) / (config.total - 1))
+                : 0;
         const parityStats = analysis.parityStats || {
             mean: exactEvensMean,
             stdDev: Math.sqrt(Math.max(1e-9, exactEvensVariance))
         };
         const parityZ = parityStats.stdDev > 0 ? Math.abs(evens - parityStats.mean) / parityStats.stdDev : 0;
-        const parityScore = Math.max(0, 1 - (parityZ / 3));
+        const parityScore = Math.max(0, 1 - parityZ / 3);
         if (parityScore > 0.7) {
             explanations.push(`+ Proporção par/ímpar (${evens}P / ${len - evens}I) centrada na curva normal`);
         } else {
@@ -195,18 +209,17 @@ export class ScoringEngine {
 
         // 11. Fator Soma das Dezenas (Curva de Sino)
         const gameSum = sortedNumbers.reduce((a, b) => a + b, 0);
-        const theoreticalMean = (config.pick || config.drawn) * (config.total + 1) / 2;
+        const theoreticalMean = ((config.pick || config.drawn) * (config.total + 1)) / 2;
         // Desvio-padrão EXATO da soma de `pick` dezenas sorteadas de 1..total:
         // sqrt(k·(N−k)·(N+1)/12). Antes, o fallback usava 12% da média (número arbitrário),
         // o que penalizava somas válidas em modalidades como a Lotomania (50 de 100).
-        const exactSumStd = Math.sqrt(
-            (config.pick * (config.total - config.pick) * (config.total + 1)) / 12
-        );
-        const sumStats = (analysis.sumStats && analysis.sumStats.mean > 0 && config.pick === (config.drawn || config.pick))
-            ? analysis.sumStats
-            : { mean: theoreticalMean, stdDev: exactSumStd };
+        const exactSumStd = Math.sqrt((config.pick * (config.total - config.pick) * (config.total + 1)) / 12);
+        const sumStats =
+            analysis.sumStats && analysis.sumStats.mean > 0 && config.pick === (config.drawn || config.pick)
+                ? analysis.sumStats
+                : { mean: theoreticalMean, stdDev: exactSumStd };
         const sumZ = sumStats.stdDev > 0 ? Math.abs(gameSum - sumStats.mean) / sumStats.stdDev : 0;
-        const sumScore = Math.max(0, 1 - (sumZ / 3));
+        const sumScore = Math.max(0, 1 - sumZ / 3);
         if (sumScore > 0.7) {
             explanations.push(`+ Soma total (${gameSum}) na zona central da Curva de Gauss`);
         } else {
@@ -218,11 +231,14 @@ export class ScoringEngine {
         let repScore = 0.5;
         if (lastDraw.length > 0) {
             const overlap = sortedNumbers.filter(n => lastDraw.includes(n)).length;
-            const expectedOverlap = analysis.repetitionStats?.mean ?? Math.round(len * (config.drawn || config.pick) / config.total);
+            const expectedOverlap =
+                analysis.repetitionStats?.mean ?? Math.round((len * (config.drawn || config.pick)) / config.total);
             const overlapRatio = expectedOverlap > 0 ? overlap / expectedOverlap : 1;
             repScore = Math.exp(-Math.pow(overlapRatio - 1, 2));
             if (Math.abs(overlap - expectedOverlap) <= 1.2) {
-                explanations.push(`+ Repetição (${overlap} dezenas do último sorteio) calibrada à média (${Number(expectedOverlap).toFixed(1)})`);
+                explanations.push(
+                    `+ Repetição (${overlap} dezenas do último sorteio) calibrada à média (${Number(expectedOverlap).toFixed(1)})`
+                );
             } else if (overlap > expectedOverlap + 2) {
                 explanations.push(`- Repetição elevada (${overlap} dezenas) acima do padrão`);
             }
@@ -235,7 +251,7 @@ export class ScoringEngine {
                 consecutivePairs++;
             }
         }
-        const sequenceScore = consecutivePairs <= 4 ? 1 - (consecutivePairs * 0.15) : 0.2;
+        const sequenceScore = consecutivePairs <= 4 ? 1 - consecutivePairs * 0.15 : 0.2;
         if (consecutivePairs >= 0 && consecutivePairs <= 3) {
             explanations.push(`+ Controle de sequências consecutivas (${consecutivePairs} par(es)) dentro do ótimo`);
         } else if (consecutivePairs > 4) {
@@ -246,51 +262,46 @@ export class ScoringEngine {
         const wMarkov = weights.markov ?? 0;
         const wGeometry = weights.geometry ?? 0;
         const wAntiCrowd = weights.antiCrowd ?? 0;
-        const totalWeight = (
+        const totalWeight =
             (weights.frequency || 0) +
-            (weights.recency || 0) +
-            (weights.trend || 0) +
-            wCycle +
-            wMarkov +
-            (weights.cooccurrence || 0) +
-            (weights.distribution || 0) +
-            wGeometry +
-            wAntiCrowd +
-            (weights.parity || 0) +
-            (weights.sum || 0) +
-            (weights.repetition || 0) +
-            (weights.sequences || 0)
-        ) || 1;
+                (weights.recency || 0) +
+                (weights.trend || 0) +
+                wCycle +
+                wMarkov +
+                (weights.cooccurrence || 0) +
+                (weights.distribution || 0) +
+                wGeometry +
+                wAntiCrowd +
+                (weights.parity || 0) +
+                (weights.sum || 0) +
+                (weights.repetition || 0) +
+                (weights.sequences || 0) || 1;
 
-        const rawScore = (
-            freqScore * (weights.frequency || 0) +
-            recencyScore * (weights.recency || 0) +
-            trendScore * (weights.trend || 0) +
-            cycleScore * wCycle +
-            markovScore * wMarkov +
-            cooccurrenceScore * (weights.cooccurrence || 0) +
-            distributionScore * (weights.distribution || 0) +
-            geometryScore * wGeometry +
-            antiCrowdScore * wAntiCrowd +
-            parityScore * (weights.parity || 0) +
-            sumScore * (weights.sum || 0) +
-            repScore * (weights.repetition || 0) +
-            sequenceScore * (weights.sequences || 0)
-        ) / totalWeight;
+        const rawScore =
+            (freqScore * (weights.frequency || 0) +
+                recencyScore * (weights.recency || 0) +
+                trendScore * (weights.trend || 0) +
+                cycleScore * wCycle +
+                markovScore * wMarkov +
+                cooccurrenceScore * (weights.cooccurrence || 0) +
+                distributionScore * (weights.distribution || 0) +
+                geometryScore * wGeometry +
+                antiCrowdScore * wAntiCrowd +
+                parityScore * (weights.parity || 0) +
+                sumScore * (weights.sum || 0) +
+                repScore * (weights.repetition || 0) +
+                sequenceScore * (weights.sequences || 0)) /
+            totalWeight;
 
         const modelScore = Number((rawScore * 100).toFixed(1));
 
-        const expectedHits = (backtestSummary && typeof backtestSummary.meanHits === 'number') 
-            ? backtestSummary.meanHits 
-            : null;
+        const expectedHits =
+            backtestSummary && typeof backtestSummary.meanHits === 'number' ? backtestSummary.meanHits : null;
 
-        const confidenceInterval = (backtestSummary && backtestSummary.confidenceInterval)
-            ? backtestSummary.confidenceInterval
-            : null;
+        const confidenceInterval =
+            backtestSummary && backtestSummary.confidenceInterval ? backtestSummary.confidenceInterval : null;
 
-        const pValue = (backtestSummary && typeof backtestSummary.pValue === 'number')
-            ? backtestSummary.pValue
-            : null;
+        const pValue = backtestSummary && typeof backtestSummary.pValue === 'number' ? backtestSummary.pValue : null;
 
         return {
             modelScore,
@@ -345,7 +356,11 @@ export class ScoringEngine {
      * Calcula o score de Evidência Estatística (índice interno de 0 a 100).
      */
     static calculateStatisticalEvidence(backtestSummary) {
-        if (!backtestSummary || typeof backtestSummary.pValue !== 'number' || !Number.isFinite(backtestSummary.pValue)) {
+        if (
+            !backtestSummary ||
+            typeof backtestSummary.pValue !== 'number' ||
+            !Number.isFinite(backtestSummary.pValue)
+        ) {
             return null;
         }
 
@@ -359,14 +374,13 @@ export class ScoringEngine {
             return Number(lowScore.toFixed(1));
         }
 
-        const ciIncludesZero = ci && typeof ci.lower === 'number' && typeof ci.upper === 'number'
-            ? (ci.lower <= 0 && ci.upper >= 0)
-            : true;
+        const ciIncludesZero =
+            ci && typeof ci.lower === 'number' && typeof ci.upper === 'number' ? ci.lower <= 0 && ci.upper >= 0 : true;
 
         if (pValue < 0.05 && !ciIncludesZero) {
             const strongScore = Math.min(100, 80 + Math.min(20, effectSize * 20));
             return Number(strongScore.toFixed(1));
-        } else if (pValue < 0.10) {
+        } else if (pValue < 0.1) {
             return Number((50 + (1 - pValue) * 20).toFixed(1));
         } else {
             const inconclusiveScore = Math.max(20, 50 - (pValue - 0.05) * 40);
@@ -457,18 +471,18 @@ export class ScoringEngine {
 
             const overfitGap = Math.max(0, trainMean - valMean);
             const expectedMean = (config.pick * (config.drawn || config.pick)) / config.total;
-            
+
             const perfScore = Math.min(100, (trainMean / (expectedMean || 1)) * 50);
             const outOfSampleScore = Math.min(100, (valMean / (expectedMean || 1)) * 50);
-            
+
             const stabilityComponent = options.stabilityScore !== undefined ? options.stabilityScore : null;
             const statEvidence = this.calculateStatisticalEvidence(options.backtestSummary);
             const overfitPenalty = overfitGap * 25;
 
             const components = [
-                { name: 'performance', weight: 0.30, val: perfScore },
+                { name: 'performance', weight: 0.3, val: perfScore },
                 { name: 'outOfSample', weight: 0.35, val: outOfSampleScore },
-                { name: 'stability', weight: 0.20, val: stabilityComponent },
+                { name: 'stability', weight: 0.2, val: stabilityComponent },
                 { name: 'statisticalEvidence', weight: 0.15, val: statEvidence }
             ];
 
@@ -507,12 +521,9 @@ export class ScoringEngine {
         const baseTestEval = this._quickEvaluateWeights(testHistory, config, baseWeights);
         const testMean = Number.isFinite(testEval.meanHits) ? Number(testEval.meanHits.toFixed(2)) : null;
         const baseTestMean = Number.isFinite(baseTestEval.meanHits) ? Number(baseTestEval.meanHits.toFixed(2)) : null;
-        const selectionGap = (Number.isFinite(bestValMean) && testMean !== null)
-            ? Number((bestValMean - testMean).toFixed(2))
-            : null;
-        const beatsBaseOnHoldout = (testMean !== null && baseTestMean !== null)
-            ? testMean > baseTestMean
-            : null;
+        const selectionGap =
+            Number.isFinite(bestValMean) && testMean !== null ? Number((bestValMean - testMean).toFixed(2)) : null;
+        const beatsBaseOnHoldout = testMean !== null && baseTestMean !== null ? testMean > baseTestMean : null;
 
         return {
             optimizedWeights: bestWeights,
@@ -525,9 +536,10 @@ export class ScoringEngine {
             beatsBaseOnHoldout,
             holdoutDraws: testHistory.length,
             searchTrials: iterations,
-            selectionBiasWarning: (selectionGap !== null && selectionGap > 0.5)
-                ? 'Seleção de pesos inflou o desempenho fora da amostra: o resultado no bloco de teste ficou pior que na validação.'
-                : null,
+            selectionBiasWarning:
+                selectionGap !== null && selectionGap > 0.5
+                    ? 'Seleção de pesos inflou o desempenho fora da amostra: o resultado no bloco de teste ficou pior que na validação.'
+                    : null,
             overfitGap: Number.isFinite(bestOverfitGap) ? bestOverfitGap : 0,
             objectiveBreakdown: bestBreakdown || {
                 performance: null,
@@ -537,7 +549,7 @@ export class ScoringEngine {
                 overfitPenalty: 0,
                 finalObjective: null
             },
-            isOverfit,
+            isOverfit
         };
     }
 
@@ -553,9 +565,9 @@ export class ScoringEngine {
 
         const wFreq = weights.frequency ?? 0.16;
         const wRec = weights.recency ?? 0.14;
-        const wTrend = weights.trend ?? 0.10;
-        const wCycle = weights.cycle ?? 0.10;
-        const wMarkov = weights.markov ?? 0.10;
+        const wTrend = weights.trend ?? 0.1;
+        const wCycle = weights.cycle ?? 0.1;
+        const wMarkov = weights.markov ?? 0.1;
         const wRep = weights.repetition ?? 0.04;
         const wCooc = weights.cooccurrence ?? 0.12;
 
@@ -607,19 +619,18 @@ export class ScoringEngine {
                 const rScore = (recency[n] || 0) / maxR;
                 const mScore = (markovTriggers[n] || 0) / maxM;
                 const delay = firstSeen[n] !== undefined ? firstSeen[n] : past.length;
-                const tScore = Math.exp(-0.5 * Math.pow((delay / avgInterval) - 1, 2));
+                const tScore = Math.exp(-0.5 * Math.pow(delay / avgInterval - 1, 2));
                 const cScore = cycleSeen.has(n) ? 0.3 : 1.0;
                 const repScore = lastDrawSet.has(n) ? 0.8 : 0.4;
 
-                const score = (
+                const score =
                     fScore * wFreq +
                     rScore * wRec +
                     tScore * wTrend +
                     cScore * wCycle +
                     mScore * wMarkov +
                     repScore * wRep +
-                    ((fScore + rScore) * 0.5) * wCooc
-                );
+                    (fScore + rScore) * 0.5 * wCooc;
                 scoredNums.push({ n, score });
             }
 

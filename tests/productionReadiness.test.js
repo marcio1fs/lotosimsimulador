@@ -11,7 +11,10 @@ describe('Production Readiness: Cryptographic PBKDF2 Auth & Database SQL Injecti
 
         assert.ok(hash1.startsWith('pbkdf2$100000$'), 'Hash should use pbkdf2$100000$ format');
         assert.notEqual(hash1, hash2, 'Two hashes of the same password must have different random salts');
-        assert.ok(!hash1.includes(Buffer.from('MinhaSenhaForte123!').toString('base64')), 'Must NOT contain base64 of plaintext password');
+        assert.ok(
+            !hash1.includes(Buffer.from('MinhaSenhaForte123!').toString('base64')),
+            'Must NOT contain base64 of plaintext password'
+        );
 
         const verifyCorrect = await UserModel.verifyPasswordAsync('MinhaSenhaForte123!', hash1);
         const verifyWrong = await UserModel.verifyPasswordAsync('SenhaErrada999', hash1);
@@ -36,11 +39,8 @@ describe('Production Readiness: Cryptographic PBKDF2 Auth & Database SQL Injecti
     });
 
     it('Database rejects unauthorized table/store names to prevent SQL injection', async () => {
-        await assert.rejects(
-            async () => {
-                await Database.get('users; DROP TABLE users; --', 1);
-            },
-            /Store\/tabela inválida bloqueada por segurança/
-        );
+        await assert.rejects(async () => {
+            await Database.get('users; DROP TABLE users; --', 1);
+        }, /Store\/tabela inválida bloqueada por segurança/);
     });
 });

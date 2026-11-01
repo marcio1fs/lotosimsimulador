@@ -83,26 +83,31 @@ export const SEQUENTIAL_SOURCES = {
     VILLE_1939: {
         id: 'VILLE_1939',
         citation: 'Ville, J. (1939). Étude critique de la notion de collectif. Gauthier-Villars.',
-        contribution: 'Desigualdade de Ville: P(sup_n Λ_n ≥ 1/α) ≤ α para martingais não-negativos — a base de todo teste always-valid.'
+        contribution:
+            'Desigualdade de Ville: P(sup_n Λ_n ≥ 1/α) ≤ α para martingais não-negativos — a base de todo teste always-valid.'
     },
     WALD_1945: {
         id: 'WALD_1945',
-        citation: 'Wald, A. (1945). Sequential Tests of Statistical Hypotheses. Annals of Mathematical Statistics 16(2), 117–186.',
+        citation:
+            'Wald, A. (1945). Sequential Tests of Statistical Hypotheses. Annals of Mathematical Statistics 16(2), 117–186.',
         contribution: 'Teste sequencial de razão de verossimilhança (SPRT): o ancestral direto da mSPRT.'
     },
     ROBBINS_1970: {
         id: 'ROBBINS_1970',
-        citation: 'Robbins, H. (1970). Statistical Methods Related to the Law of the Iterated Logarithm. Annals of Mathematical Statistics 41(5), 1397–1409.',
+        citation:
+            'Robbins, H. (1970). Statistical Methods Related to the Law of the Iterated Logarithm. Annals of Mathematical Statistics 41(5), 1397–1409.',
         contribution: 'Primeiras fronteiras válidas uniformemente no tempo para a média.'
     },
     JOHARI_2017: {
         id: 'JOHARI_2017',
-        citation: 'Johari, R., Koomen, P., Pekelis, L., Walsh, D. (2017). Peeking at A/B Tests: Why It Matters, and What to Do About It. KDD 2017.',
+        citation:
+            'Johari, R., Koomen, P., Pekelis, L., Walsh, D. (2017). Peeking at A/B Tests: Why It Matters, and What to Do About It. KDD 2017.',
         contribution: 'mSPRT aplicada a experimentos online: o e-value com prior normal usado aqui.'
     },
     HOWARD_2021: {
         id: 'HOWARD_2021',
-        citation: 'Howard, S. R., Ramdas, A., McAuliffe, J., Sekhon, J. (2021). Time-uniform, nonparametric, nonasymptotic confidence sequences. Annals of Statistics 49(2), 1055–1080.',
+        citation:
+            'Howard, S. R., Ramdas, A., McAuliffe, J., Sekhon, J. (2021). Time-uniform, nonparametric, nonasymptotic confidence sequences. Annals of Statistics 49(2), 1055–1080.',
         contribution: 'Sequências de confiança uniformes no tempo e o custo em poder de abandonar o ponto fixo.'
     }
 };
@@ -132,7 +137,7 @@ export const SEQUENTIAL_DEFAULTS = Object.freeze({
     spendingScheme: 'quadratic'
 });
 
-const PI_SQ_OVER_SIX = Math.PI * Math.PI / 6;
+const PI_SQ_OVER_SIX = (Math.PI * Math.PI) / 6;
 
 /**
  * Média e desvio-padrão amostral (ddof = 1).
@@ -196,9 +201,7 @@ export class AlphaBudget {
     /** Limiar de α concedido à m-ésima olhada (m começa em 1). */
     thresholdFor(m) {
         const k = Math.max(1, Math.floor(m));
-        return this.scheme === 'bonferroni'
-            ? this.alpha / k
-            : (this.alpha / PI_SQ_OVER_SIX) / (k * k);
+        return this.scheme === 'bonferroni' ? this.alpha / k : this.alpha / PI_SQ_OVER_SIX / (k * k);
     }
 
     /**
@@ -258,10 +261,11 @@ export class AlphaBudget {
             survivedLooks: survived.length,
             minPValue: this.lookCount > 0 ? Math.min(...this.looks.map(l => l.pValue)) : null,
             entries: this.looks.map(l => ({ ...l })),
-            note: this.lookCount > 0
-                ? `${this.lookCount} olhada(s) nesta ${this.label}: ${survived.length} sobreviveu(aram) ao limiar de α gasto. ` +
-                  `O limiar encolhe a cada olhada — é o que impede "procurar até achar".`
-                : `Nenhuma olhada registrada nesta ${this.label}.`
+            note:
+                this.lookCount > 0
+                    ? `${this.lookCount} olhada(s) nesta ${this.label}: ${survived.length} sobreviveu(aram) ao limiar de α gasto. ` +
+                      `O limiar encolhe a cada olhada — é o que impede "procurar até achar".`
+                    : `Nenhuma olhada registrada nesta ${this.label}.`
         };
     }
 
@@ -285,8 +289,15 @@ export class SequentialTestEngine {
         const values = Array.isArray(diffs) ? diffs.map(Number) : [];
         if (values.length === 0 || values.some(v => !Number.isFinite(v))) {
             return {
-                n: 0, burnIn: 0, monitored: 0, meanDiff: null,
-                eValue: 1, logEValue: 0, sigma: null, tau: null, available: false
+                n: 0,
+                burnIn: 0,
+                monitored: 0,
+                meanDiff: null,
+                eValue: 1,
+                logEValue: 0,
+                sigma: null,
+                tau: null,
+                available: false
             };
         }
         const tau = Number(options.tau ?? SEQUENTIAL_DEFAULTS.tau);
@@ -302,9 +313,7 @@ export class SequentialTestEngine {
         // Bloco limitado a um terço da amostra para não engolir séries curtas.
         const requestedBurnIn = Number(options.burnIn ?? SEQUENTIAL_DEFAULTS.burnIn);
         if (!(requestedBurnIn >= 0)) throw new RangeError(`burnIn inválido: ${options.burnIn}`);
-        const burnIn = provided !== null
-            ? 0
-            : Math.min(Math.floor(requestedBurnIn), Math.max(1, Math.floor(n / 3)));
+        const burnIn = provided !== null ? 0 : Math.min(Math.floor(requestedBurnIn), Math.max(1, Math.floor(n / 3)));
 
         const window = provided !== null ? values : values.slice(burnIn);
         const monitored = window.length;
@@ -319,8 +328,15 @@ export class SequentialTestEngine {
         const negligibleSd = 1e-12 * Math.max(1, Math.abs(calib.mean));
         if (provided === null && !(calib.sd > negligibleSd)) {
             return {
-                n, burnIn, monitored, meanDiff: null, eValue: 1, logEValue: 0,
-                sigma: null, tau, available: false,
+                n,
+                burnIn,
+                monitored,
+                meanDiff: null,
+                eValue: 1,
+                logEValue: 0,
+                sigma: null,
+                tau,
+                available: false,
                 reason: 'Bloco de aquecimento sem variabilidade: não é possível estimar σ.'
             };
         }
@@ -328,8 +344,8 @@ export class SequentialTestEngine {
 
         const v2 = sigma * sigma;
         const den = v2 + monitored * tau * tau;
-        const logEValue = 0.5 * Math.log(v2 / den)
-            + (monitored * monitored * stats.mean * stats.mean * tau * tau) / (2 * v2 * den);
+        const logEValue =
+            0.5 * Math.log(v2 / den) + (monitored * monitored * stats.mean * stats.mean * tau * tau) / (2 * v2 * den);
 
         return {
             n,
@@ -378,9 +394,7 @@ export class SequentialTestEngine {
         const t2 = ev.tau * ev.tau;
         const den = v2 + n * t2;
         const logTerm = Math.log(Math.sqrt(den) / (ev.sigma * alpha));
-        const halfWidth = logTerm <= 0
-            ? Infinity
-            : Math.sqrt((2 * v2 * den) / (n * n * t2) * logTerm);
+        const halfWidth = logTerm <= 0 ? Infinity : Math.sqrt(((2 * v2 * den) / (n * n * t2)) * logTerm);
         const lower = ev.meanDiff - halfWidth;
         const upper = ev.meanDiff + halfWidth;
         return {
@@ -435,7 +449,10 @@ export class SequentialTestEngine {
         for (let n = 1; n <= monitoredSeries.length; n++) {
             const p = this.alwaysValidPValue(monitoredSeries.slice(0, n), { sigma, tau }).pValue;
             curve.push(Number(p.toFixed(6)));
-            if (p < minP) { minP = p; minPLook = n; }
+            if (p < minP) {
+                minP = p;
+                minPLook = n;
+            }
             if (firstSignificantLook === null && p <= alpha) firstSignificantLook = n;
         }
 
@@ -450,9 +467,10 @@ export class SequentialTestEngine {
             minPValue: minP,
             minPValueLook: minPLook,
             curve,
-            note: firstSignificantLook === null
-                ? `Em nenhuma das ${monitoredSeries.length} olhadas o p sequencial cruzou ${alpha} — o resultado esperado em dados sem sinal.`
-                : `O p sequencial cruza ${alpha} na olhada ${firstSignificantLook} (concurso ${firstSignificantLook + burnIn} da amostra). Válido em qualquer olhada: não importa quantas vezes se olhe.`
+            note:
+                firstSignificantLook === null
+                    ? `Em nenhuma das ${monitoredSeries.length} olhadas o p sequencial cruzou ${alpha} — o resultado esperado em dados sem sinal.`
+                    : `O p sequencial cruza ${alpha} na olhada ${firstSignificantLook} (concurso ${firstSignificantLook + burnIn} da amostra). Válido em qualquer olhada: não importa quantas vezes se olhe.`
         };
     }
 
@@ -512,13 +530,15 @@ export class SequentialTestEngine {
             eValue: Number(test.eValue.toPrecision(6)),
             alwaysValidPValue: Number(test.pValue.toFixed(10)),
             classicalPValue: typeof classical === 'number' ? classical : null,
-            confidenceSequence: cs.available ? {
-                lower: Number(cs.lower.toFixed(6)),
-                upper: Number(cs.upper.toFixed(6)),
-                halfWidth: Number(cs.halfWidth.toFixed(6)),
-                excludesZero: cs.excludesZero,
-                method: cs.method
-            } : null,
+            confidenceSequence: cs.available
+                ? {
+                      lower: Number(cs.lower.toFixed(6)),
+                      upper: Number(cs.upper.toFixed(6)),
+                      halfWidth: Number(cs.halfWidth.toFixed(6)),
+                      excludesZero: cs.excludesZero,
+                      method: cs.method
+                  }
+                : null,
             monitoring,
             interpretation:
                 `O p clássico vale para UMA olhada decidida de antemão. O p sequencial vale em qualquer ` +
@@ -534,7 +554,10 @@ export class SequentialTestEngine {
     /** Orçamento compartilhado da aplicação (criado sob demanda). */
     static get sharedBudget() {
         if (!this._sharedBudget) {
-            this._sharedBudget = new AlphaBudget({ alpha: SEQUENTIAL_DEFAULTS.alpha, scheme: SEQUENTIAL_DEFAULTS.spendingScheme });
+            this._sharedBudget = new AlphaBudget({
+                alpha: SEQUENTIAL_DEFAULTS.alpha,
+                scheme: SEQUENTIAL_DEFAULTS.spendingScheme
+            });
         }
         return this._sharedBudget;
     }

@@ -70,16 +70,12 @@ export class PermutationTestEngine {
      * @returns {number} média de acertos
      */
     static defaultStatistic(history, config, options = {}) {
-        const windowSize = Math.min(
-            options.windowSize ?? this.DEFAULT_WINDOW,
-            Math.max(0, history.length - 12)
-        );
+        const windowSize = Math.min(options.windowSize ?? this.DEFAULT_WINDOW, Math.max(0, history.length - 12));
         if (windowSize <= 0) return 0;
 
         const strategy = options.strategy || 'adaptive';
         const weights = options.weights || null;
         const seed = options.seed ?? 123456;
-        const pick = config.pick;
 
         let totalHits = 0;
         let evaluated = 0;
@@ -125,8 +121,13 @@ export class PermutationTestEngine {
         const generatorFn = (past, c) => {
             const pastAnalysis = StatisticalAnalyzer.analyzeFast(past, c);
             return GameGenerator.generateSingleCandidate(
-                c.apiName, pastAnalysis, options.strategy || 'adaptive',
-                [], [], c, options.weights || null
+                c.apiName,
+                pastAnalysis,
+                options.strategy || 'adaptive',
+                [],
+                [],
+                c,
+                options.weights || null
             );
         };
         const bt = BacktestEngine.runBacktest(history, config, generatorFn, {
@@ -200,8 +201,9 @@ export class PermutationTestEngine {
             };
         }
 
-        const statisticFn = params.statisticFn
-            || (params.useBacktestEngine ? this.backtestStatistic.bind(this) : this.defaultStatistic.bind(this));
+        const statisticFn =
+            params.statisticFn ||
+            (params.useBacktestEngine ? this.backtestStatistic.bind(this) : this.defaultStatistic.bind(this));
         const statOptions = {
             windowSize,
             strategy: params.strategy || 'adaptive',
@@ -240,32 +242,32 @@ export class PermutationTestEngine {
 
         const sorted = [...nullDistribution].sort((a, b) => a - b);
         const nullMean = nullDistribution.reduce((s, v) => s + v, 0) / runs;
-        const nullVariance = runs > 1
-            ? nullDistribution.reduce((s, v) => s + (v - nullMean) ** 2, 0) / (runs - 1)
-            : 0;
+        const nullVariance = runs > 1 ? nullDistribution.reduce((s, v) => s + (v - nullMean) ** 2, 0) / (runs - 1) : 0;
         const nullSd = Math.sqrt(Math.max(0, nullVariance));
         const z = nullSd > 1e-12 ? (observed - nullMean) / nullSd : 0;
 
         const significant = pValue < alpha;
         const significantLower = pValueLower < alpha && observed < nullMean;
-        const direction = significant && observed > nullMean
-            ? 'higher'
-            : (significantLower ? 'lower' : 'same');
+        const direction = significant && observed > nullMean ? 'higher' : significantLower ? 'lower' : 'same';
 
         let verdict;
         if (underpowered) {
-            verdict = `Amostra de permutações insuficiente: com ${runs} iterações o menor p alcançável é ` +
+            verdict =
+                `Amostra de permutações insuficiente: com ${runs} iterações o menor p alcançável é ` +
                 `${minAchievableP.toFixed(3)}. O resultado não permite conclusão — use ao menos ${runsNeededForAlpha} permutações.`;
         } else if (direction === 'same') {
-            verdict = `O desempenho observado (${observed.toFixed(3)} acertos) está dentro da distribuição nula ` +
+            verdict =
+                `O desempenho observado (${observed.toFixed(3)} acertos) está dentro da distribuição nula ` +
                 `(média ${nullMean.toFixed(3)}, p = ${pValue.toFixed(3)}). ` +
                 'O pipeline NÃO extrai informação da ordem temporal do histórico — resultado esperado em sorteio idôneo.';
         } else if (direction === 'higher') {
-            verdict = `O desempenho observado (${observed.toFixed(3)}) supera a distribuição nula ` +
+            verdict =
+                `O desempenho observado (${observed.toFixed(3)}) supera a distribuição nula ` +
                 `(média ${nullMean.toFixed(3)}, p = ${pValue.toFixed(3)}). ` +
                 'Há evidência de estrutura temporal que merece investigação — e, antes de qualquer conclusão, replicação em outra janela.';
         } else {
-            verdict = `O desempenho observado (${observed.toFixed(3)}) está ABAIXO da distribuição nula ` +
+            verdict =
+                `O desempenho observado (${observed.toFixed(3)}) está ABAIXO da distribuição nula ` +
                 `(média ${nullMean.toFixed(3)}, p = ${pValueLower.toFixed(3)}). ` +
                 'Isso indica que a ordenação real prejudica o modelo: sinal de que ele se ajusta a algo que não se repete.';
         }

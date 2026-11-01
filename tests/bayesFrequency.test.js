@@ -19,16 +19,16 @@ const B = BayesFrequencyEngine;
  * independente desta biblioteca.
  */
 const QVBETA_REFERENCE = [
-    { q: 0.025, a: 3, b: 5, expected: 0.0989882784425078667 },
-    { q: 0.975, a: 3, b: 5, expected: 0.709579136262657231 },
-    { q: 0.5, a: 2, b: 5, expected: 0.264449983295659962 },
+    { q: 0.025, a: 3, b: 5, expected: 0.09898827844250786 },
+    { q: 0.975, a: 3, b: 5, expected: 0.7095791362626572 },
+    { q: 0.5, a: 2, b: 5, expected: 0.26444998329565994 },
     { q: 0.975, a: 1, b: 1, expected: 0.975 },
     { q: 0.5, a: 0.5, b: 0.5, expected: 0.5 },
-    { q: 0.95, a: 10, b: 30, expected: 0.368152901128834991 },
-    { q: 0.025, a: 60, b: 140, expected: 0.238630727621734952 },
-    { q: 0.975, a: 61, b: 139, expected: 0.370408549748285683 },
-    { q: 0.05, a: 2, b: 18, expected: 0.019033120121623998 },
-    { q: 0.975, a: 26, b: 74, expected: 0.349816726162157675 }
+    { q: 0.95, a: 10, b: 30, expected: 0.368152901128835 },
+    { q: 0.025, a: 60, b: 140, expected: 0.23863072762173496 },
+    { q: 0.975, a: 61, b: 139, expected: 0.3704085497482857 },
+    { q: 0.05, a: 2, b: 18, expected: 0.019033120121624 },
+    { q: 0.975, a: 26, b: 74, expected: 0.3498167261621577 }
 ];
 
 /** Gera frequências absolutas de um sorteio uniforme com PRNG semeado. */
@@ -48,10 +48,7 @@ describe('BayesFrequencyEngine — quantil da Beta', () => {
     it('confere com mpmath em 10 casos (tolerância 1e-10)', () => {
         for (const { q, a, b, expected } of QVBETA_REFERENCE) {
             const got = B.betaQuantile(q, a, b);
-            assert.ok(
-                Math.abs(got - expected) < 1e-10,
-                `qbeta(${q}, ${a}, ${b}) = ${got}, esperado ${expected}`
-            );
+            assert.ok(Math.abs(got - expected) < 1e-10, `qbeta(${q}, ${a}, ${b}) = ${got}, esperado ${expected}`);
         }
     });
 
@@ -60,7 +57,12 @@ describe('BayesFrequencyEngine — quantil da Beta', () => {
         // Beta(30, 70), por exemplo, x = 0,75 está a ~9,8 desvios-padrão da
         // média: a CDF ali é 1 na precisão do double e a informação foi
         // perdida — nenhum algoritmo recupera x a partir de q = 1.
-        for (const [a, b] of [[2, 5], [7, 3], [30, 70], [1.5, 1.5]]) {
+        for (const [a, b] of [
+            [2, 5],
+            [7, 3],
+            [30, 70],
+            [1.5, 1.5]
+        ]) {
             for (const x of [0.1, 0.25, 0.5, 0.75, 0.9]) {
                 const q = B.betaCDF(x, a, b);
                 if (!(q > 1e-12 && q < 1 - 1e-12)) continue;
@@ -77,13 +79,16 @@ describe('BayesFrequencyEngine — quantil da Beta', () => {
         // No extremo oposto a cauda é minúscula, mas não zero: 0,01 está a
         // ~6,4 desvios-padrão da média. O valor exato importa — é o que mostra
         // que o cálculo não está truncando a cauda.
-        assert.ok(B.betaCDF(0.01, 30, 70) < 1e-30,
-            `CDF(0,01) = ${B.betaCDF(0.01, 30, 70)}`);
+        assert.ok(B.betaCDF(0.01, 30, 70) < 1e-30, `CDF(0,01) = ${B.betaCDF(0.01, 30, 70)}`);
         assert.equal(B.betaQuantile(0, 30, 70), 0);
     });
 
     it('respeita a simetria I(x; a, b) = 1 − I(1−x; b, a)', () => {
-        for (const [x, a, b] of [[0.3, 2, 5], [0.7, 6, 3], [0.42, 12, 8]]) {
+        for (const [x, a, b] of [
+            [0.3, 2, 5],
+            [0.7, 6, 3],
+            [0.42, 12, 8]
+        ]) {
             const left = B.betaCDF(x, a, b);
             const right = 1 - B.betaCDF(1 - x, b, a);
             assert.ok(Math.abs(left - right) < 1e-10, `${left} vs ${right}`);
@@ -122,7 +127,6 @@ describe('BayesFrequencyEngine — encolhimento', () => {
         const r = B.shrink(freq, { ...base, priorStrength: kappa });
         const p = 15 / 25;
         const a0 = kappa * p;
-        const b0 = kappa * (1 - p);
         for (const n of r.numbers) {
             const expected = (a0 + n.count) / (kappa + 100);
             assert.ok(Math.abs(n.shrunkRate - expected) < 1e-12, `dezena ${n.number}`);
@@ -134,8 +138,10 @@ describe('BayesFrequencyEngine — encolhimento', () => {
         for (const n of r.numbers) {
             const lo = Math.min(n.rawRate, r.baselineRate);
             const hi = Math.max(n.rawRate, r.baselineRate);
-            assert.ok(n.shrunkRate >= lo - 1e-12 && n.shrunkRate <= hi + 1e-12,
-                `dezena ${n.number}: ${n.shrunkRate} fora de [${lo}, ${hi}]`);
+            assert.ok(
+                n.shrunkRate >= lo - 1e-12 && n.shrunkRate <= hi + 1e-12,
+                `dezena ${n.number}: ${n.shrunkRate} fora de [${lo}, ${hi}]`
+            );
         }
     });
 
@@ -236,17 +242,19 @@ describe('BayesFrequencyEngine — força da prior (empirical Bayes)', () => {
         const r = B.shrink(simulateUniform(25, 15, 100), { total: 25, drawn: 15, drawCount: 100 });
         const hetero = {};
         for (let i = 1; i <= 25; i++) hetero[i] = 30;
-        hetero[1] = 95;   // uma dezena claramente acima
-        hetero[2] = 5;    // e outra claramente abaixo
+        hetero[1] = 95; // uma dezena claramente acima
+        hetero[2] = 5; // e outra claramente abaixo
         const r2 = B.shrink(hetero, { total: 25, drawn: 15, drawCount: 100 });
-        assert.ok(r2.prior.strength < r.prior.strength,
-            `κ heterogêneo (${r2.prior.strength}) deveria ser menor que uniforme (${r.prior.strength})`);
+        assert.ok(
+            r2.prior.strength < r.prior.strength,
+            `κ heterogêneo (${r2.prior.strength}) deveria ser menor que uniforme (${r.prior.strength})`
+        );
     });
 
     it('detecta uma dezena realmente viciada', () => {
         const freq = {};
-        for (let i = 1; i <= 80; i++) freq[i] = 19;   // base ~6,3% em 300 concursos
-        freq[7] = 120;                                // 40% — vício grosseiro
+        for (let i = 1; i <= 80; i++) freq[i] = 19; // base ~6,3% em 300 concursos
+        freq[7] = 120; // 40% — vício grosseiro
         const r = B.shrink(freq, { total: 80, drawn: 5, drawCount: 300 });
         const seven = r.numbers[6];
         assert.equal(seven.number, 7);
@@ -261,8 +269,7 @@ describe('BayesFrequencyEngine — força da prior (empirical Bayes)', () => {
         const middle = [...r.numbers].sort(
             (a, b) => Math.abs(a.rawRate - r.baselineRate) - Math.abs(b.rawRate - r.baselineRate)
         )[0];
-        assert.ok(Math.abs(middle.probAboveBaseline - 0.5) < 0.15,
-            `P = ${middle.probAboveBaseline}`);
+        assert.ok(Math.abs(middle.probAboveBaseline - 0.5) < 0.15, `P = ${middle.probAboveBaseline}`);
     });
 
     it('o veredicto não depende do teto arbitrário de κ', () => {
@@ -306,9 +313,11 @@ describe('BayesFrequencyEngine — honestidade dos intervalos', () => {
     it('o erro-padrão a posteriori diminui quando o histórico cresce', () => {
         const short = B.shrink(simulateUniform(25, 15, 20, 9), { total: 25, drawn: 15, drawCount: 20 });
         const long = B.shrink(simulateUniform(25, 15, 500, 9), { total: 25, drawn: 15, drawCount: 500 });
-        const width = (r) => r.numbers.reduce((s, n) => s + (n.upper - n.lower), 0) / r.numbers.length;
-        assert.ok(width(long) < width(short),
-            `largura média com N=500 (${width(long)}) deveria ser menor que com N=20 (${width(short)})`);
+        const width = r => r.numbers.reduce((s, n) => s + (n.upper - n.lower), 0) / r.numbers.length;
+        assert.ok(
+            width(long) < width(short),
+            `largura média com N=500 (${width(long)}) deveria ser menor que com N=20 (${width(short)})`
+        );
     });
 });
 

@@ -107,7 +107,7 @@ describe('Inferência sequencial — validade sob olhadas repetidas', () => {
         }
         assert.ok(
             detections / reps >= 0.7,
-            `poder medido ${(100 * detections / reps).toFixed(0)}% deveria ser ao menos 70%`
+            `poder medido ${((100 * detections) / reps).toFixed(0)}% deveria ser ao menos 70%`
         );
     });
 
@@ -167,7 +167,7 @@ describe('Inferência sequencial — propriedades matemáticas', () => {
         const values = series({ n: 200, effect: 0.4, sd: 2, seed: 15 });
         const cs = SequentialTestEngine.confidenceSequence(values);
         assert.ok(cs.lower < cs.meanDiff && cs.meanDiff < cs.upper);
-        const classicHalf = 1.96 * cs.meanDiff === 0 ? 0 : 1.96 * 2 / Math.sqrt(cs.n);
+        const classicHalf = 1.96 * cs.meanDiff === 0 ? 0 : (1.96 * 2) / Math.sqrt(cs.n);
         assert.ok(
             cs.halfWidth > classicHalf,
             `IC sequencial (${cs.halfWidth.toFixed(3)}) deveria ser mais largo que o clássico (${classicHalf.toFixed(3)})`
@@ -304,14 +304,26 @@ describe('Integração com o controlador (uma olhada por geração)', () => {
         const { LotteryController } = await import('../js/controllers/lottery.js');
         SequentialTestEngine.resetSession();
 
-        const makeGames = (p) => ({
+        const makeGames = p => ({
             modelPipeline: {
-                backtestResult: { pValue: p, evaluatedDraws: 150, sequentialAnalysis: { available: true, alwaysValidPValue: p } }
+                backtestResult: {
+                    pValue: p,
+                    evaluatedDraws: 150,
+                    sequentialAnalysis: { available: true, alwaysValidPValue: p }
+                }
             }
         });
 
-        const first = LotteryController._registerSessionLook(makeGames(0.5), { type: 'lotofacil', strategy: 'weighted', timeWindow: 100 });
-        const second = LotteryController._registerSessionLook(makeGames(0.5), { type: 'mega', strategy: 'hot', timeWindow: 50 });
+        const first = LotteryController._registerSessionLook(makeGames(0.5), {
+            type: 'lotofacil',
+            strategy: 'weighted',
+            timeWindow: 100
+        });
+        const second = LotteryController._registerSessionLook(makeGames(0.5), {
+            type: 'mega',
+            strategy: 'hot',
+            timeWindow: 50
+        });
 
         assert.equal(first.index, 1);
         assert.equal(second.index, 2);
@@ -325,7 +337,10 @@ describe('Integração com o controlador (uma olhada por geração)', () => {
         SequentialTestEngine.resetSession();
         assert.equal(LotteryController._registerSessionLook({}, { type: 'x' }), null);
         assert.equal(
-            LotteryController._registerSessionLook({ modelPipeline: { backtestResult: { pValue: NaN } } }, { type: 'x' }),
+            LotteryController._registerSessionLook(
+                { modelPipeline: { backtestResult: { pValue: NaN } } },
+                { type: 'x' }
+            ),
             null
         );
         assert.equal(SequentialTestEngine.getSessionReport().looks, 0);
@@ -343,7 +358,7 @@ describe('Integração com o backtest', () => {
             history.push({ concurso: 1000 - c, dezenas: [...set], data: '2025-01-01' });
         }
         const config = { total: 25, pick: 15, drawn: 15, apiName: 'lotofacil' };
-        const generatorFn = (past) => {
+        const generatorFn = past => {
             const analysis = StatisticalAnalyzer.analyzeFast(past, config);
             return GameGenerator.generateSingleCandidate('lotofacil', analysis, 'weighted', [], [], config);
         };

@@ -25,7 +25,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const read = (rel) => readFile(new URL(rel, import.meta.url), 'utf8');
+const read = rel => readFile(new URL(rel, import.meta.url), 'utf8');
 
 /** Documentos na raiz do repositório. */
 async function markdownDocs() {
@@ -84,7 +84,9 @@ describe('Documentação — links e referências', () => {
                     const before = text.slice(Math.max(0, match.index - 45), match.index).toLowerCase();
                     const negated = /n[ãa]o |nunca|jamais|imposs[íi]vel|sem |nenhum/.test(before);
                     if (!negated) {
-                        offenders.push(`${doc}: …${text.slice(Math.max(0, match.index - 30), match.index + 30).trim()}…`);
+                        offenders.push(
+                            `${doc}: …${text.slice(Math.max(0, match.index - 30), match.index + 30).trim()}…`
+                        );
                     }
                 }
             }
@@ -104,13 +106,12 @@ describe('Documentação — números da suíte', () => {
         assert.equal(
             declaredFiles,
             actualFiles,
-            `AUDITORIA_PRECISAO.md declara ${declaredFiles} arquivos; existem ${actualFiles}. ` +
-            'Atualize o marcador.'
+            `AUDITORIA_PRECISAO.md declara ${declaredFiles} arquivos; existem ${actualFiles}. ` + 'Atualize o marcador.'
         );
         assert.ok(Number(marker[2]) > 0, 'o marcador precisa declarar a quantidade de testes');
     });
 
-    it('o número de testes do marcador é o número real', async (t) => {
+    it('o número de testes do marcador é o número real', async t => {
         if (process.env.DOCS_VERIFY_SUITE !== '1') {
             t.diagnostic('verificação completa pulada; rode com DOCS_VERIFY_SUITE=1 (a CI faz isso)');
             return;
@@ -126,11 +127,12 @@ describe('Documentação — números da suíte', () => {
         // protocolo interno em vez de TAP — daí a remoção explícita.
         const env = { ...process.env };
         delete env.NODE_TEST_CONTEXT;
-        const run = spawnSync(
-            process.execPath,
-            ['--test', '--test-reporter=tap', ...files.map(f => `tests/${f}`)],
-            { cwd: ROOT, encoding: 'utf8', timeout: 300000, env }
-        );
+        const run = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...files.map(f => `tests/${f}`)], {
+            cwd: ROOT,
+            encoding: 'utf8',
+            timeout: 300000,
+            env
+        });
         assert.equal(run.status, 0, `a suíte falhou ao ser executada pela checagem:\n${run.stdout}\n${run.stderr}`);
 
         const reported = run.stdout.match(/# tests (\d+)/);
@@ -144,7 +146,7 @@ describe('Documentação — números da suíte', () => {
             declared,
             actual,
             `AUDITORIA_PRECISAO.md declara ${declared} testes; a suíte tem ${actual}. ` +
-            'Atualize o marcador e a seção 11.'
+                'Atualize o marcador e a seção 11.'
         );
     });
 
@@ -169,6 +171,9 @@ describe('Documentação — números da suíte', () => {
             .filter(line => !line.trimStart().startsWith('>'))
             .join('\n');
         assert.doesNotMatch(ownClaims, /\*\*Melhoria Observada\*\*:\s*Demonstrada/i);
-        assert.match(report, /n[ãa]o h[áa] evid[êe]ncia de vantagem|resultado cient[íi]fico honesto|n[ãa]o se sustentaram/i);
+        assert.match(
+            report,
+            /n[ãa]o h[áa] evid[êe]ncia de vantagem|resultado cient[íi]fico honesto|n[ãa]o se sustentaram/i
+        );
     });
 });

@@ -12,7 +12,6 @@ export const PRIMES = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 5
 export const FIBONACCI = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
 
 export class StatisticalAnalyzer {
-
     /** Cache de análises completas (LRU de 4 janelas). */
     static _analysisCache = new Map();
     static ANALYSIS_CACHE_SIZE = 4;
@@ -188,7 +187,10 @@ export class StatisticalAnalyzer {
 
         // Correção de Benjamini-Hochberg (FDR 5%) sobre todas as transições testadas.
         const fdr = StatisticalInference.benjaminiHochberg(
-            transitionCandidates.map(c => c.rawPValue), 0.05, testedTransitionPairs);
+            transitionCandidates.map(c => c.rawPValue),
+            0.05,
+            testedTransitionPairs
+        );
         transitionCandidates.forEach((c, i) => {
             c.pValue = Number(Math.max(1e-16, Math.min(1, c.rawPValue)).toFixed(10));
             c.qValue = fdr.qValues[i];
@@ -275,16 +277,19 @@ export class StatisticalAnalyzer {
             }
         }
 
-        const avgCycleLength = cycleLengths.length > 0
-            ? Number((cycleLengths.reduce((a, b) => a + b, 0) / cycleLengths.length).toFixed(2))
-            : Math.ceil(total / 5);
+        const avgCycleLength =
+            cycleLengths.length > 0
+                ? Number((cycleLengths.reduce((a, b) => a + b, 0) / cycleLengths.length).toFixed(2))
+                : Math.ceil(total / 5);
 
         const cycleProgress = avgCycleLength > 0 ? Math.min(1.5, currentCycleLength / avgCycleLength) : 0.5;
         const cycleUrgencyScore = {};
         for (let n = 1; n <= total; n++) {
             if (!seenSet.has(n)) {
-                const scarcityFactor = 1 - (missingInCurrentCycle.length / total);
-                cycleUrgencyScore[n] = Number(Math.min(1, 0.55 + 0.45 * Math.max(cycleProgress / 1.5, scarcityFactor)).toFixed(4));
+                const scarcityFactor = 1 - missingInCurrentCycle.length / total;
+                cycleUrgencyScore[n] = Number(
+                    Math.min(1, 0.55 + 0.45 * Math.max(cycleProgress / 1.5, scarcityFactor)).toFixed(4)
+                );
             } else {
                 cycleUrgencyScore[n] = 0.25;
             }
@@ -355,7 +360,7 @@ export class StatisticalAnalyzer {
                     weightedAcc[n] += weight;
                     if (lastSeenIndex[n] === -1) mostRecentIndex[n] = idx;
                     if (lastSeenIndex[n] !== -1) {
-                        delaySum[n] += (idx - lastSeenIndex[n]);
+                        delaySum[n] += idx - lastSeenIndex[n];
                         delayCount[n]++;
                     }
                     lastSeenIndex[n] = idx;
@@ -371,7 +376,7 @@ export class StatisticalAnalyzer {
             }
         }
 
-        const expectedFreq = drawCount * drawn / total;
+        const expectedFreq = (drawCount * drawn) / total;
         const freqRelative = {};
         const freqWeighted = {};
         const expectedDeviation = {};
@@ -465,7 +470,9 @@ export class StatisticalAnalyzer {
             const mkv = result.markovStats;
             clone.markovStats = {
                 ...mkv,
-                topTransitions: Array.isArray(mkv.topTransitions) ? mkv.topTransitions.map(t => ({ ...t })) : mkv.topTransitions,
+                topTransitions: Array.isArray(mkv.topTransitions)
+                    ? mkv.topTransitions.map(t => ({ ...t }))
+                    : mkv.topTransitions,
                 topTriggeredNumbers: Array.isArray(mkv.topTriggeredNumbers)
                     ? mkv.topTriggeredNumbers.map(t => ({ ...t }))
                     : mkv.topTriggeredNumbers
@@ -482,10 +489,7 @@ export class StatisticalAnalyzer {
         const n = history.length;
         const first = history[0]?.concurso;
         const last = history[n - 1]?.concurso;
-        return [
-            config?.total, config?.pick, config?.drawn ?? config?.pick,
-            n, first ?? 'n/d', last ?? 'n/d'
-        ].join('|');
+        return [config?.total, config?.pick, config?.drawn ?? config?.pick, n, first ?? 'n/d', last ?? 'n/d'].join('|');
     }
 
     /** Esvazia a cache de análises (chamado quando o histórico é substituído). */
@@ -511,8 +515,8 @@ export class StatisticalAnalyzer {
         const drawn = config.drawn || config.pick;
 
         const freqAbsolute = {};
-        const lastSeenIndex = {};      // ocorrência ANTERIOR (para medir o gap)
-        const mostRecentIndex = {};    // ocorrência mais recente (para o atraso atual)
+        const lastSeenIndex = {}; // ocorrência ANTERIOR (para medir o gap)
+        const mostRecentIndex = {}; // ocorrência mais recente (para o atraso atual)
         const delayDistribution = {};
         const weightedAcc = new Float64Array(total + 1);
 
@@ -604,7 +608,7 @@ export class StatisticalAnalyzer {
             }
         });
 
-        const expectedFreq = drawCount * drawn / total;
+        const expectedFreq = (drawCount * drawn) / total;
         const freqRelative = {};
         const freqWeighted = {};
         const expectedDeviation = {};
@@ -663,7 +667,7 @@ export class StatisticalAnalyzer {
             const freqA = (freqAbsolute[p.pair[0]] || 0) / (drawCount || 1);
             const freqB = (freqAbsolute[p.pair[1]] || 0) / (drawCount || 1);
             const pairFreq = p.count / (drawCount || 1);
-            p.lift = (freqA > 0 && freqB > 0) ? Number((pairFreq / (freqA * freqB)).toFixed(4)) : 1;
+            p.lift = freqA > 0 && freqB > 0 ? Number((pairFreq / (freqA * freqB)).toFixed(4)) : 1;
 
             let recentCount = 0;
             let olderCount = 0;
@@ -679,15 +683,17 @@ export class StatisticalAnalyzer {
             p.stability = maxRate > 0 ? Number((1 - Math.abs(rRate - oRate) / maxRate).toFixed(4)) : 1;
 
             // Teste binomial exato de co-ocorrência acima do esperado.
-            p.rawPValue = StatisticalInference.binomialUpperTail(
-                p.count, drawCount, pairNullProbability);
+            p.rawPValue = StatisticalInference.binomialUpperTail(p.count, drawCount, pairNullProbability);
         });
 
         // FDR de Benjamini-Hochberg com a família COMPLETA de pares examinados
         // (conservador): os "pares quentes" só são reportados como padrão real
         // quando sobrevivem à multiplicidade de C(total,2) comparações.
         const pairFdr = StatisticalInference.benjaminiHochberg(
-            topPairsSliced.map(p => p.rawPValue), 0.05, totalPairsExamined);
+            topPairsSliced.map(p => p.rawPValue),
+            0.05,
+            totalPairsExamined
+        );
         topPairsSliced.forEach((p, i) => {
             p.pValue = Number(Math.max(1e-16, Math.min(1, p.rawPValue)).toFixed(10));
             p.qValue = pairFdr.qValues[i];
@@ -696,7 +702,8 @@ export class StatisticalAnalyzer {
         });
 
         const tripleMap = new Map();
-        const expectedTripleCount = drawCount * ((drawn * (drawn - 1) * (drawn - 2)) / (total * (total - 1) * (total - 2)));
+        const expectedTripleCount =
+            drawCount * ((drawn * (drawn - 1) * (drawn - 2)) / (total * (total - 1) * (total - 2)));
 
         for (let dIdx = 0; dIdx < drawCount; dIdx++) {
             const nums = parsedDraws[dIdx];
@@ -728,7 +735,8 @@ export class StatisticalAnalyzer {
             const freqB = (freqAbsolute[n1] || 0) / (drawCount || 1);
             const freqC = (freqAbsolute[n2] || 0) / (drawCount || 1);
             const tripleFreq = count / (drawCount || 1);
-            const lift = (freqA > 0 && freqB > 0 && freqC > 0) ? Number((tripleFreq / (freqA * freqB * freqC)).toFixed(4)) : 1;
+            const lift =
+                freqA > 0 && freqB > 0 && freqC > 0 ? Number((tripleFreq / (freqA * freqB * freqC)).toFixed(4)) : 1;
             return {
                 numbers,
                 count,
@@ -787,22 +795,30 @@ export class StatisticalAnalyzer {
         const chi = analysis.chiSquare || null;
         const mkv = analysis.markovStats || {};
         const pairs = Array.isArray(analysis.topPairs)
-            ? analysis.topPairs.filter(p => p.significant).map(p => ({
-                pair: p.pair, count: p.count, expected: p.expected,
-                lift: p.lift, pValue: p.pValue, qValue: p.qValue
-            }))
+            ? analysis.topPairs
+                  .filter(p => p.significant)
+                  .map(p => ({
+                      pair: p.pair,
+                      count: p.count,
+                      expected: p.expected,
+                      lift: p.lift,
+                      pValue: p.pValue,
+                      qValue: p.qValue
+                  }))
             : [];
         return {
-            chiSquare: chi ? {
-                chiSquare: chi.chiSquare,
-                degreesOfFreedom: chi.degreesOfFreedom,
-                pValue: chi.pValue,
-                cramersV: chi.cramersV,
-                effectDescriptor: chi.effectDescriptor,
-                isUniform: chi.isUniform,
-                method: chi.method,
-                topDeviations: (chi.topDeviations || []).slice(0, 5)
-            } : null,
+            chiSquare: chi
+                ? {
+                      chiSquare: chi.chiSquare,
+                      degreesOfFreedom: chi.degreesOfFreedom,
+                      pValue: chi.pValue,
+                      cramersV: chi.cramersV,
+                      effectDescriptor: chi.effectDescriptor,
+                      isUniform: chi.isUniform,
+                      method: chi.method,
+                      topDeviations: (chi.topDeviations || []).slice(0, 5)
+                  }
+                : null,
             markov: {
                 method: mkv.method || null,
                 testedTransitions: mkv.testedTransitions ?? 0,
@@ -838,7 +854,12 @@ export class StatisticalAnalyzer {
                 // resíduo padronizado de Pearson: (O-E)/sqrt(E * (1 - p))
                 const p = drawn / total;
                 const sd = Math.sqrt(Math.max(1e-12, expected * (1 - p)));
-                residuals.push({ number: n, observed, expected: Number(expected.toFixed(2)), z: Number(((observed - expected) / sd).toFixed(4)) });
+                residuals.push({
+                    number: n,
+                    observed,
+                    expected: Number(expected.toFixed(2)),
+                    z: Number(((observed - expected) / sd).toFixed(4))
+                });
             }
         }
         const df = Math.max(1, total - 1);
@@ -853,7 +874,8 @@ export class StatisticalAnalyzer {
             degreesOfFreedom: df,
             pValue: Number((Number.isFinite(pValue) ? pValue : 1).toFixed(10)),
             cramersV: Number(cramersV.toFixed(4)),
-            effectDescriptor: cramersV < 0.1 ? 'Desprezível' : (cramersV < 0.3 ? 'Pequeno' : (cramersV < 0.5 ? 'Médio' : 'Grande')),
+            effectDescriptor:
+                cramersV < 0.1 ? 'Desprezível' : cramersV < 0.3 ? 'Pequeno' : cramersV < 0.5 ? 'Médio' : 'Grande',
             isUniform: Number.isFinite(pValue) ? pValue > 0.05 : true,
             // Com tantos testes simultâneos, |z| > 3 é o corte honesto para "desvio real"
             topDeviations: residuals.filter(r => Math.abs(r.z) >= 3).slice(0, 10),
@@ -868,7 +890,17 @@ export class StatisticalAnalyzer {
     static calculateDistributionStats(list) {
         if (!list || list.length <= 1) {
             const val = list && list.length === 1 ? list[0] : 0;
-            return { mean: val, median: val, variance: 0, stdDev: 0, min: val, max: val, p10: val, p90: val, distribution: {} };
+            return {
+                mean: val,
+                median: val,
+                variance: 0,
+                stdDev: 0,
+                min: val,
+                max: val,
+                p10: val,
+                p90: val,
+                distribution: {}
+            };
         }
 
         const sorted = [...list].sort((a, b) => a - b);
@@ -880,10 +912,14 @@ export class StatisticalAnalyzer {
         const stdDev = Math.sqrt(variance);
 
         const median = len % 2 === 0 ? (sorted[len / 2 - 1] + sorted[len / 2]) / 2 : sorted[Math.floor(len / 2)];
-        const p10Idx = (len - 1) * 0.10;
-        const p10 = sorted[Math.floor(p10Idx)] + (p10Idx % 1) * ((sorted[Math.ceil(p10Idx)] || sorted[Math.floor(p10Idx)]) - sorted[Math.floor(p10Idx)]);
-        const p90Idx = (len - 1) * 0.90;
-        const p90 = sorted[Math.floor(p90Idx)] + (p90Idx % 1) * ((sorted[Math.ceil(p90Idx)] || sorted[Math.floor(p90Idx)]) - sorted[Math.floor(p90Idx)]);
+        const p10Idx = (len - 1) * 0.1;
+        const p10 =
+            sorted[Math.floor(p10Idx)] +
+            (p10Idx % 1) * ((sorted[Math.ceil(p10Idx)] || sorted[Math.floor(p10Idx)]) - sorted[Math.floor(p10Idx)]);
+        const p90Idx = (len - 1) * 0.9;
+        const p90 =
+            sorted[Math.floor(p90Idx)] +
+            (p90Idx % 1) * ((sorted[Math.ceil(p90Idx)] || sorted[Math.floor(p90Idx)]) - sorted[Math.floor(p90Idx)]);
 
         const distribution = {};
         sorted.forEach(val => {

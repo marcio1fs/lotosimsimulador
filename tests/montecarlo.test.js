@@ -89,8 +89,10 @@ describe('MonteCarloEngine', () => {
         const candidate = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
         const result = MonteCarloEngine.simulateCandidate(candidate, lotofacilConfig, 500);
 
-        assert.ok(result.stabilityScore >= 0 && result.stabilityScore <= 100, 
-            `Estabilidade ${result.stabilityScore} fora do intervalo [0, 100]`);
+        assert.ok(
+            result.stabilityScore >= 0 && result.stabilityScore <= 100,
+            `Estabilidade ${result.stabilityScore} fora do intervalo [0, 100]`
+        );
     });
 
     it('deve ser reproduzível com mesma seed', () => {

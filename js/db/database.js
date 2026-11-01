@@ -84,26 +84,79 @@ export class Database {
 
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
-            request.onupgradeneeded = (e) => {
+            request.onupgradeneeded = e => {
                 const db = e.target.result;
                 const stores = {
-                    users: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'email', keyPath: 'email', unique: true }, { name: 'name', keyPath: 'name' }] },
-                    sessions: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'userId', keyPath: 'userId' }, { name: 'token', keyPath: 'token', unique: true }, { name: 'expiresAt', keyPath: 'expiresAt' }] },
-                    games: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'userId', keyPath: 'userId' }, { name: 'lotteryType', keyPath: 'lotteryType' }, { name: 'createdAt', keyPath: 'createdAt' }] },
-                    lottery_results: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'lotteryType', keyPath: 'lotteryType' }, { name: 'concurso', keyPath: 'concurso' }, { name: 'fetchedAt', keyPath: 'fetchedAt' }] },
-                    simulations: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'userId', keyPath: 'userId' }, { name: 'createdAt', keyPath: 'createdAt' }] },
+                    users: {
+                        keyPath: 'id',
+                        autoIncrement: true,
+                        indexes: [
+                            { name: 'email', keyPath: 'email', unique: true },
+                            { name: 'name', keyPath: 'name' }
+                        ]
+                    },
+                    sessions: {
+                        keyPath: 'id',
+                        autoIncrement: true,
+                        indexes: [
+                            { name: 'userId', keyPath: 'userId' },
+                            { name: 'token', keyPath: 'token', unique: true },
+                            { name: 'expiresAt', keyPath: 'expiresAt' }
+                        ]
+                    },
+                    games: {
+                        keyPath: 'id',
+                        autoIncrement: true,
+                        indexes: [
+                            { name: 'userId', keyPath: 'userId' },
+                            { name: 'lotteryType', keyPath: 'lotteryType' },
+                            { name: 'createdAt', keyPath: 'createdAt' }
+                        ]
+                    },
+                    lottery_results: {
+                        keyPath: 'id',
+                        autoIncrement: true,
+                        indexes: [
+                            { name: 'lotteryType', keyPath: 'lotteryType' },
+                            { name: 'concurso', keyPath: 'concurso' },
+                            { name: 'fetchedAt', keyPath: 'fetchedAt' }
+                        ]
+                    },
+                    simulations: {
+                        keyPath: 'id',
+                        autoIncrement: true,
+                        indexes: [
+                            { name: 'userId', keyPath: 'userId' },
+                            { name: 'createdAt', keyPath: 'createdAt' }
+                        ]
+                    },
                     user_stats: { keyPath: 'userId' },
                     auto_settings: { keyPath: 'userId' },
-                    auto_log: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'userId', keyPath: 'userId' }, { name: 'timestamp', keyPath: 'timestamp' }] }
+                    auto_log: {
+                        keyPath: 'id',
+                        autoIncrement: true,
+                        indexes: [
+                            { name: 'userId', keyPath: 'userId' },
+                            { name: 'timestamp', keyPath: 'timestamp' }
+                        ]
+                    }
                 };
                 for (const [name, cfg] of Object.entries(stores)) {
                     if (!db.objectStoreNames.contains(name)) {
-                        const store = db.createObjectStore(name, { keyPath: cfg.keyPath, autoIncrement: cfg.autoIncrement || false });
-                        cfg.indexes?.forEach(idx => store.createIndex(idx.name, idx.keyPath, { unique: idx.unique || false }));
+                        const store = db.createObjectStore(name, {
+                            keyPath: cfg.keyPath,
+                            autoIncrement: cfg.autoIncrement || false
+                        });
+                        cfg.indexes?.forEach(idx =>
+                            store.createIndex(idx.name, idx.keyPath, { unique: idx.unique || false })
+                        );
                     }
                 }
             };
-            request.onsuccess = (e) => { this.db = e.target.result; resolve(this.db); };
+            request.onsuccess = e => {
+                this.db = e.target.result;
+                resolve(this.db);
+            };
             request.onerror = () => reject(new Error('Erro ao abrir banco de dados local'));
         });
     }

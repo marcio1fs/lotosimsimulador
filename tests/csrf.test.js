@@ -36,7 +36,9 @@ function fakeRes() {
         statusCode: 200,
         headers: {},
         body: null,
-        setHeader(name, value) { this.headers[name.toLowerCase()] = value; },
+        setHeader(name, value) {
+            this.headers[name.toLowerCase()] = value;
+        },
         end(payload) {
             this.body = payload ? JSON.parse(payload) : null;
             this.finished = true;
@@ -112,10 +114,9 @@ describe('Política de mesma origem — decisões', () => {
     });
 
     it('origem explicitamente permitida passa mesmo em host diferente', () => {
-        const result = evaluateSameSiteRequest(
-            req({ headers: { origin: 'https://app.dominio.proprio' } }),
-            { allowedOrigins: ['https://app.dominio.proprio'] }
-        );
+        const result = evaluateSameSiteRequest(req({ headers: { origin: 'https://app.dominio.proprio' } }), {
+            allowedOrigins: ['https://app.dominio.proprio']
+        });
         assert.equal(result.allowed, true);
         assert.match(result.reason, /autorizada explicitamente/);
     });
@@ -174,14 +175,17 @@ describe('Política de mesma origem — utilidades', () => {
 describe('Handler — a borda em funcionamento', () => {
     it('POST cross-site morre em 403 antes de qualquer acesso ao banco', async () => {
         const res = fakeRes();
-        await handler(fakeReq({
-            headers: {
-                host: 'app.exemplo.com',
-                origin: 'https://atacante.example',
-                'content-type': 'application/json'
-            },
-            body: { email: 'a@b.com', password: 'x' }
-        }), res);
+        await handler(
+            fakeReq({
+                headers: {
+                    host: 'app.exemplo.com',
+                    origin: 'https://atacante.example',
+                    'content-type': 'application/json'
+                },
+                body: { email: 'a@b.com', password: 'x' }
+            }),
+            res
+        );
 
         assert.equal(res.statusCode, 403);
         assert.equal(res.body.success, false);
@@ -190,10 +194,13 @@ describe('Handler — a borda em funcionamento', () => {
 
     it('POST sem Origin morre em 403', async () => {
         const res = fakeRes();
-        await handler(fakeReq({
-            headers: { host: 'app.exemplo.com', 'content-type': 'application/json' },
-            body: {}
-        }), res);
+        await handler(
+            fakeReq({
+                headers: { host: 'app.exemplo.com', 'content-type': 'application/json' },
+                body: {}
+            }),
+            res
+        );
 
         assert.equal(res.statusCode, 403);
         assert.match(res.body.reason, /Origin ausente/);
@@ -201,31 +208,48 @@ describe('Handler — a borda em funcionamento', () => {
 
     it('POST cross-site com Origin: null morre em 403 (não em 500)', async () => {
         const res = fakeRes();
-        await handler(fakeReq({
-            headers: { host: 'app.exemplo.com', origin: 'null', 'content-type': 'application/json' },
-            body: {}
-        }), res);
+        await handler(
+            fakeReq({
+                headers: { host: 'app.exemplo.com', origin: 'null', 'content-type': 'application/json' },
+                body: {}
+            }),
+            res
+        );
 
         assert.equal(res.statusCode, 403);
     });
 
     it('corpo não-JSON é barrado em 415 antes da rota', async () => {
         const res = fakeRes();
-        await handler(fakeReq({
-            headers: { host: 'app.exemplo.com', origin: 'https://app.exemplo.com', 'content-type': 'application/x-www-form-urlencoded' },
-            body: {}
-        }), res);
+        await handler(
+            fakeReq({
+                headers: {
+                    host: 'app.exemplo.com',
+                    origin: 'https://app.exemplo.com',
+                    'content-type': 'application/x-www-form-urlencoded'
+                },
+                body: {}
+            }),
+            res
+        );
 
         assert.equal(res.statusCode, 415);
     });
 
     it('POST de mesma origem atravessa a borda e chega na rota', async () => {
         const res = fakeRes();
-        await handler(fakeReq({
-            url: '/api/db/get',
-            headers: { host: 'app.exemplo.com', origin: 'https://app.exemplo.com', 'content-type': 'application/json' },
-            body: { store: 'games', id: 1 }
-        }), res);
+        await handler(
+            fakeReq({
+                url: '/api/db/get',
+                headers: {
+                    host: 'app.exemplo.com',
+                    origin: 'https://app.exemplo.com',
+                    'content-type': 'application/json'
+                },
+                body: { store: 'games', id: 1 }
+            }),
+            res
+        );
 
         // Sem cookie de sessão a rota responde 401 — o que prova que a requisição
         // passou pela verificação de origem e não foi barrada na borda.

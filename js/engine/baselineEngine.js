@@ -41,7 +41,7 @@ export class BaselineEngine {
         const hitsList = [];
 
         const prng = new SeededRandom(seed);
-        
+
         sample.forEach(draw => {
             const actual = new Set(Array.isArray(draw.dezenas) ? draw.dezenas.map(Number) : []);
 
@@ -58,7 +58,7 @@ export class BaselineEngine {
         const stats = StatisticalAnalyzer.calculateDistributionStats(hitsList);
         const drawn = config.drawn || config.pick;
         stats.theoreticalExpected = Number(((config.pick * drawn) / config.total).toFixed(4));
-        
+
         return stats;
     }
 }

@@ -31,7 +31,9 @@ export class GameGenerator {
         const setA = new Set(gameA);
         const setB = new Set(gameB);
         let intersection = 0;
-        setA.forEach(n => { if (setB.has(n)) intersection++; });
+        setA.forEach(n => {
+            if (setB.has(n)) intersection++;
+        });
         const union = setA.size + setB.size - intersection;
         return union > 0 ? intersection / union : 0;
     }
@@ -39,7 +41,18 @@ export class GameGenerator {
     /**
      * Gera um lote de jogos diversificados, podados por Curva de Gauss e otimizados
      */
-    static generateBatch(type, analysis, strategy, fixed = [], excluded = [], count = 10, config, customWeights = null, backtestSummary = null, seed = 123456) {
+    static generateBatch(
+        type,
+        analysis,
+        strategy,
+        fixed = [],
+        excluded = [],
+        count = 10,
+        config,
+        customWeights = null,
+        backtestSummary = null,
+        seed = 123456
+    ) {
         const rng = new SeededRandom(seed);
         let selectedGames = [];
         let wheelMetadata = null;
@@ -63,18 +76,34 @@ export class GameGenerator {
             const poolSize = Math.max(count * 14, 140);
 
             for (let i = 0; i < poolSize; i++) {
-                const game = this.generateSingleCandidate(type, analysis, strategy, fixed, excluded, config, customWeights, rng);
+                const game = this.generateSingleCandidate(
+                    type,
+                    analysis,
+                    strategy,
+                    fixed,
+                    excluded,
+                    config,
+                    customWeights,
+                    rng
+                );
                 if (game && game.length === config.pick) {
                     const unique = [...new Set(game)].sort((a, b) => a - b);
                     if (unique.length === config.pick) {
                         const gaussianEval = GaussianFilterEngine.evaluateCandidate(unique, config, analysis, fixed);
-                        const scoreObj = ScoringEngine.evaluateGame(unique, config, analysis, customWeights, backtestSummary);
+                        const scoreObj = ScoringEngine.evaluateGame(
+                            unique,
+                            config,
+                            analysis,
+                            customWeights,
+                            backtestSummary
+                        );
                         const antiCrowdBonus = strategy === 'anti_crowd' ? (scoreObj.antiCrowdScore || 70) * 0.35 : 0;
                         const candidateObj = {
                             numbers: unique,
                             scoreObj,
                             gaussianEval,
-                            compositeRankScore: scoreObj.modelScore * 0.70 + gaussianEval.gaussianQualityIndex * 0.30 + antiCrowdBonus
+                            compositeRankScore:
+                                scoreObj.modelScore * 0.7 + gaussianEval.gaussianQualityIndex * 0.3 + antiCrowdBonus
                         };
                         candidatesPool.push(candidateObj);
                         if (gaussianEval.passed) {
@@ -94,7 +123,7 @@ export class GameGenerator {
                 return a.numbers.join(',').localeCompare(b.numbers.join(','));
             });
 
-            const maxSimilarityThreshold = config.pick > 15 ? 0.85 : (config.pick === 15 ? 0.72 : 0.50);
+            const maxSimilarityThreshold = config.pick > 15 ? 0.85 : config.pick === 15 ? 0.72 : 0.5;
 
             for (const candidate of activePool) {
                 if (selectedGames.length >= count) break;
@@ -123,7 +152,7 @@ export class GameGenerator {
                         if (dist < minDist) minDist = dist;
                     }
 
-                    const combinedMetric = minDist + (candidate.scoreObj.modelScore / 100);
+                    const combinedMetric = minDist + candidate.scoreObj.modelScore / 100;
                     if (combinedMetric > bestMinDistance) {
                         bestMinDistance = combinedMetric;
                         bestRemaining = candidate;
@@ -184,10 +213,26 @@ export class GameGenerator {
     /**
      * Gera uma única combinação candidata baseada na estratégia, customWeights, Ciclo, Markov, Anti-Crowd, Sinergia de Pares e Geometria
      */
-    static generateSingleCandidate(type, analysis, strategy, fixed = [], excluded = [], config, customWeights = null, rng = null) {
+    static generateSingleCandidate(
+        type,
+        analysis,
+        strategy,
+        fixed = [],
+        excluded = [],
+        config,
+        customWeights = null,
+        rng = null
+    ) {
         const total = config.total;
         const pick = config.pick;
-        const { freqAbsolute = {}, freqWeighted = {}, currentDelay = {}, avgDelay = {}, cycleStats = {}, markovStats = {} } = analysis || {};
+        const {
+            freqAbsolute = {},
+            freqWeighted = {},
+            currentDelay = {},
+            avgDelay = {},
+            cycleStats = {},
+            markovStats = {}
+        } = analysis || {};
         // Mesmo portão de evidência aplicado no score: se Markov não tem
         // evidência, ela não deve influenciar a amostragem das dezenas tampouco.
         const weights = EvidenceWeightingEngine.applyWeights(
@@ -214,7 +259,7 @@ export class GameGenerator {
 
             const f = freqAbsolute[i] || 0;
             const d = currentDelay[i] || 0;
-            const avgD = avgDelay[i] || (total / (config.drawn || pick));
+            const avgD = avgDelay[i] || total / (config.drawn || pick);
             const fNorm = rangeFreq > 0 ? (f - minFreq) / rangeFreq : 0.5;
             const rNorm = maxWeighted > 0 ? (freqWeighted[i] || 0) / maxWeighted : 0.5;
             const dNorm = maxDelay > 0 ? d / maxDelay : 0;
@@ -227,14 +272,14 @@ export class GameGenerator {
             const markovNorm = Math.max(0.1, Math.min(1.0, (markovLift - 0.5) / 0.8));
             const antiCrowdWeight = AntiCrowdEngine.getNumberAntiCrowdWeight(i, total);
 
-            let weight = 1;
+            let weight;
             switch (strategy) {
                 case 'weighted':
                     weight = 0.15 + 0.85 * ((f - minFreq + 1) / (rangeFreq + 1));
                     break;
 
                 case 'hot':
-                    weight = 0.10 + 0.90 * Math.pow((f - minFreq + 1) / (rangeFreq + 1), 2.2) * (0.6 + 0.4 * rNorm);
+                    weight = 0.1 + 0.9 * Math.pow((f - minFreq + 1) / (rangeFreq + 1), 2.2) * (0.6 + 0.4 * rNorm);
                     break;
 
                 case 'cold':
@@ -243,23 +288,13 @@ export class GameGenerator {
 
                 case 'anti_crowd':
                     // Modo Prêmio Sozinho: Maximiza Valor Esperado (EV) fugindo dos números favoritos da multidão + Markov + Gauss
-                    weight = (
-                        antiCrowdWeight * 0.45 +
-                        markovNorm * 0.20 +
-                        cycleScore * 0.15 +
-                        fNorm * 0.10 +
-                        trendScore * 0.10
-                    );
+                    weight =
+                        antiCrowdWeight * 0.45 + markovNorm * 0.2 + cycleScore * 0.15 + fNorm * 0.1 + trendScore * 0.1;
                     break;
 
                 case 'markov':
                     // Modo Cadeia de Markov Pura + Ciclo
-                    weight = (
-                        markovNorm * 0.50 +
-                        cycleScore * 0.20 +
-                        rNorm * 0.15 +
-                        fNorm * 0.15
-                    );
+                    weight = markovNorm * 0.5 + cycleScore * 0.2 + rNorm * 0.15 + fNorm * 0.15;
                     break;
 
                 case 'wheeling':
@@ -269,23 +304,23 @@ export class GameGenerator {
                 default: {
                     const wFreq = weights.frequency ?? 0.16;
                     const wRec = weights.recency ?? 0.14;
-                    const wTrend = weights.trend ?? 0.10;
-                    const wCycle = weights.cycle ?? 0.10;
-                    const wMarkov = weights.markov ?? 0.10;
+                    const wTrend = weights.trend ?? 0.1;
+                    const wCycle = weights.cycle ?? 0.1;
+                    const wMarkov = weights.markov ?? 0.1;
                     const wAntiCrowd = weights.antiCrowd ?? 0.07;
                     const wRep = weights.repetition ?? 0.04;
                     const repBonus = lastDrawSet.has(i) ? 0.65 : 0.45;
-                    const denom = (wFreq + wRec + wTrend + wCycle + wMarkov + wAntiCrowd + wRep) || 1;
+                    const denom = wFreq + wRec + wTrend + wCycle + wMarkov + wAntiCrowd + wRep || 1;
 
-                    weight = (
-                        fNorm * wFreq +
-                        rNorm * wRec +
-                        trendScore * wTrend +
-                        cycleScore * wCycle +
-                        markovNorm * wMarkov +
-                        antiCrowdWeight * wAntiCrowd +
-                        repBonus * wRep
-                    ) / denom;
+                    weight =
+                        (fNorm * wFreq +
+                            rNorm * wRec +
+                            trendScore * wTrend +
+                            cycleScore * wCycle +
+                            markovNorm * wMarkov +
+                            antiCrowdWeight * wAntiCrowd +
+                            repBonus * wRep) /
+                        denom;
                     break;
                 }
             }
@@ -329,13 +364,15 @@ export class GameGenerator {
                     const avgCooc = pairAcc / selected.size;
                     const expectedCooc = Math.max(1, (analysis.expectedFreq || 1) * ((config.drawn || pick) / total));
                     const coocBoost = Math.min(1.45, Math.max(0.75, avgCooc / expectedCooc));
-                    w *= (0.75 + 0.25 * coocBoost);
+                    w *= 0.75 + 0.25 * coocBoost;
                 }
 
                 if (total >= 60) {
-                    if ((selected.has(item.num - 1) && selected.has(item.num - 2)) ||
+                    if (
+                        (selected.has(item.num - 1) && selected.has(item.num - 2)) ||
                         (selected.has(item.num + 1) && selected.has(item.num + 2)) ||
-                        (selected.has(item.num - 1) && selected.has(item.num + 1))) {
+                        (selected.has(item.num - 1) && selected.has(item.num + 1))
+                    ) {
                         w *= 0.05;
                     }
                 }
@@ -395,7 +432,7 @@ export class GameGenerator {
                     return this.generateSingleCandidate(cfg.apiName, subAnalysis, 'adaptive', [], [], cfg, null, prng);
                 };
                 const bt = BacktestEngine.runBacktest(subHistory, config, generatorFn, { windowSize: 30, seed });
-                
+
                 const overfitGap = bt.walkForward?.degradation || 0;
                 const isSig = bt.isStatisticallySignificant ? 1.0 : 0.0;
                 const objScore = bt.meanHits + isSig - 1.5 * Math.max(0, overfitGap);
@@ -437,7 +474,10 @@ export class GameGenerator {
 
         const optimalHistory = StatisticalAnalyzer.getWindow(fullHistory, bestWindow);
         const optimalAnalysis = StatisticalAnalyzer.analyze(optimalHistory, config);
-        const optWeights = ScoringEngine.optimizeWeights(optimalHistory, config, { seed, backtestSummary: bestBacktest });
+        const optWeights = ScoringEngine.optimizeWeights(optimalHistory, config, {
+            seed,
+            backtestSummary: bestBacktest
+        });
 
         const games = this.generateBatch(
             config.apiName,
@@ -462,10 +502,8 @@ export class GameGenerator {
             selectionCorrection,
             signalSummary: StatisticalAnalyzer.summarizeSignals(optimalAnalysis),
             evidenceWeighting: EvidenceWeightingEngine.summarize(
-                EvidenceWeightingEngine.applyWeights(
-                    optWeights?.optimizedWeights || DEFAULT_WEIGHTS,
-                    optimalAnalysis
-                ).report
+                EvidenceWeightingEngine.applyWeights(optWeights?.optimizedWeights || DEFAULT_WEIGHTS, optimalAnalysis)
+                    .report
             ),
             seed
         };
@@ -480,7 +518,18 @@ export class GameGenerator {
 
         if (!fullHistory || fullHistory.length < 15) {
             const emptyAnalysis = StatisticalAnalyzer.analyze([], config);
-            const emptyBatch = this.generateBatch(config.apiName, emptyAnalysis, 'weighted', fixed, excluded, count, config, DEFAULT_WEIGHTS, null, seed);
+            const emptyBatch = this.generateBatch(
+                config.apiName,
+                emptyAnalysis,
+                'weighted',
+                fixed,
+                excluded,
+                count,
+                config,
+                DEFAULT_WEIGHTS,
+                null,
+                seed
+            );
             emptyBatch.modelPipeline = {
                 status: 'INSUFFICIENT_DATA',
                 message: 'Dados estatísticos insuficientes para validação do modelo (mínimo: 15 concursos).'
@@ -497,7 +546,16 @@ export class GameGenerator {
         const generatorFn = (past, cfg) => {
             const subAnalysis = StatisticalAnalyzer.analyzeFast(past, cfg);
             const stepRng = new SeededRandom(seed + past.length);
-            return this.generateSingleCandidate(cfg.apiName, subAnalysis, 'maximum_precision', [], [], cfg, finalWeights, stepRng);
+            return this.generateSingleCandidate(
+                cfg.apiName,
+                subAnalysis,
+                'maximum_precision',
+                [],
+                [],
+                cfg,
+                finalWeights,
+                stepRng
+            );
         };
 
         const backtestResult = BacktestEngine.runBacktest(recentHistory, config, generatorFn, { windowSize: 30, seed });
@@ -509,8 +567,20 @@ export class GameGenerator {
             backtestSummary: backtestResult
         });
 
-        const topCandidate = this.generateSingleCandidate(config.apiName, analysis, 'maximum_precision', fixed, excluded, config, finalWeights, prng);
-        const monteCarloResult = MonteCarloEngine.simulateCandidate(topCandidate, config, 10000, { seed, history: recentHistory });
+        const topCandidate = this.generateSingleCandidate(
+            config.apiName,
+            analysis,
+            'maximum_precision',
+            fixed,
+            excluded,
+            config,
+            finalWeights,
+            prng
+        );
+        const monteCarloResult = MonteCarloEngine.simulateCandidate(topCandidate, config, 10000, {
+            seed,
+            history: recentHistory
+        });
 
         const wheelResult = WheelingEngine.generateWheelingMatrix(
             config,
@@ -522,7 +592,18 @@ export class GameGenerator {
             backtestResult,
             seed
         );
-        const rawBatch = this.generateBatch(config.apiName, analysis, 'maximum_precision', fixed, excluded, count * 2, config, finalWeights, backtestResult, seed);
+        const rawBatch = this.generateBatch(
+            config.apiName,
+            analysis,
+            'maximum_precision',
+            fixed,
+            excluded,
+            count * 2,
+            config,
+            finalWeights,
+            backtestResult,
+            seed
+        );
 
         const combinedCandidates = [
             ...wheelResult.tickets.map((t, idx) => ({
@@ -557,8 +638,8 @@ export class GameGenerator {
             if (diversifiedBatch.length === 0) {
                 diversifiedBatch.push(candidate);
             } else {
-                const isTooSimilar = diversifiedBatch.some(existing => 
-                    this.calculateJaccardSimilarity(existing.numbers, candidate.numbers) > 0.70
+                const isTooSimilar = diversifiedBatch.some(
+                    existing => this.calculateJaccardSimilarity(existing.numbers, candidate.numbers) > 0.7
                 );
                 if (!isTooSimilar) {
                     diversifiedBatch.push(candidate);
@@ -568,8 +649,8 @@ export class GameGenerator {
         }
 
         while (diversifiedBatch.length < count && combinedCandidates.length > diversifiedBatch.length) {
-            const remaining = combinedCandidates.find(r =>
-                !diversifiedBatch.some(d => d.numbers.join(',') === r.numbers.join(','))
+            const remaining = combinedCandidates.find(
+                r => !diversifiedBatch.some(d => d.numbers.join(',') === r.numbers.join(','))
             );
             if (remaining) diversifiedBatch.push(remaining);
             else break;
@@ -579,7 +660,7 @@ export class GameGenerator {
         const diversificationScore = MonteCarloEngine.calculateDiversificationScore(diversifiedBatch, config);
         const spaceReduction = GaussianFilterEngine.estimateSpaceReduction(config);
 
-        let status = 'NOT_VALIDATED';
+        let status;
         if (backtestResult.diffMean <= 0) {
             status = 'BASELINE_NOT_BEATEN';
         } else if (!backtestResult.isStatisticallySignificant) {

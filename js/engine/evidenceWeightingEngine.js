@@ -57,8 +57,7 @@ const EVIDENCE_EXTRACTORS = {
                 return { tested: false, reason: 'histórico insuficiente para testar transições' };
             }
 
-            const rejected = significant > 0
-                || mkv.hasStatisticallySignificantSignal === true;
+            const rejected = significant > 0 || mkv.hasStatisticallySignificantSignal === true;
 
             return {
                 tested: true,
@@ -133,7 +132,7 @@ export class EvidenceWeightingEngine {
             const rejected = evidence.rejected === true;
 
             // Portão: zera somente quando o teste rodou e não rejeitou H0.
-            const multiplier = !enabled || !assessed ? 1 : (rejected ? 1 : 0);
+            const multiplier = !enabled || !assessed ? 1 : rejected ? 1 : 0;
 
             factors.push({
                 factor,

@@ -11,7 +11,7 @@
  * Zona de Alta Densidade Gaussiana (núcleo central onde ~85%+ dos sorteios reais ocorrem).
  */
 
-import { StatisticalAnalyzer, PRIMES, FIBONACCI } from './statisticalAnalyzer.js';
+import { StatisticalAnalyzer, PRIMES } from './statisticalAnalyzer.js';
 
 export class GaussianFilterEngine {
     /**
@@ -24,7 +24,7 @@ export class GaussianFilterEngine {
         const scaleRatio = pick / drawn; // Escala caso a aposta tenha mais números que o sorteio (ex: Lotomania 50 vs 20)
 
         // 1. Limites de Soma das Dezenas (Curva de Sino: μ ± 1.9σ)
-        const theoreticalSumMean = pick * (total + 1) / 2;
+        const theoreticalSumMean = (pick * (total + 1)) / 2;
         const theoreticalSumStd = Math.sqrt((pick * (total - pick) * (total + 1)) / 12);
 
         let minSum = config.minSum || Math.round(theoreticalSumMean - 1.9 * theoreticalSumStd);
@@ -60,9 +60,9 @@ export class GaussianFilterEngine {
         // 4. Limites Geométricos de Linhas e Colunas
         const { rows, cols } = StatisticalAnalyzer.getGridDimensions(total);
         let minActiveRows = Math.max(2, Math.floor(Math.min(rows, pick) * 0.65));
-        let maxInSingleRow = Math.ceil((pick / rows) + 2.2);
-        let minActiveCols = Math.max(2, Math.floor(Math.min(cols, pick) * 0.60));
-        let maxInSingleCol = Math.ceil((pick / cols) + 2.2);
+        let maxInSingleRow = Math.ceil(pick / rows + 2.2);
+        let minActiveCols = Math.max(2, Math.floor(Math.min(cols, pick) * 0.6));
+        let maxInSingleCol = Math.ceil(pick / cols + 2.2);
 
         if (total === 25 && pick === 15) {
             minActiveRows = 5; // Lotofácil: 99.8% dos sorteios têm dezenas nas 5 linhas
@@ -146,9 +146,7 @@ export class GaussianFilterEngine {
 
         // Verifica repetição com o último sorteio
         const lastDraw = analysis?.lastDrawNumbers || [];
-        const overlapWithLast = lastDraw.length > 0
-            ? sorted.filter(n => lastDraw.includes(n)).length
-            : null;
+        const overlapWithLast = lastDraw.length > 0 ? sorted.filter(n => lastDraw.includes(n)).length : null;
 
         // Se o usuário não fixou dezenas que forcem violação, aplicamos os filtros estritos
         const hasStrictUserConstraints = fixed && fixed.length >= Math.floor(config.pick * 0.5);
@@ -160,7 +158,9 @@ export class GaussianFilterEngine {
             rowsOK: geom.activeRows >= bounds.minActiveRows && geom.maxInSingleRow <= bounds.maxInSingleRow,
             colsOK: geom.activeCols >= bounds.minActiveCols && geom.maxInSingleCol <= bounds.maxInSingleCol,
             primesOK: geom.primeCount >= bounds.minPrimes && geom.primeCount <= bounds.maxPrimes,
-            repetitionOK: overlapWithLast === null || (overlapWithLast >= bounds.minRepetition && overlapWithLast <= bounds.maxRepetition),
+            repetitionOK:
+                overlapWithLast === null ||
+                (overlapWithLast >= bounds.minRepetition && overlapWithLast <= bounds.maxRepetition),
             notAlreadyDrawn: !alreadyDrawnInHistory
         };
 
@@ -170,10 +170,16 @@ export class GaussianFilterEngine {
         // Um candidato é aprovado se passar nos critérios principais (ou se o usuário fixou dezenas demais)
         const passedHardFilter = hasStrictUserConstraints
             ? checks.notAlreadyDrawn
-            : (checks.sumOK && checks.parityOK && checks.sequenceOK && checks.rowsOK && checks.notAlreadyDrawn && passedChecksCount >= totalChecks - 1);
+            : checks.sumOK &&
+              checks.parityOK &&
+              checks.sequenceOK &&
+              checks.rowsOK &&
+              checks.notAlreadyDrawn &&
+              passedChecksCount >= totalChecks - 1;
 
         // Índice de Qualidade Gaussiana (proximidade ao centro da distribuição normal)
-        const sumZ = bounds.theoreticalSumStd > 0 ? Math.abs(sum - bounds.theoreticalSumMean) / bounds.theoreticalSumStd : 0;
+        const sumZ =
+            bounds.theoreticalSumStd > 0 ? Math.abs(sum - bounds.theoreticalSumMean) / bounds.theoreticalSumStd : 0;
         const gaussianBellScore = Math.exp(-0.5 * Math.pow(sumZ, 2)); // 1.0 no centro exato da curva de sino
         const checkRatio = passedChecksCount / totalChecks;
         const gaussianQualityIndex = Number(((gaussianBellScore * 0.45 + checkRatio * 0.55) * 100).toFixed(1));
@@ -213,7 +219,7 @@ export class GaussianFilterEngine {
             100: 0.185 // Lotomania: ~81.5% das 11.372.635 combinações de 20 acertos são podadas
         };
 
-        const retentionRatio = retentionByLottery[config.total] || 0.20;
+        const retentionRatio = retentionByLottery[config.total] || 0.2;
         const prunedPercentage = Number(((1 - retentionRatio) * 100).toFixed(1));
         const precisionMultiplier = Number((1 / retentionRatio).toFixed(2));
 
