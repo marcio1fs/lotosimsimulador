@@ -73,6 +73,20 @@ jobs:
       - name: Vulnerabilidades (severidade alta)
         run: npm audit --audit-level=high
 
+      # Item 6.9: lint. O ESLint pega o que um teste não pega por construção —
+      # variável morta, import que sobrou, atribuição que ninguém lê, número
+      # literal com mais dígitos do que um double guarda. Ao entrar neste
+      # projeto ele encontrou 36 problemas reais, todos corrigidos no commit
+      # que trouxe o lint.
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      # Formatação. Não é questão de gosto: é a única discussão de revisão que
+      # não precisa acontecer. O Prettier já rodou sobre o código, então o
+      # check é barato e o `npm run format` conserta em um comando.
+      - name: Formatação (Prettier)
+        run: npm run format:check
+
       # Arquivos que nenhum teste importa (rotas serverless, por exemplo) ainda
       # precisam ao menos ser sintaticamente válidos.
       - name: Sintaxe de todo o código
@@ -90,7 +104,6 @@ jobs:
             exit 1
           fi
           echo "OK: todo sorteio usa PRNG com semente"
-
 
       # Item 6.14: a documentação não pode envelhecer em silêncio. Roda a suíte
       # inteira e compara com o marcador `<!-- suite: arquivos=N testes=M -->`

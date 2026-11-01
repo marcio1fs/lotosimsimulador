@@ -44,7 +44,7 @@ suíte de 4 casos sustentava afirmações grandes. O que mudou:
 `AUDITORIA_PRECISAO.md` carrega o marcador:
 
 ```html
-<!-- suite: arquivos=29 testes=429 -->
+<!-- suite: arquivos=30 testes=436 -->
 ```
 
 e a **seção 11 (Estado atual)** lista cada item do roadmap com status e onde ele
@@ -81,7 +81,37 @@ compara o total real** com o número do marcador. Localmente esse passo é pulad
 para não dobrar o tempo de `npm test`; na CI ele é obrigatório — que é onde a
 deriva precisa ser pega.
 
-## 5. Como atualizar
+## 5. Código: lint e formato
+
+Duas ferramentas rodam na CI (job de guardas) e podem ser rodadas localmente:
+
+```bash
+npm run lint          # ESLint (recommended + prefer-const, no-var, eqeqeq)
+npm run format        # Prettier --write em tudo
+npm run format:check  # o que a CI roda: só verifica
+```
+
+O que é **deliberadamente** excluído do Prettier está escrito no `.prettierignore`,
+com o motivo ao lado: `index.html` (é saída de build — formatá-lo quebraria
+`npm run check:html`) e os `.md` (prosa revisada à mão). Código-fonte não se
+ignora; `tests/ciLint.test.js` reprova se alguém tentar.
+
+O `package.json` carrega um `overrides` de `minimatch` para 11.0.3: o ESLint
+traz `minimatch` 10 transitivamente, e a versão 10 tem um DoS de amplificação de
+glob (moderado, só em ferramenta de desenvolvimento). O `npm audit fix` não
+resolve — ele propõe *rebaixar* o ESLint para a 4.0.0 —, então o override fixa a
+versão corrigida e o lint é exercitado na CI para provar que continua funcionando.
+
+A passada de formatação mora num commit só, registrado em
+`.git-blame-ignore-revs`. Para o `git blame` local não apontar para ele:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+(GitHub e GitLab já respeitam o arquivo automaticamente.)
+
+## 6. Como atualizar
 
 Ao adicionar ou remover testes:
 

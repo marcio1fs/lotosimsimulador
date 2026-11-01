@@ -1,0 +1,17 @@
+# Dependências e artefatos de build
+node_modules/
+dist/
+package-lock.json
+
+# index.html é SAÍDA de build (js/views/templates → scripts/build-html.mjs).
+# Formatá-lo aqui quebraria `npm run check:html`, que compara o arquivo com o
+# que os templates geram.
+index.html
+
+# Documentos: a prosa é revisada à mão e o Prettier reorganiza tabelas e listas
+# de um jeito que estraga a leitura. O que os documentos prometem é verificado
+# por tests/docs.test.js.
+*.md
+
+# SQL: o schema tem comentários alinhados de propósito.
+schema.sql
