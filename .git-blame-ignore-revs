@@ -1,0 +1,13 @@
+# Commits que não valem uma linha no git blame.
+#
+# Formatação mecânica: o commit abaixo reescreveu o formato de 73 arquivos sem
+# mudar lógica. Sem esta lista, cada linha do projeto aponta para ele e o blame
+# perde a utilidade.
+#
+# Para valer localmente:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# GitHub e GitLab leem este arquivo automaticamente.
+
+# style: aplicar Prettier no código e corrigir o que o ESLint apontou
+c9b6eba

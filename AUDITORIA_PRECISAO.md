@@ -2,8 +2,8 @@
 
 **Data:** 01/11/2026
 **Escopo:** 61 arquivos · ~8.700 linhas de JavaScript · 12 módulos de motor estatístico · API serverless (Neon) · interface SPA
-**Suíte de testes:** 113 → **429 testes em 29 arquivos** (100% passando), `npm run build` OK
-<!-- suite: arquivos=29 testes=429 -->
+**Suíte de testes:** 113 → **436 testes em 30 arquivos** (100% passando), `npm run build` OK
+<!-- suite: arquivos=30 testes=436 -->
 **Pergunta que guiou a auditoria:** *onde este projeto perde precisão — e como recuperá-la?*
 
 ---
@@ -52,7 +52,7 @@ Três números resumem o ganho:
 | 11 | 🟡 Médio | `runBestGameMode` escolhia a melhor janela entre 5 e devolvia o p-value do vencedor como teste único — e **descartava** o próprio backtest | `js/engine/gameGenerator.js` | ✅ Corrigido |
 | 12 | 🟡 Médio | Constantes do `AntiCrowdEngine` ("~65% das apostas…") sem fonte verificável | `js/engine/antiCrowdEngine.js` | ✅ Corrigido (6.8) |
 | 13 | 🟢 Baixo | `AUDIT_REPORT.md` desatualizado ("4 suítes", "12/12 resolvidos") | raiz | ✅ Corrigido (6.14) |
-| 14 | 🟢 Baixo | Sem CI, sem lint/format configurado; `.vscode/settings.json` só tem preferências de extensão | raiz | 🟡 CI pronto; lint pendente |
+| 14 | 🟢 Baixo | Sem CI, sem lint/format configurado; `.vscode/settings.json` só tem preferências de extensão | raiz | ✅ Corrigido (6.9) |
 | 15 | 🟢 Baixo | `legacyHash` (hash trivialmente reversível) continua aceito indefinidamente | `server/security.js` | ✅ Corrigido (6.12) |
 | 16 | 🟢 Baixo | `analyze()` aloca matrizes O(N²) de objetos a cada chamada; `index.html` monolítico de 32 KB | `statisticalAnalyzer.js`, `index.html` | ✅ Corrigido (6.10 e 6.11) |
 
@@ -396,15 +396,67 @@ fonte citável.
 
 ### Prioridade média — engenharia
 
-**6.9 CI + lint — ✅ implementado (CI).** Não havia workflow. Um `.github/workflows/ci.yml` de 15 linhas (`npm ci`, `npm test`, `npm run build`) impede regressões como o bug de intervalo, além de ativar Dependabot. Adicionar ESLint + Prettier (o código é consistente, a adoção tende a ser indolor).
+**6.9 CI + lint — ✅ implementado.** Não havia workflow. Um `.github/workflows/ci.yml` de 15 linhas (`npm ci`, `npm test`, `npm run build`) impede regressões como o bug de intervalo, além de ativar Dependabot. Adicionar ESLint + Prettier (o código é consistente, a adoção tende a ser indolor).
 
-*Implementado parcialmente:* `.github/workflows/ci.yml` com matriz Node 20/22
-(`npm ci` + `npm test` + `npm run build`) e um job de guardas (`npm audit
---audit-level=high`, `node --check` em `js/`, `api/` e `server/`, e proibição de
-`Math.random` no código de produção para preservar a reprodutibilidade).
-O guarda de `Math.random` já reprovou um defeito real: `tests/backtest.test.js`
-gerava histórico mock sem semente. **ESLint + Prettier seguem pendentes** —
-exigem uma passada de formatação sobre todo o código, que merece commit próprio.
+*Implementado:* o workflow entrou antes (matriz Node 20/22 com `npm test` e
+`npm run build`, mais um job de guardas: `npm audit --audit-level=high`,
+`node --check` em `js/`, `api/` e `server/`, proibição de `Math.random` no código
+de produção, documentação em dia e `index.html` em dia com os templates). O
+guarda de `Math.random` já reprovou um defeito real: `tests/backtest.test.js`
+gerava histórico mock sem semente.
+
+O que faltava eram o **ESLint** e o **Prettier**. Os dois rodam agora no job de
+guardas (`npm run lint`, `npm run format:check`), e a previsão desta auditoria —
+"o código é consistente, a adoção tende a ser indolor" — estava **errada pela
+metade**: a formatação não mudou nenhuma linha de lógica, mas o linter encontrou
+**36 problemas reais** na primeira execução, todos corrigidos no mesmo commit:
+
+- **5 `prefer-const`** em `backtestEngine` (arrays mutados por `push`, nunca
+  reatribuídos);
+- **4 atribuições mortas** (`no-useless-assignment`): `weight` e `status` em
+  `gameGenerator`, `conclusion` em `statisticalInference`, `scenarios` em
+  `wheelingEngine` — inicializações que todo ramo sobrescrevia;
+- **um parâmetro fantasma**: `calculatePortfolioProjection(..., diversificationScore)`
+  continuava aceitando o "fator de ortogonalidade" que a própria auditoria
+  removeu, e o chamador em `js/models/lottery.js` **ainda calculava e passava**
+  esse valor. A correção apagou os dois lados;
+- **`temperature` e `coolingRate`** em `wheelingEngine`: sobras do simulated
+  annealing que virou aceitação por ganho de pares — o resfriamento era
+  calculado a cada iteração e nunca lido;
+- **8 literais com mais dígitos do que um double guarda** nos valores de
+  referência de `qbeta` (ex.: `0.0989882784425078667`). Substituídos pela forma
+  mais curta que resulta no **mesmo** valor de máquina — nenhuma tolerância
+  mudou;
+- imports e variáveis mortas (`FIBONACCI`, `PRIMES`, `drawsPerWeek`,
+  `lotomaniaConfig`, `LEGACY_HASH_SUNSET_LABEL` — este último sobrou do item
+  6.12) e dois parâmetros que ninguém usava.
+
+Regras escolhidas: `recommended` do ESLint mais `prefer-const`, `no-var`,
+`eqeqeq` (smart) e `no-empty` com `allowEmptyCatch` (o projeto ignora de
+propósito falhas de `localStorage`/`JSON.parse` em fallback). `no-unused-vars`
+aceita `_` como prefixo — convenção já usada em `const { password: _ignored, ... }`.
+
+**A formatação:** uma passada do Prettier sobre 77 arquivos, em commit próprio e
+registrado em `.git-blame-ignore-revs` (o GitHub e o `git blame` local passam a
+ignorá-lo). Config: 4 espaços, aspas simples, 120 colunas, `arrowParens: avoid`,
+sem vírgula final — as escolhas que **já** eram as do código, para a passada ser
+majoritariamente cosmética. Duas exclusões deliberadas, ambas com motivo escrito
+no `.prettierignore`: `index.html` (é **saída de build**: formatá-lo quebraria
+`npm run check:html`) e os `.md` (prosa revisada à mão; o Prettier reorganiza
+tabelas e listas de um jeito que estraga a leitura).
+
+O ESLint trouxe junto uma vulnerabilidade moderada transitiva (`minimatch` 10,
+DoS de amplificação de glob, só em ferramenta de desenvolvimento). O `npm audit
+fix` propunha *rebaixar* o ESLint para 4.0.0 — trocar o problema por um pior —,
+então o `package.json` fixa `minimatch` 11.0.3 por `overrides` e o lint roda na
+CI justamente para provar que continua funcionando. `npm audit` voltou a **0**.
+
+Um teste novo, `tests/ciLint.test.js` (7 casos), guarda a fiação: os scripts
+existem e chamam as ferramentas certas, o workflow os executa depois do
+`npm ci`, **todo diretório de código-fonte está coberto** pelo ESLint (um
+diretório novo sem linter reprova) e o `.prettierignore` não exclui código.
+Verificado no negativo: apagando o passo de lint do workflow, o teste falha com
+"o workflow não roda `npm run lint`".
 
 **6.10 Performance de memória — ✅ implementado.**
 `analyze()` monta matrizes O(N²) de objetos (`pairMatrix` = 4.950 objetos na Mega, 4.950 na Quina, 10.000 na Lotomania) mais um array de todos os pares ordenado. *Correção:* `Int32Array(total*total)` triangular + memoização por `(últimoConcurso, janela)`.
@@ -530,7 +582,7 @@ falsa, sem tocar no banco. A defesa em camadas está descrita em
 
 
 **6.14 Atualizar a documentação — ✅ implementado.**
-`AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 29 arquivos de teste e 429 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
+`AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 30 arquivos de teste e 436 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
 
 *Implementado:* o `AUDIT_REPORT.md` foi **mantido como registro histórico e corrigido**
 (ver [DOCUMENTACAO.md](./DOCUMENTACAO.md)). Três decisões:
@@ -581,7 +633,7 @@ O valor real deste software é o que ele já faz bem: **demonstrar com rigor que
 
 ```bash
 npm install
-npm test            # 429 testes em 29 arquivos, incluindo tests/precisionAudit.test.js (38)
+npm test            # 436 testes em 30 arquivos, incluindo tests/precisionAudit.test.js (38)
 npm run build       # build de produção
 ```
 
@@ -669,7 +721,7 @@ links internos precisam apontar para arquivos que existem.
 | 6.6 | Teste de permutação do pipeline | ✅ | seção 6 |
 | 6.7 | Fonte oficial dos dados | ✅ | seção 6 |
 | 6.8 | Anti-Crowd: direção × magnitude | ✅ | seção 6 |
-| 6.9 | CI + lint | 🟡 CI completo; **ESLint pendente** | `.github/workflows/ci.yml` |
+| 6.9 | CI + lint | ✅ | `.github/workflows/ci.yml` |
 | 6.10 | Memória da análise | ✅ | [DESEMPENHO_ANALISE.md](./DESEMPENHO_ANALISE.md) |
 | 6.11 | Interface decomposta e testada | ✅ | [INTERFACE.md](./INTERFACE.md) |
 | 6.12 | Encerrar o `legacyHash` | ✅ (prazo: 31/01/2027) | [SECURITY.md](./SECURITY.md) |
@@ -677,10 +729,11 @@ links internos precisam apontar para arquivos que existem.
 | 6.14 | Documentação atualizada | ✅ | [DOCUMENTACAO.md](./DOCUMENTACAO.md) |
 | — | Módulo de projeções futuras | ✅ | [PROJECOES.md](./PROJECOES.md) |
 
-**Contagem atual:** 29 arquivos de teste, 429 testes, `npm audit` 0, build
+**Contagem atual:** 30 arquivos de teste, 436 testes, `npm audit` 0, build
 limpo, CI com 6 verificações.
 
-O que **continua em aberto**, sem enfeite: ESLint/formatador no CI e a calibração
-brasileira do Anti-Crowd — que depende de dado público que não existe, não de código.
-O hash legado tem prazo correndo: em **31/01/2027** o verificador precisa sair do
-código, e há um teste que falha nesse dia se ele ainda estiver lá.
+O que **continua em aberto**, sem enfeite: a calibração brasileira do Anti-Crowd —
+que depende de dado público que não existe, não de código. O hash legado tem prazo
+correndo: em **31/01/2027** o verificador precisa sair do código, e há um teste
+que falha nesse dia se ele ainda estiver lá. Nenhum item do roadmap de 6.1 a 6.14
+segue em aberto.
