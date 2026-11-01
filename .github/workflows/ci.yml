@@ -1,0 +1,93 @@
+name: CI
+
+# Objetivo desta CI: impedir que um erro silencioso chegue ao main.
+#
+# O projeto é um simulador estatístico. Um defeito aqui não quebra a tela —
+# ele mente com aparência de precisão. Foi o que aconteceu na auditoria: o
+# intervalo entre ocorrências calculava 15 onde o correto era 10, e a poda
+# gaussiana "dobrava" as odds sem mudar nada. Nenhum dos dois quebrava o app.
+# A suíte de 193 testes é o que distingue esses erros de código saudável.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Suíte estatística + build nas duas versões de Node suportadas.
+  testes:
+    name: Testes (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      # npm ci (não install): respeita o lockfile e falha se ele estiver
+      # dessincronizado do package.json — build reprodutível.
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Suíte estatística
+        run: npm test
+
+      - name: Build de produção
+        run: npm run build
+
+  # Guardas de integridade: o que os testes não cobrem por construção.
+  guardas:
+    name: Guardas de integridade
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      # Vulnerabilidades altas em dependências (inclusive as de desenvolvimento:
+      # o dev server do Vite já teve execução de script cross-origin).
+      - name: Vulnerabilidades (severidade alta)
+        run: npm audit --audit-level=high
+
+      # Arquivos que nenhum teste importa (rotas serverless, por exemplo) ainda
+      # precisam ao menos ser sintaticamente válidos.
+      - name: Sintaxe de todo o código
+        run: |
+          find js api server -name '*.js' -print0 | xargs -0 -r -n1 node --check
+          echo "OK: todos os arquivos passam em node --check"
+
+      # Reprodutibilidade: o projeto inteiro usa SeededRandom (js/engine/prng.js).
+      # Um Math.random() acidental torna os resultados irreproduzíveis e faz um
+      # teste falhar de forma intermitente — o pior tipo de falha para depurar.
+      - name: Nenhum Math.random no código de produção
+        run: |
+          if grep -rn --include='*.js' 'Math\.random' js/ api/ server/; then
+            echo "::error::Math.random() encontrado. Use SeededRandom (js/engine/prng.js) para manter a reprodutibilidade."
+            exit 1
+          fi
+          echo "OK: todo sorteio usa PRNG com semente"
+
