@@ -35,6 +35,8 @@ import {
     sendEmail,
     verifyEmailMessage
 } from './email.js';
+import { clientIp } from './clientIp.js';
+import { consumeRateLimit, limitForRequest, rateLimitMessage } from './rateLimit.js';
 
 const MAX_BODY = 512 * 1024;
 const MAX_FAILS = 5; // tentativas de login falhas...
@@ -97,11 +99,6 @@ async function readBody(req) {
 }
 
 const isSecure = req => req.headers['x-forwarded-proto'] === 'https' || process.env.NODE_ENV === 'production';
-
-const clientIp = req =>
-    String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown')
-        .split(',')[0]
-        .trim();
 
 const normalizeEmail = value =>
     String(value || '')
@@ -776,6 +773,34 @@ export async function handler(req, res) {
         const path = url.pathname.replace(/\/+$/, '');
         const method = req.method;
 
+        // Limite por rota antes de qualquer trabalho: é o único ponto por onde toda
+        // requisição passa, e contar depois de consultar o banco seria contar o que
+        // o abuso já causou.
+        const dbMatch = path.match(/^\/api\/db\/(\w+)$/);
+        const dbOp = dbMatch && Object.hasOwn(dbOps, dbMatch[1]) ? dbMatch[1] : null;
+        const limit = limitForRequest({ path, method, dbOp });
+        if (limit) {
+            const key = clientIp(req);
+            let outcome = null;
+            try {
+                outcome = await consumeRateLimit(getSql(), limit, { key });
+            } catch (error) {
+                // Sem `DATABASE_URL` o contador não existe — e sem banco nenhuma rota
+                // funciona mesmo. Deixar esse erro subir trocaria a resposta útil do
+                // roteador (401, 503) por um 500 de infraestrutura.
+                if (!(error instanceof HttpError) || !/DATABASE_URL/.test(error.message)) throw error;
+                console.warn('[rate-limit] DATABASE_URL ausente: limite ignorado nesta requisição');
+            }
+            if (outcome) {
+                res.setHeader('X-RateLimit-Limit', String(outcome.max));
+                res.setHeader('X-RateLimit-Remaining', String(outcome.remaining));
+                if (!outcome.allowed) {
+                    res.setHeader('Retry-After', String(outcome.retryAfterSeconds));
+                    throw new HttpError(429, rateLimitMessage(limit), { retryAfter: outcome.retryAfterSeconds });
+                }
+            }
+        }
+
         if (path === '/api/health' && method === 'GET') {
             await getSql().query('SELECT 1');
             return send(res, 200, { ok: true });
@@ -827,10 +852,9 @@ export async function handler(req, res) {
             return send(res, 200, await syncLotteries(getSql(), body));
         }
 
-        const m = path.match(/^\/api\/db\/(\w+)$/);
-        if (m && Object.hasOwn(dbOps, m[1])) {
+        if (dbOp) {
             const session = await requireSession(req);
-            return send(res, 200, await dbOps[m[1]](session, body));
+            return send(res, 200, await dbOps[dbOp](session, body));
         }
         throw new HttpError(404, 'Rota não encontrada');
     } catch (e) {
