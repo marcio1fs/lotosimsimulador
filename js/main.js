@@ -727,7 +727,7 @@ class AppController {
 
         appState.generatedGames.forEach((g, i) => {
             const nums = g.numbers.map(n => String(n).padStart(2, '0')).join(' - ');
-            content += `JOGO #${i + 1} [Score: ${g.modelScore}/100 | Gauss: ${g.gaussianQualityIndex || 85}% | EV: ${g.expectedValueMultiplier || 1.1}x]\n`;
+            content += `JOGO #${i + 1} [Score: ${g.modelScore}/100 | Gauss: ${g.gaussianQualityIndex || 85}% | EV ≈ ${g.expectedValueMultiplier || 1.1}x]\n`;
             content += `${nums}\n\n`;
         });
 
@@ -758,7 +758,7 @@ class AppController {
                 <div class="volante-card">
                     <div class="volante-header">
                         <strong>JOGO #${idx + 1} (${cfg.name})</strong>
-                        <span>Score: ${g.modelScore}/100 · Gauss: ${g.gaussianQualityIndex || 85}% · EV: ${g.expectedValueMultiplier || 1.1}x</span>
+                        <span>Score: ${g.modelScore}/100 · Gauss: ${g.gaussianQualityIndex || 85}% · EV ≈ ${g.expectedValueMultiplier || 1.1}x</span>
                     </div>
                     <div class="numbers-line">${g.numbers.map(n => String(n).padStart(2, '0')).join(' - ')}</div>
                     <div class="volante-grid" style="grid-template-columns: repeat(${cols}, 1fr);">

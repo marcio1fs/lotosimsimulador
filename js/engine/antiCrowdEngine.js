@@ -200,6 +200,36 @@ export class AntiCrowdEngine {
         return null;
     }
 
+    /**
+     * Executa `fn` com alguns priors substituídos e restaura tudo no fim.
+     *
+     * Existe para a análise de sensibilidade de `crowdCalibration.js`: em vez de
+     * reimplementar a fórmula de peso com valores mexidos (duas cópias divergem
+     * no primeiro ajuste), a perturbação entra pela mesma porta que o código usa.
+     * A restauração é em `finally` — se `fn` lançar, os priors voltam ao lugar.
+     *
+     * @param {Object<string, number>} overrides - { nomeDoPrior: valor }
+     * @param {Function} fn
+     * @returns {*} o que `fn` devolver
+     */
+    static withPriorOverrides(overrides, fn) {
+        if (!overrides || typeof overrides !== 'object') throw new TypeError('overrides deve ser um objeto');
+        if (typeof fn !== 'function') throw new TypeError('fn deve ser uma função');
+
+        const saved = [];
+        try {
+            for (const [key, value] of Object.entries(overrides)) {
+                if (!Object.hasOwn(CROWD_PRIORS, key)) throw new RangeError(`prior desconhecido: ${key}`);
+                if (!Number.isFinite(value)) throw new TypeError(`valor não numérico para ${key}`);
+                saved.push([key, CROWD_PRIORS[key].value]);
+                CROWD_PRIORS[key].value = value;
+            }
+            return fn();
+        } finally {
+            for (const [key, value] of saved) CROWD_PRIORS[key].value = value;
+        }
+    }
+
     /** Resumo da calibração ativa (ou null). */
     static getCalibration() {
         if (!this._calibration) return null;
