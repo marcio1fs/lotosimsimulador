@@ -28,7 +28,7 @@ O markup foi dividido em **9 módulos puros**, um por seção:
 
 | Módulo | Seção |
 |---|---|
-| `documentHead.js` | metas, ícone, manifest, fontes, CSS e Chart.js (CDN) |
+| `documentHead.js` | metas, ícone, manifest, fontes e CSS (nenhum script) |
 | `authScreen.js` | login e criação de conta |
 | `loadingOverlay.js` | overlay de carregamento |
 | `appHeader.js` | `<header>`, navegação e abertura do `<main>` |
@@ -70,7 +70,7 @@ Antes: nada. Agora, 20 verificações, das quais estas não existiam em lugar al
 - **acessibilidade mínima**: todo `<label for>` aponta para id existente, todo
   campo tem id, todo botão tem texto visível, todo canvas tem id;
 - **higiene de markup**: nenhum `onclick` inline, um único script de aplicação
-  (um módulo), dependência externa só por HTTPS.
+  (um módulo) e **nenhum script de terceiro** no documento.
 
 ## 4. O que NÃO mudou (e por quê)
 
@@ -84,6 +84,46 @@ para dizer "isto não prevê o futuro", conteúdo legal que só aparece com JS l
 Também não entrou framework nem biblioteca de teste de DOM: o projeto não tem
 dependências de front, e o valor aqui vem de verificar invariantes do markup, não
 de simular cliques.
+
+## 4.1 Script de terceiro: saiu o CDN, entrou o bundle
+
+O `index.html` carregava o Chart.js assim:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+```
+
+Sem `integrity`, dentro do documento, com o CSP liberando `script-src https://cdn.jsdelivr.net`
+inteiro. Duas consequências ruins: qualquer comprometimento do CDN (ou do pacote)
+executaria código **na origem do app**, com acesso ao cookie de sessão; e liberar o CDN
+todo permite qualquer arquivo dele, não só aquele.
+
+Agora o Chart.js é dependência normal (`package.json`) e entra pelo bundle, com **import
+dinâmico** na tela de estatísticas:
+
+```js
+chartLibPromise = import('chart.js/auto').then(mod => mod.default ?? mod.Chart);
+```
+
+O build separa um chunk (`assets/auto-*.js`, ~199 KB / 68 KB gzip) que só é baixado
+quando um gráfico é pedido. O carregamento inicial continua com ~233 KB, igual a antes.
+
+Resultado no CSP (`vercel.json`):
+
+```
+script-src 'self'          (antes: 'self' https://cdn.jsdelivr.net)
+worker-src 'self' blob:    (o worker do motor é asset próprio, servido de /assets)
+```
+
+`tests/csp.test.js` (8 casos) trava isso: `script-src` só com `'self'`, sem
+`'unsafe-inline'`/`'unsafe-eval'`, sem host externo em `script-src`/`worker-src`/`object-src`,
+`connect-src` sem curinga, `frame-ancestors 'none'`, e o `index.html` sem script inline.
+Quem colar o CDN de volta vê a CI vermelha com a explicação no nome do teste.
+
+**Dependência externa restante:** o Google Fonts (`fonts.googleapis.com` para o CSS e
+`fonts.gstatic.com` para os arquivos). Não executa JavaScript — o risco é outro (rastreio e
+disponibilidade). Auto-hospedar as duas famílias é o próximo passo natural e encolheria o
+CSP de novo, mas não estava no escopo deste item.
 
 ## 5. Como adicionar uma seção
 

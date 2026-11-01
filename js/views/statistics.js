@@ -4,8 +4,31 @@ import { BayesFrequencyEngine } from '../engine/bayesFrequencyEngine.js';
 import { AntiCrowdEngine } from '../engine/antiCrowdEngine.js';
 
 /**
- * View: Statistics - Data visualization and charts
+ * View: Statistics — visualização de dados.
+ *
+ * CHART.JS VEM DO BUNDLE, NÃO DE CDN
+ * ----------------------------------
+ * A biblioteca era carregada por `<script src="https://cdn.jsdelivr.net/...">`, sem
+ * `integrity` e com o CSP liberando o CDN inteiro em `script-src`. Qualquer
+ * comprometimento do CDN ou do pacote executaria código na origem do app — a pior
+ * posição possível para uma dependência: dentro do documento, com acesso ao cookie
+ * de sessão. Agora ela é uma dependência normal (`package.json`), empacotada pelo
+ * Vite, e o CSP não precisa mais liberar script de terceiro.
+ *
+ * O import é **dinâmico** de propósito: a biblioteca pesa mais que o resto da
+ * aplicação e só é usada na tela de estatísticas. Carregá-la junto com o login
+ * faria todo mundo pagar (tempo e dados móveis) por gráficos que talvez nunca abra.
  */
+
+/** Carrega o Chart.js uma única vez, na primeira vez que um gráfico é pedido. */
+let chartLibPromise = null;
+function loadChartLib() {
+    if (!chartLibPromise) {
+        chartLibPromise = import('chart.js/auto').then(mod => mod.default ?? mod.Chart);
+    }
+    return chartLibPromise;
+}
+
 export class StatisticsView {
     static charts = {};
 
@@ -17,6 +40,24 @@ export class StatisticsView {
             quina: ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe']
         };
         return palettes[color] || ['#9333ea', '#a855f7', '#c084fc'];
+    }
+
+    /**
+     * Chart.js do bundle, ou `null` se não carregar.
+     *
+     * Devolver `null` em vez de lançar é deliberado: os renderizadores são chamados
+     * sem `await` (a tela monta tabela e gráfico na mesma passada), então uma
+     * exceção aqui viraria "unhandled promise rejection" no console do usuário e
+     * nada mais. Com `null`, o gráfico fica vazio e o resto da tela — tabelas,
+     * frequências, fechamento — continua funcionando.
+     */
+    static async _chart() {
+        try {
+            return await loadChartLib();
+        } catch (error) {
+            console.error('Chart.js não carregou; os gráficos desta tela ficam vazios:', error);
+            return null;
+        }
     }
 
     static destroyChart(id) {
@@ -455,9 +496,13 @@ export class StatisticsView {
         document.getElementById('patternsContent').style.display = show ? 'block' : 'none';
     }
 
-    static _renderBar(id, labels, data, colors, horizontal = false) {
+    static async _renderBar(id, labels, data, colors, horizontal = false) {
         const ctx = document.getElementById(id);
         if (!ctx) return;
+        const Chart = await this._chart();
+        // A tela pode ter mudado enquanto o chunk carregava: sem o nó no documento,
+        // criar o gráfico deixaria objeto órfão e memória presa.
+        if (!Chart || !ctx.isConnected) return;
         this.destroyChart(id);
         this.charts[id] = new Chart(ctx, {
             type: 'bar',
@@ -478,9 +523,11 @@ export class StatisticsView {
         });
     }
 
-    static _renderDoughnut(id, labels, data, colors) {
+    static async _renderDoughnut(id, labels, data, colors) {
         const ctx = document.getElementById(id);
         if (!ctx) return;
+        const Chart = await this._chart();
+        if (!Chart || !ctx.isConnected) return;
         this.destroyChart(id);
         this.charts[id] = new Chart(ctx, {
             type: 'doughnut',
@@ -496,9 +543,11 @@ export class StatisticsView {
         });
     }
 
-    static _renderRadar(id, labels, data) {
+    static async _renderRadar(id, labels, data) {
         const ctx = document.getElementById(id);
         if (!ctx) return;
+        const Chart = await this._chart();
+        if (!Chart || !ctx.isConnected) return;
         this.destroyChart(id);
         this.charts[id] = new Chart(ctx, {
             type: 'radar',

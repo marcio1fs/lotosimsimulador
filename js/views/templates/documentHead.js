@@ -1,9 +1,14 @@
 /**
- * Cabeçalho do documento (`<head>`): metas, ícone, manifest, fontes, CSS e o Chart.js do CDN.
+ * Cabeçalho do documento (`<head>`): metas, ícone, manifest, fontes e CSS.
  *
- * Só markup. A única tag de script aqui é a do Chart.js, dependência de terceiro
- * carregada por CDN — isolada neste módulo justamente para não se confundir com a
- * lógica da aplicação.
+ * Só markup, e **nenhum script**: o único JS que o documento carrega é o entrypoint
+ * da aplicação (`scripts.js`), empacotado pelo Vite. O Chart.js, que antes vinha de
+ * `cdn.jsdelivr.net` sem `integrity`, agora é dependência do projeto e entra pelo
+ * bundle (import dinâmico, ver `js/views/statistics.js`). Resultado: o CSP não
+ * precisa liberar `script-src` de terceiro nenhum.
+ *
+ * As fontes seguem no Google Fonts — é uma folha de estilo de terceiro, não script.
+ * Fica anotado como dependência externa restante (ver INTERFACE.md).
  */
 
 export function documentHead() {
@@ -21,7 +26,6 @@ export function documentHead() {
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
 

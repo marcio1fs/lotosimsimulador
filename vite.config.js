@@ -18,6 +18,11 @@ export default defineConfig(({ mode }) => {
         server: {
             allowedHosts: ['localhost', '127.0.0.1', ...devAllowedHosts]
         },
+        // Mesma lista no `preview`: sem isso, `npm run preview` responde 403 para o
+        // host de preview do ambiente de execução e a tela não carrega.
+        preview: {
+            allowedHosts: ['localhost', '127.0.0.1', ...devAllowedHosts]
+        },
         plugins: [
             {
                 name: 'lotomais-api',
