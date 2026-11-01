@@ -4,6 +4,7 @@ import { Database } from '../db/database.js';
 import { StatisticalAnalyzer } from '../engine/statisticalAnalyzer.js';
 import { executeBenchmark } from '../workers/engineWorker.js';
 import { PermutationTestEngine } from '../engine/permutationTestEngine.js';
+import { SequentialTestEngine } from '../engine/sequentialTestEngine.js';
 
 export class LotteryController {
     static _worker = null;
@@ -63,6 +64,46 @@ export class LotteryController {
                 payload.timeWindow,
                 payload.seed
             );
+        }
+    }
+
+    /**
+     * Registra a geração atual como uma "olhada" no orçamento de α da sessão.
+     *
+     * Cada vez que o usuário gera jogos e lê o relatório, ele consulta um
+     * p-valor. Fazer isso repetidamente — trocando janela e estratégia até
+     * alguma configuração "parecer boa" — infla o erro tipo I da sessão inteira.
+     * O orçamento gasta α em uma série cuja soma converge para α, então a união
+     * de todas as olhadas (inclusive as futuras) continua cabendo em α.
+     */
+    static _registerSessionLook(games, payload) {
+        const pipeline = games?.modelPipeline;
+        const bt = pipeline?.backtestResult;
+        if (!bt) return null;
+        const seq = bt.sequentialAnalysis;
+        const pValue = seq?.available ? seq.alwaysValidPValue : bt.pValue;
+        if (typeof pValue !== 'number' || !Number.isFinite(pValue)) return null;
+
+        try {
+            const look = SequentialTestEngine.registerLook({
+                label: `${payload.type}/${payload.strategy}/janela ${payload.timeWindow}`,
+                pValue,
+                metadata: {
+                    type: payload.type,
+                    strategy: payload.strategy,
+                    timeWindow: payload.timeWindow,
+                    evaluatedDraws: bt.evaluatedDraws,
+                    sequential: Boolean(seq?.available)
+                }
+            });
+            pipeline.sessionLook = look;
+            // `entries` é histórico completo; o relatório precisa só do resumo.
+            const { entries, ...summary } = SequentialTestEngine.getSessionReport();
+            pipeline.sessionBudget = summary;
+            return look;
+        } catch (e) {
+            console.warn('Falha ao registrar olhada no orçamento de α:', e);
+            return null;
         }
     }
 
@@ -234,6 +275,8 @@ export class LotteryController {
             timeWindow,
             seed: 123456
         });
+
+        this._registerSessionLook(games, { type, strategy, timeWindow, seed: 123456 });
 
         const nowIso = new Date().toISOString();
         const gamePayloads = games.map(game => ({

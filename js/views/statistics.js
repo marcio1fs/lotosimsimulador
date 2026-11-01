@@ -267,6 +267,20 @@ export class StatisticsView {
                 .join(' · ')})</span>`
             : '';
 
+        // Inferência sequencial: o p clássico vale para UMA olhada combinada de
+        // antemão. Quem gera de novo e troca a janela está olhando várias vezes,
+        // e aí o erro tipo I cresce. O p always-valid não cresce.
+        const seq = bt.sequentialAnalysis;
+        const seqText = seq && seq.available
+            ? `p=${Number(seq.alwaysValidPValue).toFixed(4)} · IC sequencial [${seq.confidenceSequence.lower.toFixed(2)}; ${seq.confidenceSequence.upper.toFixed(2)}]`
+            : (seq && seq.reason ? seq.reason : 'Dados Insuficientes');
+
+        const look = pipeline.sessionLook || null;
+        const budget = pipeline.sessionBudget || null;
+        const budgetText = look && budget
+            ? `${budget.looks} olhada(s) · limiar desta ${look.threshold.toFixed(4)} · α restante ${budget.remaining.toFixed(4)}`
+            : 'nenhuma olhada registrada nesta sessão';
+
         const ciText = bt.confidenceInterval && typeof bt.confidenceInterval.lower === 'number'
             ? `[${bt.confidenceInterval.lower} — ${bt.confidenceInterval.upper}] (${bt.confidenceInterval.method || 'Student-t'})`
             : 'Dados Insuficientes';
@@ -285,7 +299,9 @@ export class StatisticsView {
                 <div>Diferença (Δ): <strong>${typeof bt.diffMean === 'number' ? (bt.diffMean > 0 ? '+' : '') + bt.diffMean.toFixed(2) : '-'} acertos</strong></div>
                 <div>Evolução Relativa: <strong>${bt.relativeImprovement || '0.0%'}</strong></div>
                 <div>Intervalo de Confiança 95%: <strong>${ciText}</strong></div>
-                <div>P-Value Exato (t-Student): <strong>${typeof bt.pValue === 'number' ? bt.pValue.toFixed(6) : '-'}</strong></div>
+                <div>P-Value Exato (t-Student): <strong>${typeof bt.pValue === 'number' ? bt.pValue.toFixed(6) : '-'}</strong> <span style="color:var(--text-muted);">(válido para UMA olhada)</span></div>
+                <div>Inferência Sequencial (always-valid): <strong>${seqText}</strong> <span style="color:var(--text-muted);">(válido ao olhar quantas vezes quiser)</span></div>
+                <div>Orçamento de α da Sessão: <strong>${budgetText}</strong> <span style="color:var(--text-muted);">(gasto quadrático: cada olhada recebe menos α)</span></div>
                 <div>Tamanho de Efeito (Cohen d): <strong>${typeof bt.effectSize === 'number' ? bt.effectSize.toFixed(4) : '-'} (${bt.effectDescriptor || 'Insuficiente'})</strong></div>
                 <div>Poda de Espaço Amostral: <strong>${proj.spacePrunedPercentage || '80%'} das combinações deixaram de ser geradas</strong> <span style="color:var(--text-muted);">(não altera a probabilidade de acerto)</span></div>
                 <div>Prêmio Máximo da Carteira (exato): <strong>${proj.portfolioDirectOdds || '-'}</strong></div>
