@@ -44,7 +44,7 @@ suíte de 4 casos sustentava afirmações grandes. O que mudou:
 `AUDITORIA_PRECISAO.md` carrega o marcador:
 
 ```html
-<!-- suite: arquivos=36 testes=577 -->
+<!-- suite: arquivos=36 testes=578 -->
 ```
 
 e a **seção 11 (Estado atual)** lista cada item do roadmap com status e onde ele
