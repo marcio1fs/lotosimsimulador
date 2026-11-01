@@ -1,3 +1,10 @@
+> [!NOTE]
+> **Documento histórico (v1.1).** Este relatório registra a reengenharia que criou os motores atuais.
+> Os números de teste citados aqui estão desatualizados: a suíte hoje tem **16 arquivos e 150 testes**
+> (eram 4 suítes). Uma segunda auditoria — com 10 defeitos adicionais encontrados e corrigidos,
+> incluindo um bug de cálculo de atraso, p-values aproximados e histórico sintético —
+> está em **[AUDITORIA_PRECISAO.md](./AUDITORIA_PRECISAO.md)**.
+
 # AUDITORIA E REENGENHARIA DO LOTOSIMSIMULADOR
 
 ## Resumo Geral da Auditoria

@@ -92,12 +92,18 @@ export class LotteryModel {
         const optWeights = ScoringEngine.optimizeWeights(windowData, cfg, { seed });
         const activeWeights = optWeights.optimizedWeights || DEFAULT_WEIGHTS;
 
-        // Executa um backtest cego com semente determinística
+        // Executa um backtest cego com semente determinística.
+        // analyzeFast (O(draws·drawn)) em vez de analyze (que monta matriz de pares,
+        // trincas, chi-quadrado e topPairs) — permite avaliar MUÍTO mais concursos no
+        // mesmo tempo de CPU, e tamanho amostral é o principal limitador de precisão.
         const generatorFn = (past, c) => {
-            const pastAnalysis = StatisticalAnalyzer.analyze(past, c);
+            const pastAnalysis = StatisticalAnalyzer.analyzeFast(past, c);
             return GameGenerator.generateSingleCandidate(c.apiName, pastAnalysis, strategy, [], [], c, activeWeights);
         };
-        const backtestSummary = BacktestEngine.runBacktest(windowData, cfg, generatorFn, { windowSize: 30, seed });
+        // 30 concursos só detectariam vantagens absurdas (~50%+). Usa a janela
+        // disponível, limitada para manter o tempo de resposta do worker.
+        const backtestWindow = Math.max(30, Math.min(200, windowData.length - 10));
+        const backtestSummary = BacktestEngine.runBacktest(windowData, cfg, generatorFn, { windowSize: backtestWindow, seed });
 
         const games = GameGenerator.generateBatch(type, analysis, strategy, fixed, excluded, count, cfg, activeWeights, backtestSummary, seed);
 
@@ -117,7 +123,8 @@ export class LotteryModel {
             historySize: fullHistory?.length || 0,
             backtest: activeBacktest,
             strategy,
-            config
+            config,
+            history: fullHistory
         });
 
         const divScore = games[0]?.diversificationScore || games.modelPipeline?.diversificationScore || 75;

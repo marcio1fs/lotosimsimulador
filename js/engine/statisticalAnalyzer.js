@@ -5,6 +5,8 @@
  * Cadeias de Markov de 1ª Ordem (Transição Temporal t-1 -> t) e padrões combinatórios.
  */
 
+import { StatisticalInference } from './statisticalInference.js';
+
 export const PRIMES = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97];
 export const FIBONACCI = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
 
@@ -130,7 +132,8 @@ export class StatisticalAnalyzer {
         const baselineProb = drawn / Math.max(1, total);
         const nextDrawProbabilities = {};
         const markovLiftByNumber = {};
-        const topTransitions = [];
+        const transitionCandidates = [];
+        let testedTransitionPairs = 0;
 
         // Suavização Dirichlet-Laplace (prior alpha = 1)
         const priorAlpha = 1.0;
@@ -153,15 +156,22 @@ export class StatisticalAnalyzer {
                     conditionalProbSum += smoothedProb;
                     validTriggers++;
 
-                    if (countPrev >= 3 && transCount >= 2) {
+                    if (countPrev >= 5) testedTransitionPairs++;
+                    if (countPrev >= 5 && transCount >= 3) {
                         const lift = smoothedProb / Math.max(1e-6, baselineProb);
                         if (lift > 1.15) {
-                            topTransitions.push({
+                            // Teste binomial EXATO: sob H0 (sorteio justo e independente),
+                            // transCount ~ Binomial(countPrev, drawn/total). Sem este teste,
+                            // "lift > 1.15" é apenas ruído amostral elevado ao status de padrão.
+                            transitionCandidates.push({
                                 from: prevNum,
                                 to: j,
                                 count: transCount,
+                                trials: countPrev,
+                                expectedCount: Number((countPrev * baselineProb).toFixed(3)),
                                 probability: Number(smoothedProb.toFixed(4)),
-                                lift: Number(lift.toFixed(3))
+                                lift: Number(lift.toFixed(3)),
+                                rawPValue: StatisticalInference.binomialUpperTail(transCount, countPrev, baselineProb)
                             });
                         }
                     }
@@ -173,7 +183,23 @@ export class StatisticalAnalyzer {
             markovLiftByNumber[j] = Number((avgCondProb / Math.max(1e-6, baselineProb)).toFixed(4));
         }
 
-        topTransitions.sort((a, b) => b.lift - a.lift || b.count - a.count);
+        // Correção de Benjamini-Hochberg (FDR 5%) sobre todas as transições testadas.
+        const fdr = StatisticalInference.benjaminiHochberg(
+            transitionCandidates.map(c => c.rawPValue), 0.05, testedTransitionPairs);
+        transitionCandidates.forEach((c, i) => {
+            c.pValue = Number(Math.max(1e-16, Math.min(1, c.rawPValue)).toFixed(10));
+            c.qValue = fdr.qValues[i];
+            c.significant = fdr.rejected[i] === true;
+            delete c.rawPValue;
+        });
+
+        // Ordena primeiro por significância estatística, depois por lift.
+        transitionCandidates.sort((a, b) => {
+            if (a.significant !== b.significant) return a.significant ? -1 : 1;
+            return b.lift - a.lift || b.count - a.count;
+        });
+        const topTransitions = transitionCandidates.slice(0, 15);
+        const significantTransitions = transitionCandidates.filter(c => c.significant).length;
 
         const topTriggeredNumbers = Object.entries(nextDrawProbabilities)
             .map(([num, prob]) => ({
@@ -188,7 +214,15 @@ export class StatisticalAnalyzer {
             nextDrawProbabilities,
             markovLiftByNumber,
             topTriggeredNumbers,
-            topTransitions: topTransitions.slice(0, 15)
+            topTransitions,
+            significantTransitions,
+            testedTransitions: testedTransitionPairs,
+            reportedTransitions: transitionCandidates.length,
+            fdrThreshold: fdr.threshold,
+            method: 'Teste binomial exato + Benjamini-Hochberg (FDR 5%)',
+            // Aviso embutido no dado: com histórico curto, NENHUMA transição sobrevive
+            // ao controle de FDR — o que significa que não há sinal de Markov detectável.
+            hasStatisticallySignificantSignal: significantTransitions > 0
         };
     }
 
@@ -285,6 +319,7 @@ export class StatisticalAnalyzer {
 
         const freqAbsolute = {};
         const lastSeenIndex = {};
+        const mostRecentIndex = {};
         const delaySum = new Float64Array(total + 1);
         const delayCount = new Int32Array(total + 1);
         const weightedAcc = new Float64Array(total + 1);
@@ -293,6 +328,7 @@ export class StatisticalAnalyzer {
         for (let i = 1; i <= total; i++) {
             freqAbsolute[i] = 0;
             lastSeenIndex[i] = -1;
+            mostRecentIndex[i] = -1;
             pairMatrix[i] = {};
             for (let j = i + 1; j <= total; j++) {
                 pairMatrix[i][j] = 0;
@@ -315,12 +351,12 @@ export class StatisticalAnalyzer {
                 if (n >= 1 && n <= total) {
                     freqAbsolute[n]++;
                     weightedAcc[n] += weight;
-                    if (lastSeenIndex[n] === -1) {
-                        lastSeenIndex[n] = idx;
-                    } else {
+                    if (lastSeenIndex[n] === -1) mostRecentIndex[n] = idx;
+                    if (lastSeenIndex[n] !== -1) {
                         delaySum[n] += (idx - lastSeenIndex[n]);
                         delayCount[n]++;
                     }
+                    lastSeenIndex[n] = idx;
                 }
             }
 
@@ -349,7 +385,7 @@ export class StatisticalAnalyzer {
             freqRelative[i] = drawCount > 0 ? f / drawCount : 0;
             expectedDeviation[i] = expectedFreq > 0 ? (f - expectedFreq) / expectedFreq : 0;
             freqWeighted[i] = wTotal > 0 ? weightedAcc[i] / wTotal : 0;
-            const cd = lastSeenIndex[i] === -1 ? drawCount : lastSeenIndex[i];
+            const cd = mostRecentIndex[i] === -1 ? drawCount : mostRecentIndex[i];
             currentDelay[i] = cd;
             avgDelay[i] = delayCount[i] > 0 ? delaySum[i] / delayCount[i] : cd;
         }
@@ -379,13 +415,15 @@ export class StatisticalAnalyzer {
         const drawn = config.drawn || config.pick;
 
         const freqAbsolute = {};
-        const lastSeenIndex = {};
+        const lastSeenIndex = {};      // ocorrência ANTERIOR (para medir o gap)
+        const mostRecentIndex = {};    // ocorrência mais recente (para o atraso atual)
         const delayDistribution = {};
         const weightedAcc = new Float64Array(total + 1);
 
         for (let i = 1; i <= total; i++) {
             freqAbsolute[i] = 0;
             lastSeenIndex[i] = -1;
+            mostRecentIndex[i] = -1;
             delayDistribution[i] = [];
         }
 
@@ -454,12 +492,15 @@ export class StatisticalAnalyzer {
                     freqAbsolute[n]++;
                     weightedAcc[n] += weight;
 
-                    if (lastSeenIndex[n] === -1) {
-                        lastSeenIndex[n] = idx;
-                    } else {
+                    if (lastSeenIndex[n] === -1) mostRecentIndex[n] = idx;
+                    if (lastSeenIndex[n] !== -1) {
+                        // Intervalo REAL entre ocorrências consecutivas (gap).
+                        // Sem esta atualização o intervalo era sempre medido a partir
+                        // da PRIMEIRA ocorrência, inflando avgDelay/maxDelay.
                         const interval = idx - lastSeenIndex[n];
                         delayDistribution[n].push(interval);
                     }
+                    lastSeenIndex[n] = idx;
 
                     const rangeIdx = Math.min(Math.floor((n - 1) / rangeSize), 4);
                     rangeDistributions[rangeIdx]++;
@@ -494,7 +535,7 @@ export class StatisticalAnalyzer {
         const maxDelay = {};
 
         for (let i = 1; i <= total; i++) {
-            currentDelay[i] = lastSeenIndex[i] === -1 ? drawCount : lastSeenIndex[i];
+            currentDelay[i] = mostRecentIndex[i] === -1 ? drawCount : mostRecentIndex[i];
             const delays = delayDistribution[i];
             if (delays.length > 0) {
                 avgDelay[i] = delays.reduce((a, b) => a + b, 0) / delays.length;
@@ -521,10 +562,11 @@ export class StatisticalAnalyzer {
         const olderSets = parsedDraws.slice(halfCount).map(arr => new Set(arr));
 
         const topPairs = [];
+        const pairNullProbability = (drawn * (drawn - 1)) / (total * (total - 1));
         for (let i = 1; i <= total; i++) {
             for (let j = i + 1; j <= total; j++) {
                 const count = pairMatrix[i][j];
-                const expectedPairCount = drawCount * ((drawn * (drawn - 1)) / (total * (total - 1)));
+                const expectedPairCount = drawCount * pairNullProbability;
                 topPairs.push({
                     pair: [i, j],
                     count,
@@ -535,6 +577,7 @@ export class StatisticalAnalyzer {
             }
         }
         topPairs.sort((a, b) => b.count - a.count);
+        const totalPairsExamined = topPairs.length;
 
         const topPairsSliced = topPairs.slice(0, 30);
         topPairsSliced.forEach(p => {
@@ -555,6 +598,22 @@ export class StatisticalAnalyzer {
             const oRate = olderSets.length > 0 ? olderCount / olderSets.length : 0;
             const maxRate = Math.max(rRate, oRate);
             p.stability = maxRate > 0 ? Number((1 - Math.abs(rRate - oRate) / maxRate).toFixed(4)) : 1;
+
+            // Teste binomial exato de co-ocorrência acima do esperado.
+            p.rawPValue = StatisticalInference.binomialUpperTail(
+                p.count, drawCount, pairNullProbability);
+        });
+
+        // FDR de Benjamini-Hochberg com a família COMPLETA de pares examinados
+        // (conservador): os "pares quentes" só são reportados como padrão real
+        // quando sobrevivem à multiplicidade de C(total,2) comparações.
+        const pairFdr = StatisticalInference.benjaminiHochberg(
+            topPairsSliced.map(p => p.rawPValue), 0.05, totalPairsExamined);
+        topPairsSliced.forEach((p, i) => {
+            p.pValue = Number(Math.max(1e-16, Math.min(1, p.rawPValue)).toFixed(10));
+            p.qValue = pairFdr.qValues[i];
+            p.significant = pairFdr.rejected[i] === true;
+            delete p.rawPValue;
         });
 
         const tripleMap = new Map();
@@ -633,25 +692,87 @@ export class StatisticalAnalyzer {
     }
 
     /**
-     * Teste Chi-Quadrado de uniformidade para frequências
+     * Extrai um resumo COMPACTO e serializável dos sinais estatísticos de uma análise
+     * (para transportar por postMessage até o painel de transparência sem levar as
+     * matrizes O(n²) junto).
+     */
+    static summarizeSignals(analysis) {
+        if (!analysis) return null;
+        const chi = analysis.chiSquare || null;
+        const mkv = analysis.markovStats || {};
+        const pairs = Array.isArray(analysis.topPairs)
+            ? analysis.topPairs.filter(p => p.significant).map(p => ({
+                pair: p.pair, count: p.count, expected: p.expected,
+                lift: p.lift, pValue: p.pValue, qValue: p.qValue
+            }))
+            : [];
+        return {
+            chiSquare: chi ? {
+                chiSquare: chi.chiSquare,
+                degreesOfFreedom: chi.degreesOfFreedom,
+                pValue: chi.pValue,
+                cramersV: chi.cramersV,
+                effectDescriptor: chi.effectDescriptor,
+                isUniform: chi.isUniform,
+                method: chi.method,
+                topDeviations: (chi.topDeviations || []).slice(0, 5)
+            } : null,
+            markov: {
+                method: mkv.method || null,
+                testedTransitions: mkv.testedTransitions ?? 0,
+                reportedTransitions: mkv.reportedTransitions ?? 0,
+                significantTransitions: mkv.significantTransitions ?? 0,
+                fdrThreshold: mkv.fdrThreshold ?? null,
+                hasStatisticallySignificantSignal: mkv.hasStatisticallySignificantSignal ?? false,
+                top: (mkv.topTransitions || []).slice(0, 5)
+            },
+            pairs: {
+                significantPairs: pairs.length,
+                top: pairs.slice(0, 5)
+            },
+            drawCount: analysis.drawCount ?? null
+        };
+    }
+
+    /**
+     * Teste Chi-Quadrado de uniformidade para frequências, com p-value EXATO
+     * (gama incompleta regularizada) — substitui a aproximação tanh/Wilson-Hilferty
+     * que introduzia erro sistemático no p-value.
+     * Também retorna o tamanho de efeito (V de Cramér) e as dezenas com resíduo
+     * padronizado mais extremo, que são as únicas que merecem atenção.
      */
     static chiSquareUniformity(freqAbsolute, total, drawCount, drawn) {
         const expected = (drawCount * drawn) / total;
         let chiSq = 0;
+        const residuals = [];
         for (let n = 1; n <= total; n++) {
             const observed = freqAbsolute[n] || 0;
-            chiSq += expected > 0 ? Math.pow(observed - expected, 2) / expected : 0;
+            if (expected > 0) {
+                chiSq += Math.pow(observed - expected, 2) / expected;
+                // resíduo padronizado de Pearson: (O-E)/sqrt(E * (1 - p))
+                const p = drawn / total;
+                const sd = Math.sqrt(Math.max(1e-12, expected * (1 - p)));
+                residuals.push({ number: n, observed, expected: Number(expected.toFixed(2)), z: Number(((observed - expected) / sd).toFixed(4)) });
+            }
         }
-        const df = total - 1;
-        const z = Math.pow(chiSq / df, 1 / 3) - (1 - 2 / (9 * df));
-        const se = Math.sqrt(2 / (9 * df));
-        const zScore = z / se;
-        const pValue = 1 - 0.5 * (1 + Math.tanh(zScore * 0.7978845608));
+        const df = Math.max(1, total - 1);
+        const pValue = StatisticalInference.chiSquareSurvival(chiSq, df);
+        // V de Cramér para tabela 1 x k (k = total)
+        const cramersV = drawCount > 0 ? Math.sqrt(chiSq / (drawCount * drawn * Math.max(1, df))) : 0;
+
+        residuals.sort((a, b) => Math.abs(b.z) - Math.abs(a.z));
+
         return {
             chiSquare: Number(chiSq.toFixed(4)),
             degreesOfFreedom: df,
-            pValue: Number(Math.max(0, Math.min(1, pValue)).toFixed(6)),
-            isUniform: pValue > 0.05
+            pValue: Number((Number.isFinite(pValue) ? pValue : 1).toFixed(10)),
+            cramersV: Number(cramersV.toFixed(4)),
+            effectDescriptor: cramersV < 0.1 ? 'Desprezível' : (cramersV < 0.3 ? 'Pequeno' : (cramersV < 0.5 ? 'Médio' : 'Grande')),
+            isUniform: Number.isFinite(pValue) ? pValue > 0.05 : true,
+            // Com tantos testes simultâneos, |z| > 3 é o corte honesto para "desvio real"
+            topDeviations: residuals.filter(r => Math.abs(r.z) >= 3).slice(0, 10),
+            maxAbsZ: residuals.length > 0 ? Math.abs(residuals[0].z) : 0,
+            method: 'Chi-Quadrado exato (gama incompleta regularizada)'
         };
     }
 

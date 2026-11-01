@@ -366,6 +366,12 @@ export class GameGenerator {
         let highestObjectiveScore = -999;
         const prng = new SeededRandom(seed);
 
+        // Registro de todas as janelas testadas. Escolher a "melhor" entre k janelas e
+        // reportar o p-value do vencedor como se fosse um teste único é p-hacking
+        // estrutural: com 5 tentativas a chance de um falso positivo a α=0,05 sobe
+        // para ~23%. O p-value corrigido por Holm é publicado junto.
+        const windowEvaluations = [];
+
         windows.forEach(w => {
             const subHistory = StatisticalAnalyzer.getWindow(fullHistory, w);
             if (subHistory.length >= 15) {
@@ -379,6 +385,15 @@ export class GameGenerator {
                 const isSig = bt.isStatisticallySignificant ? 1.0 : 0.0;
                 const objScore = bt.meanHits + isSig - 1.5 * Math.max(0, overfitGap);
 
+                windowEvaluations.push({
+                    window: w,
+                    draws: subHistory.length,
+                    meanHits: bt.meanHits,
+                    diffMean: bt.diffMean,
+                    pValue: typeof bt.pValue === 'number' ? bt.pValue : 1,
+                    objectiveScore: Number(objScore.toFixed(4))
+                });
+
                 if (objScore > highestObjectiveScore) {
                     highestObjectiveScore = objScore;
                     bestWindow = w;
@@ -387,22 +402,53 @@ export class GameGenerator {
             }
         });
 
+        // Correção de Holm-Bonferroni sobre as janelas efetivamente testadas.
+        const ordered = [...windowEvaluations].sort((a, b) => a.pValue - b.pValue);
+        let maxAdjusted = 0;
+        ordered.forEach((item, idx) => {
+            const factor = ordered.length - idx;
+            const adjusted = Math.min(1, Math.max(maxAdjusted, item.pValue * factor));
+            maxAdjusted = adjusted;
+            item.adjustedPValue = Number(adjusted.toFixed(6));
+            item.significantAfterCorrection = adjusted < 0.05 && item.diffMean > 0;
+        });
+        const selectionCorrection = {
+            method: 'Holm-Bonferroni',
+            windowsTested: ordered.length,
+            familyAdjustedPValueForWinner: ordered.length > 0 ? ordered[0].adjustedPValue : 1,
+            anyWindowSignificantAfterCorrection: ordered.some(i => i.significantAfterCorrection),
+            evaluations: windowEvaluations
+        };
+
         const optimalHistory = StatisticalAnalyzer.getWindow(fullHistory, bestWindow);
         const optimalAnalysis = StatisticalAnalyzer.analyze(optimalHistory, config);
         const optWeights = ScoringEngine.optimizeWeights(optimalHistory, config, { seed, backtestSummary: bestBacktest });
 
-        return this.generateBatch(
-            config.apiName, 
-            optimalAnalysis, 
-            'best_game', 
-            fixed, 
-            excluded, 
-            count, 
-            config, 
-            optWeights.optimizedWeights || DEFAULT_WEIGHTS, 
+        const games = this.generateBatch(
+            config.apiName,
+            optimalAnalysis,
+            'best_game',
+            fixed,
+            excluded,
+            count,
+            config,
+            optWeights.optimizedWeights || DEFAULT_WEIGHTS,
             bestBacktest,
             seed
         );
+
+        // Sem isto o modo "MELHOR JOGO" descartava a evidência que ele mesmo coletou
+        // e o ForecastPolicy caía em INSUFFICIENT_BACKTEST.
+        games.modelPipeline = {
+            status: 'BEST_GAME',
+            backtestResult: bestBacktest,
+            optWeightsResult: optWeights,
+            selectedWindow: bestWindow,
+            selectionCorrection,
+            signalSummary: StatisticalAnalyzer.summarizeSignals(optimalAnalysis),
+            seed
+        };
+        return games;
     }
 
     /**
@@ -537,6 +583,7 @@ export class GameGenerator {
         diversifiedBatch.modelPipeline = {
             status,
             backtestResult,
+            signalSummary: StatisticalAnalyzer.summarizeSignals(analysis),
             optWeightsResult: recalibratedOpt,
             monteCarloResult,
             coverageScore,

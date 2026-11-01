@@ -16,7 +16,7 @@ export class ForecastPolicy {
         return result;
     }
 
-    static evaluate({ historySize = 0, backtest = null, strategy = 'adaptive', config }) {
+    static evaluate({ historySize = 0, backtest = null, strategy = 'adaptive', config, history = null }) {
         const minimumHistory = 100;
         const minimumEvaluatedDraws = 30;
         const exactOdds = ProbabilityEngine.hypergeometric(config, config.pick);
@@ -31,6 +31,28 @@ export class ForecastPolicy {
             canClaimPositiveReturn: false,
             disclaimer: 'Nenhuma combinação é previsão de resultado ou garantia de prêmio. Em sorteios idôneos, todas as combinações válidas têm a mesma chance matemática.'
         };
+
+        // --------------------------------------------------------------
+        // BLOQUEIO DE DADOS SINTÉTICOS
+        // Se qualquer concurso do histórico for de preenchimento (não oficial),
+        // toda a inferência estatística perde validade — os números deixam de
+        // representar o sorteio real e sim um gerador uniforme.
+        // --------------------------------------------------------------
+        const syntheticDraws = Array.isArray(history)
+            ? history.filter(d => d && d.synthetic === true).length
+            : 0;
+        if (syntheticDraws > 0) {
+            return {
+                ...base,
+                syntheticDraws,
+                officialDraws: Math.max(0, historySize - syntheticDraws),
+                status: 'SYNTHETIC_DATA',
+                label: 'Histórico incompleto — amostra contém dados sintéticos',
+                detail: `${syntheticDraws} de ${historySize} concursos são de preenchimento e não são resultados oficiais. `
+                    + 'Backtest, p-value e testes de uniformidade foram calculados nessa mistura e NÃO devem ser interpretados como desempenho real. '
+                    + 'Sincronize o histórico oficial para reativar a validação.'
+            };
+        }
 
         if (historySize < minimumHistory) {
             return {

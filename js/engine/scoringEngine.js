@@ -161,7 +161,19 @@ export class ScoringEngine {
 
         // 10. Fator Paridade (Pares vs Ímpares)
         const evens = sortedNumbers.filter(n => n % 2 === 0).length;
-        const parityStats = analysis.parityStats || { mean: len / 2, stdDev: 1.5 };
+        // Fallback com a média e o desvio-padrão EXATOS pela hipergeométrica, em vez
+        // de um stdDev fixo de 1.5 (que distorcia a nota de paridade em toda modalidade).
+        const evenUniverse = Math.floor(config.total / 2);
+        const drawnForNull = config.drawn || config.pick;
+        const exactEvensMean = len * (evenUniverse / config.total);
+        const exactEvensVariance = config.total > 1
+            ? drawnForNull * (evenUniverse / config.total) * (1 - (evenUniverse / config.total))
+              * ((config.total - drawnForNull) / (config.total - 1))
+            : 0;
+        const parityStats = analysis.parityStats || {
+            mean: exactEvensMean,
+            stdDev: Math.sqrt(Math.max(1e-9, exactEvensVariance))
+        };
         const parityZ = parityStats.stdDev > 0 ? Math.abs(evens - parityStats.mean) / parityStats.stdDev : 0;
         const parityScore = Math.max(0, 1 - (parityZ / 3));
         if (parityScore > 0.7) {
@@ -173,9 +185,15 @@ export class ScoringEngine {
         // 11. Fator Soma das Dezenas (Curva de Sino)
         const gameSum = sortedNumbers.reduce((a, b) => a + b, 0);
         const theoreticalMean = (config.pick || config.drawn) * (config.total + 1) / 2;
+        // Desvio-padrão EXATO da soma de `pick` dezenas sorteadas de 1..total:
+        // sqrt(k·(N−k)·(N+1)/12). Antes, o fallback usava 12% da média (número arbitrário),
+        // o que penalizava somas válidas em modalidades como a Lotomania (50 de 100).
+        const exactSumStd = Math.sqrt(
+            (config.pick * (config.total - config.pick) * (config.total + 1)) / 12
+        );
         const sumStats = (analysis.sumStats && analysis.sumStats.mean > 0 && config.pick === (config.drawn || config.pick))
             ? analysis.sumStats
-            : { mean: theoreticalMean, stdDev: theoreticalMean * 0.12 };
+            : { mean: theoreticalMean, stdDev: exactSumStd };
         const sumZ = sumStats.stdDev > 0 ? Math.abs(gameSum - sumStats.mean) / sumStats.stdDev : 0;
         const sumScore = Math.max(0, 1 - (sumZ / 3));
         if (sumScore > 0.7) {
@@ -368,15 +386,30 @@ export class ScoringEngine {
                     finalObjective: null
                 },
                 isOverfit: false,
+                testMean: null,
+                baseTestMean: null,
+                selectionGap: null,
+                beatsBaseOnHoldout: null,
+                holdoutDraws: 0,
+                searchTrials: 0,
+                selectionBiasWarning: null,
                 method: 'Dados insuficientes para otimização - Utilizando pesos base'
             };
         }
 
+        // Divisão em TRÊS blocos temporais (sem embaralhar, sem vazamento):
+        //   treino (55%) -> validação (30%) -> teste final às cegas (15%, o mais recente).
+        // Antes, o mesmo bloco de validação era usado para ESCOLHER os pesos e para
+        // reportar o desempenho, o que infalivelmente superestima o resultado
+        // (viés de seleção). O bloco de teste não participa da escolha.
         const totalDraws = fullHistory.length;
-        const trainCutoff = Math.floor(totalDraws * 0.7);
+        const testSize = Math.max(4, Math.floor(totalDraws * 0.15));
+        const remaining = totalDraws - testSize;
+        const trainCutoff = Math.max(4, Math.floor(remaining * 0.65));
 
-        const trainHistory = fullHistory.slice(0, trainCutoff);
-        const valHistory = fullHistory.slice(trainCutoff);
+        const testHistory = fullHistory.slice(0, testSize);
+        const trainHistory = fullHistory.slice(testSize, testSize + trainCutoff);
+        const valHistory = fullHistory.slice(testSize + trainCutoff);
 
         const factors = Object.keys(baseWeights);
         const variations = [0.4, 0.75, 1.0, 1.35, 1.75];
@@ -457,11 +490,32 @@ export class ScoringEngine {
 
         const isOverfit = bestOverfitGap > 1.0;
 
+        // Avaliação final no bloco de teste (nunca visto durante a busca)
+        const testEval = this._quickEvaluateWeights(testHistory, config, bestWeights);
+        const baseTestEval = this._quickEvaluateWeights(testHistory, config, baseWeights);
+        const testMean = Number.isFinite(testEval.meanHits) ? Number(testEval.meanHits.toFixed(2)) : null;
+        const baseTestMean = Number.isFinite(baseTestEval.meanHits) ? Number(baseTestEval.meanHits.toFixed(2)) : null;
+        const selectionGap = (Number.isFinite(bestValMean) && testMean !== null)
+            ? Number((bestValMean - testMean).toFixed(2))
+            : null;
+        const beatsBaseOnHoldout = (testMean !== null && baseTestMean !== null)
+            ? testMean > baseTestMean
+            : null;
+
         return {
             optimizedWeights: bestWeights,
             bestObjectiveScore: Number.isFinite(bestObjectiveScore) ? Number(bestObjectiveScore.toFixed(2)) : null,
             trainMean: Number.isFinite(bestTrainMean) ? bestTrainMean : null,
             valMean: Number.isFinite(bestValMean) ? bestValMean : null,
+            testMean,
+            baseTestMean,
+            selectionGap,
+            beatsBaseOnHoldout,
+            holdoutDraws: testHistory.length,
+            searchTrials: iterations,
+            selectionBiasWarning: (selectionGap !== null && selectionGap > 0.5)
+                ? 'Seleção de pesos inflou o desempenho fora da amostra: o resultado no bloco de teste ficou pior que na validação.'
+                : null,
             overfitGap: Number.isFinite(bestOverfitGap) ? bestOverfitGap : 0,
             objectiveBreakdown: bestBreakdown || {
                 performance: null,

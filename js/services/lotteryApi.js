@@ -74,9 +74,19 @@ export class LotteryAPIService {
     }
 
     /**
-     * Gera histórico base calibrado e determinístico caso o cache local tenha menos de 120 concursos e a API de lote esteja indisponível.
-     * Isso garante que o Backtest, Walk-Forward e Matrizes de Co-ocorrência sempre tenham amostra estatística suficiente.
+     * Preenche a série até `minCount` concursos quando a API de lote está indisponível.
+     *
+     * ⚠️ INTEGRIDADE: os concursos gerados aqui são SINTÉTICOS (não oficiais) e por isso
+     * são marcados com `synthetic: true`. Eles existem apenas para evitar estados vazios
+     * na interface — NUNCA devem sustentar afirmações de inferência estatística
+     * (p-value, backtest, chi-quadrado). `ForecastPolicy` bloqueia essas afirmações
+     * automaticamente quando detecta registros sintéticos.
      */
+    static countSynthetic(draws) {
+        if (!Array.isArray(draws)) return 0;
+        return draws.filter(d => d && d.synthetic === true).length;
+    }
+
     static ensureMinimumHistoryDepth(existingDraws, type, minCount = 120) {
         if (existingDraws && existingDraws.length >= minCount) {
             return existingDraws;
@@ -105,8 +115,9 @@ export class LotteryAPIService {
                 currentList.push({
                     lotteryType: type,
                     concurso: cursorConcurso,
-                    data: 'Histórico Base',
+                    data: 'Sintético (não oficial)',
                     dezenas: sorted,
+                    synthetic: true,
                     fetchedAt: new Date().toISOString()
                 });
                 existingConcursos.add(cursorConcurso);

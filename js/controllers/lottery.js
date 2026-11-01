@@ -176,13 +176,25 @@ export class LotteryController {
             const windowData = StatisticalAnalyzer.getWindow(cachedData, timeWindow);
             const fullAnalysis = StatisticalAnalyzer.analyze(windowData, cfg);
 
+            const syntheticDraws = LotteryAPIService.countSynthetic(cachedData);
             results[type] = {
                 data: cachedData,
                 windowData,
                 lastResult: normalizedLast,
                 analysis: fullAnalysis,
                 freq: fullAnalysis.freqAbsolute,
-                atraso: fullAnalysis.currentDelay
+                atraso: fullAnalysis.currentDelay,
+                // Proveniência explícita: o usuário precisa saber se os números
+                // exibidos vêm de resultados oficiais ou de preenchimento.
+                dataQuality: {
+                    totalDraws: cachedData.length,
+                    officialDraws: cachedData.length - syntheticDraws,
+                    syntheticDraws,
+                    isTrustworthyForInference: syntheticDraws === 0 && cachedData.length >= 100,
+                    label: syntheticDraws > 0
+                        ? `${cachedData.length - syntheticDraws} concursos oficiais + ${syntheticDraws} sintéticos (sem valor estatístico)`
+                        : `${cachedData.length} concursos oficiais`
+                }
             };
         }));
 

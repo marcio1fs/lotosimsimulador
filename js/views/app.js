@@ -112,6 +112,9 @@ export class AppView {
 
         if (!freq || Object.keys(freq).length === 0) return;
 
+        const syntheticDraws = results.filter(d => d && d.synthetic === true).length;
+        const officialDraws = results.length - syntheticDraws;
+
         const entries = Object.entries(freq).map(([num, f]) => ({ num: parseInt(num), freq: f }));
         const sorted = [...entries].sort((a, b) => b.freq - a.freq);
         const hot = sorted.slice(0, 5);
@@ -129,14 +132,37 @@ export class AppView {
             ? markovTop.map(m => String(m.num).padStart(2, '0')).join(', ')
             : '-';
 
+        // Honestidade estatística: o lift só vira "padrão" se sobreviver ao controle
+        // de múltiplas comparações (Benjamini-Hochberg, FDR 5%).
+        const markovSignificant = analysis.markovStats?.significantTransitions ?? 0;
+        const markovTested = analysis.markovStats?.testedTransitions ?? 0;
+        const markovDetail = markovTested > 0
+            ? (markovSignificant > 0
+                ? `${markovSignificant} de ${markovTested} transições com significância real (FDR 5%)`
+                : `Nenhuma das ${markovTested} transições sobrevive ao FDR 5% — consistente com sorteio justo`)
+            : 'Puxadas pelo último sorteio';
+
+        const chi = analysis.chiSquare;
+        const uniformityDetail = chi
+            ? `p exato ${Number(chi.pValue).toExponential(2)} · V=${chi.cramersV} (${chi.effectDescriptor})`
+            : 'Teste indisponível';
+        const uniformityValue = chi
+            ? (chi.isUniform ? 'Uniforme' : 'Desvio detectado')
+            : '-';
+        const uniformityNote = chi && !chi.isUniform && chi.topDeviations?.length
+            ? `Dezenas fora do padrão: ${chi.topDeviations.slice(0, 4).map(d => String(d.number).padStart(2, '0')).join(', ')}`
+            : 'Frequências compatíveis com sorteio justo';
+
         document.getElementById('insightsContainer').style.display = 'block';
         document.getElementById('insightsGrid').innerHTML = `
-            <div class="insight-card"><div class="insight-card-title">📊 Base Histórica</div><div class="insight-card-value">${results.length}</div><div class="insight-card-detail">Concursos calibrados</div></div>
+            <div class="insight-card"><div class="insight-card-title">📊 Base Histórica</div><div class="insight-card-value">${officialDraws}</div><div class="insight-card-detail">${syntheticDraws > 0 ? `⚠️ + ${syntheticDraws} sintéticos (sem valor estatístico)` : 'Concursos oficiais'}</div></div>
             <div class="insight-card"><div class="insight-card-title">🔥 Quentes</div><div class="insight-card-value">${hot.map(h => String(h.num).padStart(2, '0')).join(', ')}</div></div>
             <div class="insight-card"><div class="insight-card-title">🧊 Frios</div><div class="insight-card-value">${cold.map(c => String(c.num).padStart(2, '0')).join(', ')}</div></div>
             <div class="insight-card"><div class="insight-card-title">⏱️ Atrasados</div><div class="insight-card-value">${mostDelayed.map(d => String(d.num).padStart(2, '0')).join(', ')}</div><div class="insight-card-detail">Concursos: ${mostDelayed[0].atraso}</div></div>
             <div class="insight-card"><div class="insight-card-title">🔄 Falta no Ciclo</div><div class="insight-card-value">${cycleDisplay}</div><div class="insight-card-detail">${missingCycle.length} dezena(s) p/ fechar</div></div>
-            <div class="insight-card"><div class="insight-card-title">⛓️ Gatilho Markov</div><div class="insight-card-value">${markovDisplay}</div><div class="insight-card-detail">Puxadas pelo último sorteio</div></div>`;
+            <div class="insight-card"><div class="insight-card-title">⛓️ Gatilho Markov</div><div class="insight-card-value">${markovDisplay}</div><div class="insight-card-detail">${markovDetail}</div></div>
+            <div class="insight-card"><div class="insight-card-title">⚖️ Uniformidade (χ² exato)</div><div class="insight-card-value">${uniformityValue}</div><div class="insight-card-detail">${uniformityDetail}</div></div>
+            <div class="insight-card"><div class="insight-card-title">🔎 Dezenas em Desvio</div><div class="insight-card-value">${chi?.topDeviations?.length || 0}</div><div class="insight-card-detail">${uniformityNote}</div></div>`;
     }
 
     /**

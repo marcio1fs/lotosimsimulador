@@ -128,6 +128,250 @@ export class StatisticalInference {
     }
 
     /**
+     * Logaritmo da função Beta ln(B(a,b)) = lnΓ(a) + lnΓ(b) - lnΓ(a+b)
+     */
+    static logBeta(a, b) {
+        return this.logGamma(a) + this.logGamma(b) - this.logGamma(a + b);
+    }
+
+    /**
+     * Função Gama Incompleta Regularizada Inferior P(a, x), por série (x < a + 1)
+     * e fração continuada de Lentz (x >= a + 1). Precisão ~1e-15 relativa.
+     */
+    static regularizedGammaP(a, x) {
+        if (!(a > 0) || !Number.isFinite(x)) return NaN;
+        if (x <= 0) return 0;
+        if (x < a + 1) {
+            let ap = a;
+            let term = 1 / a;
+            let sum = term;
+            for (let n = 0; n < 1000; n++) {
+                ap += 1;
+                term *= x / ap;
+                sum += term;
+                if (Math.abs(term) < Math.abs(sum) * 1e-16) break;
+            }
+            return sum * Math.exp(-x + a * Math.log(x) - this.logGamma(a));
+        }
+        return 1 - this.regularizedGammaQ(a, x);
+    }
+
+    /**
+     * Função Gama Incompleta Regularizada Superior Q(a, x) = 1 - P(a, x)
+     */
+    static regularizedGammaQ(a, x) {
+        if (!(a > 0) || !Number.isFinite(x)) return NaN;
+        if (x <= 0) return 1;
+        if (x < a + 1) return 1 - this.regularizedGammaP(a, x);
+
+        const tiny = 1e-300;
+        let b = x + 1 - a;
+        let c = 1 / tiny;
+        let d = 1 / b;
+        let h = d;
+        for (let i = 1; i <= 1000; i++) {
+            const an = -i * (i - a);
+            b += 2;
+            d = an * d + b;
+            if (Math.abs(d) < tiny) d = tiny;
+            c = b + an / c;
+            if (Math.abs(c) < tiny) c = tiny;
+            d = 1 / d;
+            const delta = d * c;
+            h *= delta;
+            if (Math.abs(delta - 1) < 1e-16) break;
+        }
+        return Math.exp(-x + a * Math.log(x) - this.logGamma(a)) * h;
+    }
+
+    /**
+     * CDF exata da distribuição Chi-Quadrado (sem aproximação de Wilson-Hilferty)
+     */
+    static chiSquareCDF(chiSq, df) {
+        if (!(df > 0)) return NaN;
+        if (chiSq <= 0) return 0;
+        return this.regularizedGammaP(df / 2, chiSq / 2);
+    }
+
+    /**
+     * p-value exato do teste Chi-Quadrado: P(χ²_df >= chiSq)
+     */
+    static chiSquareSurvival(chiSq, df) {
+        if (!(df > 0)) return NaN;
+        if (chiSq <= 0) return 1;
+        return this.regularizedGammaQ(df / 2, chiSq / 2);
+    }
+
+    /**
+     * Cauda superior exata da Binomial: P(X >= k) para X ~ Binomial(n, p)
+     * P(X >= k) = I_p(k, n - k + 1)
+     */
+    static binomialUpperTail(k, n, p) {
+        if (!Number.isFinite(n) || n < 0) return NaN;
+        if (k <= 0) return 1;
+        if (k > n) return 0;
+        if (p <= 0) return 0;
+        if (p >= 1) return 1;
+        const pv = this.regIncompleteBeta(p, k, n - k + 1);
+        return Number.isFinite(pv) ? Math.max(0, Math.min(1, pv)) : NaN;
+    }
+
+    /**
+     * Cauda inferior exata da Binomial: P(X <= k)
+     */
+    static binomialLowerTail(k, n, p) {
+        if (k < 0) return 0;
+        if (k >= n) return 1;
+        return Math.max(0, Math.min(1, 1 - this.binomialUpperTail(k + 1, n, p)));
+    }
+
+    /**
+     * Teste Binomial exato (unilateral ou bilateral) - p-value por inversão da
+     * distribuição, escolhendo o lado da hipótese alternativa observada.
+     * @param {number} k - sucessos observados
+     * @param {number} n - tentativas
+     * @param {number} p0 - probabilidade nula (ex.: drawn / total)
+     * @param {'greater'|'less'|'two-sided'} alternative
+     */
+    static binomialTest(k, n, p0, alternative = 'greater') {
+        if (!(n > 0) || !(p0 > 0) || !(p0 < 1)) {
+            return { k, n, p0, alternative, pValue: null, significant: false };
+        }
+        const kk = Math.max(0, Math.min(n, Math.round(k)));
+        let pValue;
+        if (alternative === 'greater') {
+            pValue = this.binomialUpperTail(kk, n, p0);
+        } else if (alternative === 'less') {
+            pValue = this.binomialLowerTail(kk, n, p0);
+        } else {
+            // bilateral exato por duplicação do lado observado (conservador, limitado a 1)
+            const lower = this.binomialLowerTail(kk, n, p0);
+            const upper = this.binomialUpperTail(kk, n, p0);
+            pValue = Math.min(1, 2 * Math.min(lower, upper));
+        }
+        if (!Number.isFinite(pValue)) pValue = 1;
+        return {
+            k: kk,
+            n,
+            p0: Number(p0.toFixed(6)),
+            alternative,
+            observedRate: Number((kk / n).toFixed(6)),
+            lift: Number((kk / n / p0).toFixed(4)),
+            pValue: Number(Math.max(1e-16, Math.min(1, pValue)).toFixed(10))
+        };
+    }
+
+    /**
+     * Correção de Benjamini-Hochberg (controle de FDR) sobre uma lista de p-values.
+     * Retorna q-values na mesma ordem da entrada, mais a lista de rejeições.
+     */
+    static benjaminiHochberg(pValues, alpha = 0.05, familySize = null) {
+        const k = Array.isArray(pValues) ? pValues.length : 0;
+        // familySize permite informar o total REAL de hipóteses testadas (ex.: todos os
+        // pares possíveis) quando só as mais promissoras foram materializadas. Isso torna
+        // o q-value conservador — nunca otimista.
+        const m = Number.isFinite(familySize) && familySize > k ? familySize : k;
+        if (k === 0) return { qValues: [], rejected: [], alpha, m: 0, threshold: 0 };
+
+        const cleaned = pValues.map((p, i) => ({
+            i,
+            p: Number.isFinite(p) ? Math.max(0, Math.min(1, p)) : 1
+        }));
+        cleaned.sort((a, b) => a.p - b.p || a.i - b.i);
+
+        const qValues = new Array(k).fill(1);
+        let running = 1;
+        let threshold = 0;
+        for (let r = k; r >= 1; r--) {
+            const { i, p } = cleaned[r - 1];
+            running = Math.min(running, (p * m) / r);
+            qValues[i] = Number(running.toFixed(10));
+        }
+        // maior p tal que p <= alpha * r / m
+        for (let r = k; r >= 1; r--) {
+            if (cleaned[r - 1].p <= (alpha * r) / m) { threshold = cleaned[r - 1].p; break; }
+        }
+        const rejected = cleaned.map(entry => qValues[entry.i] <= alpha);
+        return {
+            qValues,
+            rejected,
+            alpha,
+            m,
+            threshold: Number(threshold.toFixed(10))
+        };
+    }
+
+    /**
+     * Quantil da Normal Padrão (inverso da CDF) - algoritmo de Acklam, erro relativo < 1.15e-9
+     */
+    static normalQuantile(p) {
+        if (!(p > 0) || !(p < 1)) {
+            if (p === 0) return -Infinity;
+            if (p === 1) return Infinity;
+            return NaN;
+        }
+        const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
+            1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
+        const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
+            6.680131188771972e+01, -1.328068155288572e+01];
+        const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
+            -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
+        const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
+            3.754408661907416e+00];
+        const pLow = 0.02425;
+        const pHigh = 1 - pLow;
+
+        if (p < pLow) {
+            const q = Math.sqrt(-2 * Math.log(p));
+            return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+                   ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+        }
+        if (p > pHigh) {
+            const q = Math.sqrt(-2 * Math.log(1 - p));
+            return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+                    ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+        }
+        const q = p - 0.5;
+        const r = q * q;
+        return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q /
+               (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+    }
+
+    /**
+     * Menor efeito detectável (MDE) para um teste de média com n observações,
+     * desvio-padrão sd, nível alpha e poder desejado (unilateral).
+     * Responde: "quantos acertos de vantagem este backtest conseguiria enxergar?"
+     */
+    static minimumDetectableEffect(n, sd, alpha = 0.05, power = 0.8, oneSided = true) {
+        if (!(n > 1) || !(sd > 0)) return null;
+        const zAlpha = this.normalQuantile(1 - (oneSided ? alpha : alpha / 2));
+        const zPower = this.normalQuantile(power);
+        return Number(((zAlpha + zPower) * sd / Math.sqrt(n)).toFixed(4));
+    }
+
+    /**
+     * Tamanho de amostra necessário para detectar um efeito com dado poder.
+     */
+    static requiredSampleSize(sd, effect, alpha = 0.05, power = 0.8, oneSided = true) {
+        if (!(sd > 0) || !(Math.abs(effect) > 0)) return null;
+        const zAlpha = this.normalQuantile(1 - (oneSided ? alpha : alpha / 2));
+        const zPower = this.normalQuantile(power);
+        return Math.ceil(Math.pow(((zAlpha + zPower) * sd) / Math.abs(effect), 2));
+    }
+
+    /**
+     * Poder estatístico obtido de um teste com efeito observado e n amostras.
+     */
+    static observedPower(effect, n, sd, alpha = 0.05, oneSided = true) {
+        if (!(n > 1) || !(sd > 0)) return null;
+        const zAlpha = this.normalQuantile(1 - (oneSided ? alpha : alpha / 2));
+        const lambda = (Math.abs(effect) / (sd / Math.sqrt(n))) - zAlpha;
+        const power = this.normalCDF(lambda);
+        if (!Number.isFinite(power)) return null;
+        return Number(Math.max(0, Math.min(1, power)).toFixed(4));
+    }
+
+    /**
      * CDF da Distribuição Normal Padrão Z
      */
     static normalCDF(z) {
@@ -171,6 +415,44 @@ export class StatisticalInference {
             const z = y - ((2.30753 + 0.27061 * y) / (1.0 + (0.99229 + 0.04481 * y) * y));
             return p < 0.5 ? -z : z;
         }
+    }
+
+    /**
+     * Teste Z de uma amostra contra um valor esperado teórico conhecido (ex.: média
+     * hipergeométrica de acertos de uma aposta aleatória). Ao contrário do teste
+     * pareado contra uma única aposta aleatória, o desvio-padrão aqui é o ANALÍTICO,
+     * o que elimina o ruído de amostragem da baseline e aumenta muito a precisão
+     * para detectar (ou descartar) vantagem real.
+     * @param {number[]} values - acertos observados
+     * @param {number} expectedMean - média sob H0 (ex.: pick * drawn / total)
+     * @param {number} theoreticalSd - desvio-padrão sob H0 (hipergeométrico)
+     */
+    static zTestVersusExpected(values, expectedMean, theoreticalSd, alpha = 0.05) {
+        const n = Array.isArray(values) ? values.length : 0;
+        if (n < 2 || !(theoreticalSd > 0)) {
+            return { n, mean: null, expectedMean, z: null, pValue: 1, alpha, statisticallySignificant: false };
+        }
+        const mean = values.reduce((a, b) => a + b, 0) / n;
+        const se = theoreticalSd / Math.sqrt(n);
+        const z = (mean - expectedMean) / se;
+        const pOne = 1 - this.normalCDF(z);
+        const pTwo = 2 * (1 - this.normalCDF(Math.abs(z)));
+        return {
+            n,
+            mean: Number(mean.toFixed(6)),
+            expectedMean: Number(expectedMean.toFixed(6)),
+            excess: Number((mean - expectedMean).toFixed(6)),
+            excessPercent: expectedMean > 0 ? Number((((mean - expectedMean) / expectedMean) * 100).toFixed(2)) : null,
+            theoreticalSd: Number(theoreticalSd.toFixed(6)),
+            standardError: Number(se.toFixed(6)),
+            z: Number(z.toFixed(4)),
+            pValue: Number(Math.max(1e-16, Math.min(1, pOne)).toFixed(10)),
+            pValueTwoSided: Number(Math.max(0, Math.min(1, pTwo)).toFixed(10)),
+            alpha,
+            statisticallySignificant: pOne < alpha && mean > expectedMean,
+            minimumDetectableEffect: this.minimumDetectableEffect(n, theoreticalSd, alpha, 0.8, true),
+            observedPower: this.observedPower(mean - expectedMean, n, theoreticalSd, alpha, true)
+        };
     }
 
     /**
@@ -292,21 +574,46 @@ export class StatisticalInference {
             };
         }
 
-        const modelStats = this.calculateStats(modelHits.slice(0, n));
-        const baselineStats = this.calculateStats(baselineHits.slice(0, n));
+        const modelSlice = modelHits.slice(0, n);
+        const baselineSlice = baselineHits.slice(0, n);
+        const modelStats = this.calculateStats(modelSlice);
+        const baselineStats = this.calculateStats(baselineSlice);
 
-        const diffs = [];
+        // Estatísticas calculadas SEM arredondamento (o arredondamento prévio
+        // degradava a precisão do t e, consequentemente, do p-value).
+        const diffs = new Array(n);
+        let rawMean = 0;
         for (let i = 0; i < n; i++) {
-            diffs.push(modelHits[i] - baselineHits[i]);
+            const d = Number(modelSlice[i]) - Number(baselineSlice[i]);
+            diffs[i] = d;
+            rawMean += d;
         }
+        rawMean /= n;
 
-        const diffStats = this.calculateStats(diffs);
-        const meanDiff = diffStats.mean;
-        const seDiff = diffStats.standardError;
+        let ssq = 0;
+        for (let i = 0; i < n; i++) ssq += Math.pow(diffs[i] - rawMean, 2);
+        const rawVariance = n > 1 ? ssq / (n - 1) : 0;
+        const rawSd = Math.sqrt(rawVariance);
+        const seDiff = rawSd / Math.sqrt(n);
+        const meanDiff = rawMean;
         const df = n - 1;
 
-        if (seDiff === 0 || isNaN(seDiff)) {
+        const mde = this.minimumDetectableEffect(n, rawSd > 0 ? rawSd : Math.sqrt(rawVariance + 1e-12), alpha, 0.8, true);
+
+        if (!(seDiff > 0) || !Number.isFinite(seDiff)) {
+            // Variância nula: o teste t é degenerado. Em vez de inventar
+            // p = 0.0001 (falso positivo garantido), aplica-se o teste de sinais
+            // (binomial exato), que é válido para diferenças constantes.
+            const positives = diffs.filter(d => d > 0).length;
+            const negatives = diffs.filter(d => d < 0).length;
+            const effective = positives + negatives;
             const isModelBetter = meanDiff > 0;
+            const signP = effective > 0
+                ? (isModelBetter
+                    ? this.binomialUpperTail(positives, effective, 0.5)
+                    : this.binomialUpperTail(negatives, effective, 0.5))
+                : 1;
+            const signPV = Number(Math.max(1e-16, Math.min(1, signP)).toFixed(10));
             return {
                 modelMean: modelStats.mean,
                 baselineMean: baselineStats.mean,
@@ -314,39 +621,48 @@ export class StatisticalInference {
                 relativeImprovement: baselineStats.mean > 0 ? `${((meanDiff / baselineStats.mean) * 100).toFixed(2)}%` : '0.0%',
                 tStatistic: 0,
                 df,
-                pValue: isModelBetter ? 0.0001 : 1.0,
+                pValue: signPV,
+                pValueTwoSided: signPV,
                 alpha,
-                statisticallySignificant: isModelBetter,
+                statisticallySignificant: signPV < alpha && meanDiff > 0,
                 effectSize: isModelBetter ? 1.0 : 0,
                 effectDescriptor: isModelBetter ? 'Constante' : 'Nulo',
-                conclusion: isModelBetter 
-                    ? 'Modelo superior com zero variância observada nas diferenças.'
-                    : 'Desempenho equivalente à baseline.'
+                method: 'Teste de sinais (variância nula)',
+                minimumDetectableEffect: mde,
+                observedPower: signPV < alpha ? 1 : null,
+                conclusion: isModelBetter
+                    ? `Diferenças de acerto constantes (+${meanDiff.toFixed(2)} por concurso); teste t degenerado, teste de sinais exato com p=${signPV}.`
+                    : 'Desempenho equivalente à baseline (diferenças nulas).'
             };
         }
 
         const tStat = meanDiff / seDiff;
 
         // p-value unilateral (Modelo > Baseline) usando CDF de t de Student exata
-        // p = P(T >= tStat) = 1 - StudentTCDF(tStat, df)
         const pValueOneTailed = 1 - this.studentTCDF(tStat, df);
-        const pValue = Number(Math.max(0.000001, Math.min(1.0, pValueOneTailed)).toFixed(6));
+        const pValueTwoSided = tStat === 0 ? 1 : 2 * (1 - this.studentTCDF(Math.abs(tStat), df));
+        const pValue = Number(Math.max(1e-16, Math.min(1.0, pValueOneTailed)).toFixed(10));
 
         const statisticallySignificant = pValue < alpha && meanDiff > 0;
 
         // Cohen's d para amostras pareadas: d = meanDiff / s_diff
-        const cohensD = diffStats.standardDeviation > 0 ? meanDiff / diffStats.standardDeviation : 0;
+        const cohensD = rawSd > 0 ? meanDiff / rawSd : 0;
         const absD = Math.abs(cohensD);
         let effectDescriptor = 'Desprezível';
         if (absD >= 0.8) effectDescriptor = 'Grande';
         else if (absD >= 0.5) effectDescriptor = 'Médio';
         else if (absD >= 0.2) effectDescriptor = 'Pequeno';
 
+        const observedPower = this.observedPower(meanDiff, n, rawSd, alpha, true);
+
         let conclusion = '';
         if (statisticallySignificant) {
             conclusion = `Existe evidência estatística significativa (p=${pValue} < ${alpha}) de que o modelo supera a baseline aleatória.`;
         } else if (meanDiff > 0) {
-            conclusion = `Não há evidência estatística suficiente (p=${pValue} >= ${alpha}) para afirmar superioridade do modelo, apesar da diferença média positiva (+${meanDiff.toFixed(2)} acertos).`;
+            const powerNote = (observedPower !== null && observedPower < 0.8 && mde !== null)
+                ? ` Poder estatístico de ${(observedPower * 100).toFixed(0)}%: este teste só detectaria vantagens a partir de +${mde} acertos/concurso.`
+                : '';
+            conclusion = `Não há evidência estatística suficiente (p=${pValue} >= ${alpha}) para afirmar superioridade do modelo, apesar da diferença média positiva (+${meanDiff.toFixed(2)} acertos).${powerNote}`;
         } else {
             conclusion = `Não há evidência estatística de superioridade (diferença média: ${meanDiff.toFixed(2)} acertos).`;
         }
@@ -363,10 +679,15 @@ export class StatisticalInference {
             tStatistic: Number(tStat.toFixed(4)),
             df,
             pValue,
+            pValueTwoSided: Number(Math.max(0, Math.min(1, pValueTwoSided)).toFixed(10)),
             alpha,
             statisticallySignificant,
             effectSize: Number(cohensD.toFixed(4)),
             effectDescriptor,
+            method: 't de Student pareado bilateral/unilateral (CDF exata)',
+            standardError: Number(seDiff.toFixed(6)),
+            minimumDetectableEffect: mde,
+            observedPower,
             conclusion
         };
     }
@@ -417,7 +738,9 @@ export class StatisticalInference {
         const ciLower = Number(bootstrapMeans[lowerIdx].toFixed(4));
         const ciUpper = Number(bootstrapMeans[upperIdx].toFixed(4));
         const meanDiff = Number((bootstrapMeans.reduce((a, b) => a + b, 0) / iterations).toFixed(4));
-        const pValue = Number((extremeCount / iterations).toFixed(6));
+        // Correção de viés do estimador de p bootstrap: (B_ext + 1) / (B + 1)
+        // evita p = 0 (que declararia significância infinita a partir de amostra finita).
+        const pValue = Number(Math.min(1, (extremeCount + 1) / (iterations + 1)).toFixed(6));
 
         return {
             iterations,
