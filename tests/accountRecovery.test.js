@@ -95,12 +95,29 @@ function createFakeSql(seed = {}) {
         email_verifications: [],
         password_resets: [],
         recovery_requests: [],
-        login_attempts: []
+        login_attempts: [],
+        // O limitador por rota (migração 003) conta em (bucket, chave, janela).
+        rate_limits: []
     };
     const sentTo = () => db;
 
     async function query(text, params = []) {
         const sql = String(text).replace(/\s+/g, ' ').trim();
+
+        // ---- limite por rota (janela fixa, contador atômico)
+        if (sql.startsWith('INSERT INTO rate_limits')) {
+            const [bucket, key, start] = params;
+            const existente = db.rate_limits.find(
+                r => r.bucket === bucket && r.key === key && r.window_start === start
+            );
+            if (existente) {
+                existente.hits += 1;
+                return [{ hits: existente.hits }];
+            }
+            db.rate_limits.push({ bucket, key, window_start: start, hits: 1 });
+            return [{ hits: 1 }];
+        }
+        if (sql.startsWith('DELETE FROM rate_limits')) return [];
 
         // ---- rate limit
         if (sql.includes('FROM recovery_requests')) {
