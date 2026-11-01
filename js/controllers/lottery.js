@@ -103,7 +103,21 @@ export class LotteryController {
 
         await Promise.all(types.map(async (type) => {
             let cachedData = await Database.getAllByIndex('lottery_results', 'lotteryType', type);
-            let lastResult = serverSync?.synced?.[type]?.latest || null;
+
+            // O servidor devolve `lotteries[type].draws` — o código lia
+            // `synced[type].latest`, que nunca existiu, então o resultado
+            // recém-sincronizado era descartado silenciosamente.
+            const syncInfo = serverSync?.lotteries?.[type] || null;
+            let lastResult = syncInfo?.draws?.[0] || null;
+
+            // Degradação não pode passar em silêncio: se todas as fontes
+            // externas falharam, os dados vieram do cache e o usuário precisa saber.
+            if (syncInfo?.degraded) {
+                console.warn(
+                    `[${type}] Fontes externas indisponíveis — usando cache persistido. ` +
+                    `Tentativas: ${(syncInfo.errors || []).map(e => `${e.source}: ${e.error}`).join(' | ') || 'n/d'}`
+                );
+            }
 
             if (!Database.useApi) {
                 try {
