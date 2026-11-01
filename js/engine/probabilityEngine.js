@@ -152,44 +152,67 @@ export class ProbabilityEngine {
         const tickets = Math.max(1, Number(ticketCount) || 1);
         const rawSingleProb = single.fullHitProbability || 0;
 
+        // Sena: eventos mutuamente exclusivos entre bilhetes distintos ⟹ valor EXATO.
         const portfolioFullHitProb = Math.min(1, rawSingleProb * tickets);
 
-        const effectiveFilteredSpaceCombinations = Math.max(1, Math.round((1 / (rawSingleProb || 1)) * spaceReduction.retentionRatio));
-        const effectivePortfolioProbInGaussianCore = Math.min(1, tickets / effectiveFilteredSpaceCombinations);
+        // CORREÇÃO DE INTEGRIDADE (auditoria v1.2)
+        // Antes: `tickets / espacoPodado` e um "fator de ortogonalidade" inventado
+        // (0.65 + 0.35·diversificação) eram aplicados aqui, produzindo frases como
+        // "Ganho de Eficiência Combinatória: 5x". Isso é falso: descartar combinações
+        // consideradas improváveis NÃO altera a probabilidade de nenhuma combinação
+        // específica — o sorteio não sabe quais combinações o app descartou.
+        // O que a poda faz é reduzir o espaço PESQUISADO na geração (custo), não a chance.
+        const spaceReductionInfo = {
+            prunedPercentage: spaceReduction.prunedPercentage,
+            retentionRatio: spaceReduction.retentionRatio,
+            searchSpaceReduction: `${spaceReduction.prunedPercentage}% de combinações deixaram de ser geradas`,
+            oddsImpact: 'Nenhum. A poda reduz o espaço pesquisado, não aumenta a probabilidade de acerto.'
+        };
 
         const singleAnyPrizeProb = single.cumulativeProbabilities[minPrizeTier] || 0;
-        const orthogonalityFactor = 0.65 + 0.35 * (Math.min(100, Math.max(0, diversificationScore || 75)) / 100);
-        const portfolioAnyPrizeProb = 1 - Math.pow(Math.max(0, 1 - singleAnyPrizeProb), tickets * orthogonalityFactor);
+        // Limite superior rigoroso (desigualdade da união): P(∪Aᵢ) ≤ ΣP(Aᵢ).
+        // Sem os bilhetes reais não é possível o limite inferior de Bonferroni;
+        // `FutureProjectionEngine.portfolioCoverage` calcula-o quando recebe os jogos.
+        const portfolioAnyPrizeProb = Math.min(1, tickets * singleAnyPrizeProb);
+        const portfolioAnyPrizeLower = null;
 
         const tierProbabilities = {};
         prizeTiers.forEach(tier => {
             const pSingle = single.cumulativeProbabilities[tier] || 0;
-            const pPortfolio = tier === single.maxHits
+            const isTopTier = tier === single.maxHits;
+            const pPortfolio = isTopTier
                 ? portfolioFullHitProb
-                : (1 - Math.pow(Math.max(0, 1 - pSingle), tickets * orthogonalityFactor));
+                : Math.min(1, tickets * pSingle);
             tierProbabilities[tier] = {
                 singleProbability: pSingle,
                 singleOdds: this.probabilityToOdds(pSingle),
                 portfolioProbability: pPortfolio,
                 portfolioOdds: this.probabilityToOdds(pPortfolio),
-                portfolioPercentage: `${(pPortfolio * 100).toFixed(pPortfolio > 0.01 ? 2 : 4)}%`
+                portfolioPercentage: `${(pPortfolio * 100).toFixed(pPortfolio > 0.01 ? 2 : 4)}%`,
+                exact: isTopTier,
+                method: isTopTier ? 'exato (mutuamente exclusivos)' : 'limite superior (união)'
             };
         });
-
-        const totalFactorGain = Number((tickets * spaceReduction.precisionMultiplier).toFixed(1));
 
         return {
             ticketCount: tickets,
             rawSingleOdds: single.fullHitOdds,
             portfolioDirectOdds: this.probabilityToOdds(portfolioFullHitProb),
-            gaussianCoreSpaceSize: effectiveFilteredSpaceCombinations.toLocaleString('pt-BR'),
-            gaussianCorePortfolioOdds: this.probabilityToOdds(effectivePortfolioProbInGaussianCore),
+            portfolioDirectProbability: portfolioFullHitProb,
+            // Campos mantidos por compatibilidade, agora com o valor HONESTO:
+            // a poda não altera as odds, então o "núcleo gaussiano" tem exatamente
+            // a mesma probabilidade da carteira direta.
+            gaussianCorePortfolioOdds: this.probabilityToOdds(portfolioFullHitProb),
+            gaussianCoreOddsAreUnchanged: true,
             spacePrunedPercentage: `${spaceReduction.prunedPercentage}%`,
-            spacePrecisionMultiplier: `${spaceReduction.precisionMultiplier}x`,
-            totalFactorGain: `${totalFactorGain}x`,
+            spaceReduction: spaceReductionInfo,
+            // Nome antigo preservado, com semântica corrigida (redução do espaço pesquisado).
+            totalFactorGain: `${Number((1 / Math.max(1e-9, spaceReduction.retentionRatio)).toFixed(1))}x menos combinações geradas`,
             minPrizeTier,
-            anyPrizePortfolioProbability: Number((portfolioAnyPrizeProb * 100).toFixed(2)),
+            anyPrizePortfolioProbability: Number((portfolioAnyPrizeProb * 100).toFixed(4)),
             anyPrizePortfolioOdds: this.probabilityToOdds(portfolioAnyPrizeProb),
+            anyPrizePortfolioLowerBound: portfolioAnyPrizeLower,
+            anyPrizePortfolioMethod: 'Limite superior (desigualdade da união). Use FutureProjectionEngine.portfolioCoverage com os bilhetes reais para limites de Bonferroni.',
             tierProbabilities,
             financial
         };

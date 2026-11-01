@@ -240,8 +240,8 @@ export class StatisticsView {
                 <div>Intervalo de Confiança 95%: <strong>${ciText}</strong></div>
                 <div>P-Value Exato (t-Student): <strong>${typeof bt.pValue === 'number' ? bt.pValue.toFixed(6) : '-'}</strong></div>
                 <div>Tamanho de Efeito (Cohen d): <strong>${typeof bt.effectSize === 'number' ? bt.effectSize.toFixed(4) : '-'} (${bt.effectDescriptor || 'Insuficiente'})</strong></div>
-                <div>Poda de Espaço Amostral (Curva de Gauss): <strong>-${proj.spacePrunedPercentage || '80%'} de combinações improváveis eliminadas</strong></div>
-                <div>Projeção no Núcleo Gaussiano: <strong>${proj.gaussianCorePortfolioOdds || '-'} (Ganho de Eficiência: ${proj.totalFactorGain || '-'})</strong></div>
+                <div>Poda de Espaço Amostral: <strong>${proj.spacePrunedPercentage || '80%'} das combinações deixaram de ser geradas</strong> <span style="color:var(--text-muted);">(não altera a probabilidade de acerto)</span></div>
+                <div>Prêmio Máximo da Carteira (exato): <strong>${proj.portfolioDirectOdds || '-'}</strong></div>
                 ${wheel ? `<div>Matriz de Fechamento: <strong>${wheel.elitePoolSize} dezenas de elite · ${wheel.pairCoverageGuaranteePct}% de pares cobertos</strong></div>` : ''}
                 <div>Stability Score: <strong>${mc.stabilityScore || bt.walkForward?.stabilityScore || 50} / 100</strong></div>
                 <div>Coverage Score: <strong>${pipeline.coverageScore || pipeline.portfolioCoverage || '-'} / 100</strong></div>
