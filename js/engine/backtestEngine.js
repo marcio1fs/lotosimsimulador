@@ -6,6 +6,7 @@
 import { StatisticalAnalyzer } from './statisticalAnalyzer.js';
 import { BaselineEngine } from './baselineEngine.js';
 import { StatisticalInference } from './statisticalInference.js';
+import { SequentialTestEngine } from './sequentialTestEngine.js';
 import { SeededRandom } from './prng.js';
 
 export class BacktestEngine {
@@ -164,6 +165,19 @@ export class BacktestEngine {
                 : `Amostra adequada para vantagens a partir de ${((mdeHits / expectedHits) * 100).toFixed(0)}% (poder 80%). Para 10% seriam necessários ~${drawsFor10} concursos.`
         };
 
+        // ------------------------------------------------------------------
+        // Inferência sequencial (always-valid): o p clássico acima só vale para
+        // UMA olhada decidida de antemão. No uso real o usuário gera de novo,
+        // troca a janela e olha outra vez — cada olhada é um teste, e o erro
+        // tipo I da sequência inteira cresce com o número de olhadas. O p
+        // sequencial mantém a garantia em qualquer instante de parada.
+        // ------------------------------------------------------------------
+        const sequentialAnalysis = SequentialTestEngine.analyzePaired(hitsList, baselineHitsList, {
+            classicalPValue: inferenceTest.pValue,
+            alpha: options.alpha ?? 0.05,
+            tau: options.tau
+        });
+
         return {
             evaluatedDraws: hitsList.length,
             meanHits: modelStats.mean,
@@ -186,6 +200,7 @@ export class BacktestEngine {
             bootstrapResult,
             walkForward: trainTestSplit,
             theoreticalBenchmark,
+            sequentialAnalysis,
             sampleAdequacy,
             baselineSimsPerDraw,
             dataLeakageDetected: leakageViolations > 0,

@@ -205,8 +205,37 @@ O relatório exibia "Data Leakage: NÃO DETECTADO (✅)" como se fosse o resulta
 **6.1 Multiplicidade da seleção de janelas (achado #11) — ✅ implementado.**
 `runBestGameMode` testa 5 janelas temporais e escolhia a de melhor backtest, devolvendo **o p-value do vencedor** como se fosse um teste único — *p-hacking* estrutural (com 5 tentativas, a chance de ao menos uma parecer significativa a α=0,05 sobe para ~23%). Agora cada janela é registrada em `modelPipeline.selectionCorrection` com seu p-value bruto **e** corrigido por **Holm-Bonferroni**, mais `anyWindowSignificantAfterCorrection` e `familyAdjustedPValueForWinner`. Bônus: o modo passou a preservar o próprio backtest (antes ele era descartado e a política caía em `INSUFFICIENT_BACKTEST`, escondendo a evidência coletada).
 
-**6.2 Inferência sequencial (always-valid p-values) — 📋 recomendado.**
+**6.2 Inferência sequencial (always-valid p-values) — ✅ implementado.**
 O usuário pode clicar em "gerar" repetidamente e trocar a janela até gostar do resultado. Com testes clássicos, olhar repetidamente infla o erro tipo I indefinidamente. *Correção:* mSPRT / testes sequenciais com correção de α sobre o número de gerações, ou um "orçamento de α" por sessão.
+
+*Implementado* em `js/engine/sequentialTestEngine.js` (29 testes; documentação completa
+em [INFERENCIA_SEQUENCIAL.md](./INFERENCIA_SEQUENCIAL.md)). A inflação não era hipotética:
+em **300 séries de 120 olhadas sem nenhum sinal**, o t-test clássico aplicado a cada
+prefixo acusou significância em **56,3%** das séries, com α nominal de 5%. Com o p
+always-valid (mSPRT, e-value com p = min(1, 1/Λ)), as mesmas séries erram em **3,7%** —
+abaixo do α nominal, como a teoria exige.
+
+Três decisões que o resultado tornou obrigatórias:
+
+- **σ não pode vir dos dados que estão sendo testados.** A primeira versão estimava σ
+  no mesmo prefixo: uma amostra de dois pontos com desvio-padrão ~0 transformava
+  qualquer média ≠ 0 em "sinal". Falso-positivo medido: **100%** em ruído puro.
+  Agora os primeiros 20 concursos formam um bloco de aquecimento que estima σ e
+  **não é monitorado** — e quando o bloco não tem variabilidade, o motor declara o
+  teste indisponível com motivo em vez de inventar um piso numérico.
+- **O custo em poder é real e está no relatório.** A 200 concursos: 0,3 acerto →
+  30% de detecção (clássico: 60%); 0,5 → 73% (96%); 0,9 → 99% (100%). Poder olhar
+  quantas vezes quiser custa sensibilidade — não existe versão gratuita.
+- **O orçamento de α da sessão** cobre as olhadas discretas do app (gerar, trocar
+  janela, trocar estratégia). Em vez de Bonferroni — que só vale se o número de
+  olhadas for fixado de antemão, exatamente o que o usuário não faz — usa gasto
+  quadrático, `α_m = α·(6/π²)/m²`, cuja soma sobre **infinitas** olhadas é α. A
+  primeira olhada recebe 0,0304; a segunda, 0,0076; a décima, 0,0003.
+
+O `BacktestEngine` passou a devolver `sequentialAnalysis` (p always-valid, IC
+sequencial, primeira olhada que cruzaria α) ao lado do p clássico, e o relatório
+estatístico mostra os dois com o rótulo do que cada um vale. Um teste garante que o
+intervalo sequencial e o p nunca se contradizem, já que saem do mesmo e-value.
 
 **6.3 Encolhimento bayesiano (empirical Bayes / James-Stein) das frequências — ✅ implementado.**
 As dezenas são ranqueadas por frequência bruta, mas a diferença entre "a mais quente" e "a mais fria" em 100 concursos está quase toda dentro do erro amostral. *Correção:* estimar `p_i = (count_i + α·p0) / (n + α)` com `α` calibrado pelo histórico (equivalente a um prior Dirichlet-multinomial). Isso substitui "quente/frio" por **posterior com intervalo de credibilidade** — a única forma honesta de mostrar esse tipo de métrica. O cartão "🔥 Quentes" deveria exibir a incerteza, não só 5 números.
@@ -386,7 +415,7 @@ exigem uma passada de formatação sobre todo o código, que merece commit próp
 
 **6.13 CSRF/Origin.** `SameSite=Lax` já bloqueia POST cross-site; adicionar verificação de `Origin`/`Sec-Fetch-Site` nos endpoints de mutação fecha a borda.
 
-**6.14 Atualizar a documentação.** `AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 23 arquivos de teste e 315 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
+**6.14 Atualizar a documentação.** `AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 24 arquivos de teste e 344 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
 
 ---
 
