@@ -1,6 +1,7 @@
 import { LotteryModel } from '../models/lottery.js';
 import { escapeHtml } from '../utils/sanitize.js';
 import { BayesFrequencyEngine } from '../engine/bayesFrequencyEngine.js';
+import { AntiCrowdEngine } from '../engine/antiCrowdEngine.js';
 
 /**
  * View: Statistics - Data visualization and charts
@@ -246,6 +247,14 @@ export class StatisticsView {
 
         // Fatores cuja afirmação estatística foi testada e refutada deixam de
         // pesar. Ausência de teste (histórico curto) NÃO zera nada.
+        // O modo "Prêmio Sozinho" ordena bilhetes por popularidade estimada. As
+        // magnitudes desses pesos são priors de literatura, não calibração
+        // brasileira — e o relatório diz isso em vez de deixar implícito.
+        const prior = AntiCrowdEngine.getPriorProvenance();
+        const antiCrowdText = prior.calibrated
+            ? `calibrado (${prior.calibration.source || 'fonte não informada'} · ${prior.calibration.sampleSize} apostas)`
+            : `prior de literatura — ${prior.byBasis.literatura} direções documentadas, ${prior.byBasis['arbitrário'] + prior.byBasis['sem fonte']} magnitudes sem verificação`;
+
         const ev = pipeline.evidenceWeighting || null;
         const evidenceText = ev
             ? (ev.applied
@@ -294,6 +303,7 @@ export class StatisticsView {
                 <div>Uniformidade (χ² exato): <strong>${chi2 ? `p=${Number(chi2.pValue).toExponential(2)} · V de Cramér ${chi2.cramersV} (${chi2.effectDescriptor})` : '-'}</strong></div>
                 <div>Pares com Co-ocorrência Real (FDR 5%): <strong>${sig.pairs ? `${paresSig} par(es)` : '-'}</strong></div>
                 <div>Ponderação por Evidência: <strong>${evidenceText}</strong>${evidenceDetail}</div>
+                <div>Prêmio Sozinho (Anti-Crowd): <strong>${antiCrowdText}</strong></div>
                 <div>Reprodutibilidade: <strong>APROVADA (Seed: ${pipeline.seed || 123456})</strong></div>
                 <div>Monte Carlo Simulações: <strong>${mc.iterations || 10000} iterações</strong></div>
                 <div style="margin-top:0.6rem; color:var(--text-muted); font-size:0.7rem; border-top:1px dashed rgba(255,255,255,0.1); padding-top:0.4rem;">
