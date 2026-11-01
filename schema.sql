@@ -1,8 +1,27 @@
 -- ======================================================================
--- LOTOMAIS - SCHEMA DO BANCO DE DADOS POSTGRESQL (NEON SERVERLESS)
+-- SCHEMA DO BANCO — ARQUIVO GERADO. NÃO EDITE À MÃO.
 -- ======================================================================
--- Execute este script completo no SQL Editor do seu console Neon:
--- https://console.neon.tech
+-- Este arquivo é a foto das migrações de migrations/*.sql, na ordem em que são
+-- aplicadas. Serve para criar um banco do zero colando no SQL Editor do Neon.
+--
+-- Para mudar o schema: crie migrations/NNN_nome.sql e rode
+--     npm run build:schema     (regenera este arquivo)
+--     npm run check:schema     (a CI falha se este arquivo divergir)
+--
+-- Em banco que já existe, o caminho é só:
+--     npm run migrate
+-- ======================================================================
+
+-- ===== 001_schema_inicial.sql =====
+-- 001 — schema inicial (usuários, sessões, jogos, resultados, simulações,
+-- estatísticas, automação e a tabela de controle de força bruta).
+--
+-- Corresponde ao `schema.sql` original que era colado à mão no Neon. Todo comando
+-- usa IF NOT EXISTS: rodar esta migração num banco que já tem as tabelas não
+-- apaga nem recria nada — só registra a migração como aplicada.
+--
+-- Ordem importa: as tabelas com chave estrangeira (sessions, games, simulations,
+-- user_stats, auto_settings, auto_log) vêm depois de `users`.
 
 -- 1. TABELA DE USUÁRIOS
 CREATE TABLE IF NOT EXISTS users (
@@ -135,11 +154,10 @@ CREATE INDEX IF NOT EXISTS idx_games_user_created ON games(user_id, created_at D
 CREATE INDEX IF NOT EXISTS idx_lottery_results_type_desc ON lottery_results(lottery_type, concurso DESC);
 CREATE INDEX IF NOT EXISTS idx_simulations_user_desc ON simulations(user_id, created_at DESC);
 
--- ======================================================================
--- 10. RECUPERAÇÃO DE CONTA (redefinição de senha + verificação de e-mail)
--- ======================================================================
--- Rode este bloco depois dos anteriores. Ele é idempotente: pode ser executado
--- de novo sem duplicar nada e sem reescrever dado existente.
+-- ===== 002_recuperacao_de_conta.sql =====
+-- 002 — recuperação de conta (redefinição de senha + verificação de e-mail).
+--
+-- Idempotente: pode ser aplicada num banco que já a recebeu sem duplicar nada.
 --
 -- Por que a verificação de e-mail veio junto com o reset: um link de redefinição
 -- só prova algo se o endereço era da pessoa. Sem verificação, o "esqueci minha
