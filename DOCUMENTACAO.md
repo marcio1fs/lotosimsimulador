@@ -1,0 +1,95 @@
+# A documentação, e como ela é mantida honesta
+
+> Item 6.14 do roadmap de [AUDITORIA_PRECISAO.md](./AUDITORIA_PRECISAO.md).
+> Verificado por `tests/docs.test.js`.
+
+---
+
+## 1. O problema
+
+`AUDIT_REPORT.md` afirmava, sem ressalva:
+
+- "**4 suítes passando** (100% de aprovação)";
+- "**12 de 12 problemas resolvidos** (100%)";
+- "o Modelo Adaptativo apresentou o **melhor alinhamento multifatorial**";
+- "**Melhoria Observada**: demonstrada de forma empírica".
+
+Quando a segunda auditoria começou, a suíte tinha 113 testes — e 11 defeitos
+adicionais, um deles fabricando resultados de loteria. Uma suíte de 4 casos não
+sustentava nenhuma daquelas frases; duas delas, aliás, nunca tiveram medição
+por trás.
+
+Um relatório desatualizado é pior que nenhum. Um relatório que **afirma vantagem
+inexistente** é pior que os dois, porque dirige decisões.
+
+## 2. O que foi feito
+
+### O `AUDIT_REPORT.md` virou registro histórico datado, não estado atual
+
+O conteúdo original foi preservado — apagá-lo destruiria a evidência de que uma
+suíte de 4 casos sustentava afirmações grandes. O que mudou:
+
+- o cabeçalho diz o que o documento é (**v1.1, estado da época**) e qual é o
+  estado real hoje;
+- a saída TAP de 4 testes está rotulada como **saída da época**, com o comando
+  atual logo abaixo;
+- o resumo declara explicitamente que **não há vantagem sobre o aleatório**, com
+  as medições (item 5);
+- as duas frases sem sustentação foram substituídas pelos números medidos:
+  sem ponderação **+0,95%** (p = 0,194), com ponderação **−0,98%** (p = 0,799),
+  permutação **z = −0,19, p = 0,59**.
+
+### Os números de teste passaram a ter um lugar só
+
+`AUDITORIA_PRECISAO.md` carrega o marcador:
+
+```html
+<!-- suite: arquivos=27 testes=389 -->
+```
+
+e a **seção 11 (Estado atual)** lista cada item do roadmap com status e onde ele
+está documentado. Nenhum outro documento deve repetir contagens absolutas como
+se fossem estado presente.
+
+## 3. O mapa dos documentos
+
+| Documento | Assunto | Item |
+| :--- | :--- | :--- |
+| [AUDITORIA_PRECISAO.md](./AUDITORIA_PRECISAO.md) | auditoria de precisão + roadmap + estado atual | 6.x |
+| [AUDIT_REPORT.md](./AUDIT_REPORT.md) | reengenharia original (histórico, v1.1) | — |
+| [FREQUENCIAS.md](./FREQUENCIAS.md) | frequências com encolhimento bayesiano | 6.3 |
+| [PROJECOES.md](./PROJECOES.md) | projeção do processo (não de dezenas) | módulo extra |
+| [INFERENCIA_SEQUENCIAL.md](./INFERENCIA_SEQUENCIAL.md) | p-valores always-valid e orçamento de α | 6.2 |
+| [DESEMPENHO_ANALISE.md](./DESEMPENHO_ANALISE.md) | memória e custo da análise | 6.10 |
+| [INTERFACE.md](./INTERFACE.md) | templates e testes da camada visual | 6.11 |
+| [SECURITY.md](./SECURITY.md) | postura de segurança | — |
+| [DOCUMENTACAO.md](./DOCUMENTACAO.md) | este arquivo | 6.14 |
+
+## 4. O que o teste verifica
+
+`tests/docs.test.js` roda em toda execução de `npm test` e checa, de forma
+barata:
+
+- **todo link interno resolve** (nenhum documento aponta para arquivo que não existe);
+- o **número de arquivos de teste** do marcador bate com `tests/*.test.js`;
+- todo documento listado no mapa da seção 3 existe;
+- nenhum documento **promete prever dezenas** — a frase só é aceita em negação
+  ("não prevê dezenas"), porque é assim que o projeto precisa falar.
+
+E, na CI (`DOCS_VERIFY_SUITE=1`), a verificação cara: **roda a suíte inteira e
+compara o total real** com o número do marcador. Localmente esse passo é pulado
+para não dobrar o tempo de `npm test`; na CI ele é obrigatório — que é onde a
+deriva precisa ser pega.
+
+## 5. Como atualizar
+
+Ao adicionar ou remover testes:
+
+```bash
+npm test                                   # quantos testes existem agora
+# edite o marcador em AUDITORIA_PRECISAO.md (e a seção 11, se for um item novo)
+DOCS_VERIFY_SUITE=1 node --test tests/docs.test.js   # confere como a CI fará
+```
+
+Se você esquecer, a CI falha dizendo qual número está no documento e qual é o
+real. Esse é o ponto: a documentação não pode envelhecer em silêncio.

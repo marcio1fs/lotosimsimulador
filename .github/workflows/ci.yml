@@ -91,3 +91,15 @@ jobs:
           fi
           echo "OK: todo sorteio usa PRNG com semente"
 
+
+      # Item 6.14: a documentação não pode envelhecer em silêncio. Roda a suíte
+      # inteira e compara com o marcador `<!-- suite: arquivos=N testes=M -->`
+      # declarado em AUDITORIA_PRECISAO.md. Custa uma execução extra da suíte —
+      # é o preço de o número nos documentos ser verdadeiro.
+      - name: Documentação em dia com a suíte
+        run: DOCS_VERIFY_SUITE=1 node --test tests/docs.test.js
+
+      # O index.html é saída de build (js/views/templates). Divergência entre
+      # fonte e arquivo versionado é o modo mais silencioso de perder uma tela.
+      - name: index.html em dia com os templates
+        run: npm run check:html

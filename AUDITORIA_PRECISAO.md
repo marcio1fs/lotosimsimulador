@@ -2,7 +2,8 @@
 
 **Data:** 01/11/2026
 **Escopo:** 61 arquivos · ~8.700 linhas de JavaScript · 12 módulos de motor estatístico · API serverless (Neon) · interface SPA
-**Suíte de testes:** 113 → **151 testes** (100% passando), `npm run build` OK
+**Suíte de testes:** 113 → **389 testes em 27 arquivos** (100% passando), `npm run build` OK
+<!-- suite: arquivos=27 testes=389 -->
 **Pergunta que guiou a auditoria:** *onde este projeto perde precisão — e como recuperá-la?*
 
 ---
@@ -49,11 +50,11 @@ Três números resumem o ganho:
 | 9 | 🟡 Médio | Fallbacks arbitrários no score: `stdDev = 1.5` (paridade) e `0,12 × média` (soma) | `js/engine/scoringEngine.js` | ✅ Corrigido |
 | 10 | 🟡 Médio | `dataLeakageDetected` era **literalmente `false`**, não um resultado | `js/engine/backtestEngine.js` | ✅ Corrigido |
 | 11 | 🟡 Médio | `runBestGameMode` escolhia a melhor janela entre 5 e devolvia o p-value do vencedor como teste único — e **descartava** o próprio backtest | `js/engine/gameGenerator.js` | ✅ Corrigido |
-| 12 | 🟡 Médio | Constantes do `AntiCrowdEngine` ("~65% das apostas…") sem fonte verificável | `js/engine/antiCrowdEngine.js` | 📋 Recomendado |
-| 13 | 🟢 Baixo | `AUDIT_REPORT.md` desatualizado ("4 suítes", "12/12 resolvidos") | raiz | 📋 Recomendado |
-| 14 | 🟢 Baixo | Sem CI, sem lint/format configurado; `.vscode/settings.json` só tem preferências de extensão | raiz | 📋 Recomendado |
-| 15 | 🟢 Baixo | `legacyHash` (hash trivialmente reversível) continua aceito indefinidamente | `server/security.js` | 📋 Recomendado |
-| 16 | 🟢 Baixo | `analyze()` aloca matrizes O(N²) de objetos a cada chamada; `index.html` monolítico de 32 KB | `statisticalAnalyzer.js`, `index.html` | 📋 Recomendado |
+| 12 | 🟡 Médio | Constantes do `AntiCrowdEngine` ("~65% das apostas…") sem fonte verificável | `js/engine/antiCrowdEngine.js` | ✅ Corrigido (6.8) |
+| 13 | 🟢 Baixo | `AUDIT_REPORT.md` desatualizado ("4 suítes", "12/12 resolvidos") | raiz | ✅ Corrigido (6.14) |
+| 14 | 🟢 Baixo | Sem CI, sem lint/format configurado; `.vscode/settings.json` só tem preferências de extensão | raiz | 🟡 CI pronto; lint pendente |
+| 15 | 🟢 Baixo | `legacyHash` (hash trivialmente reversível) continua aceito indefinidamente | `server/security.js` | 📋 Pendente (6.12) |
+| 16 | 🟢 Baixo | `analyze()` aloca matrizes O(N²) de objetos a cada chamada; `index.html` monolítico de 32 KB | `statisticalAnalyzer.js`, `index.html` | ✅ Corrigido (6.10 e 6.11) |
 
 ---
 
@@ -477,7 +478,31 @@ texto que precisa existir sempre.
 
 **6.13 CSRF/Origin.** `SameSite=Lax` já bloqueia POST cross-site; adicionar verificação de `Origin`/`Sec-Fetch-Site` nos endpoints de mutação fecha a borda.
 
-**6.14 Atualizar a documentação.** `AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 26 arquivos de teste e 382 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
+**6.14 Atualizar a documentação — ✅ implementado.**
+`AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 27 arquivos de teste e 389 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
+
+*Implementado:* o `AUDIT_REPORT.md` foi **mantido como registro histórico e corrigido**
+(ver [DOCUMENTACAO.md](./DOCUMENTACAO.md)). Três decisões:
+
+- os números de teste da seção 3 ficaram rotulados como **saída da época** (4 casos), com o
+  comando atual ao lado — apagar o registro histórico seria perder a evidência de que uma
+  suíte de 4 casos sustentava afirmações grandes;
+- as duas frases da seção 4 que **não se sustentaram** ("o modelo adaptativo apresentou o
+  melhor alinhamento multifatorial" e "melhoria observada") foram substituídas pelas
+  medições que existem hoje: sem ponderação +0,95% (p = 0,194), com ponderação −0,98%
+  (p = 0,799), teste de permutação z = −0,19 (p = 0,59). Afirmar vantagem inexistente é pior
+  que um relatório velho;
+- este documento perdeu os números fixos que envelheciam: o cabeçalho agora traz um marcador
+  (`<!-- suite: arquivos=N testes=M -->`) e `tests/docs.test.js` **falha na CI** se os
+  documentos divergirem dos testes reais, se um link interno apontar para arquivo inexistente
+  ou se um documento prometer previsão de dezenas. A verificação cara (rodar a suíte e
+  comparar o total) entrou como passo próprio do job de guardas com `DOCS_VERIFY_SUITE=1`;
+  localmente ela é pulada para não dobrar o tempo de `npm test`.
+- de quebra, a CI passou a rodar `npm run check:html` — se alguém editar o `index.html` em
+  vez dos templates, a divergência aparece no mesmo job.
+
+A seção 11 registra o estado de cada item do roadmap e é a fonte única da verdade sobre
+quantos testes existem.
 
 ---
 
@@ -505,7 +530,7 @@ O valor real deste software é o que ele já faz bem: **demonstrar com rigor que
 
 ```bash
 npm install
-npm test            # 151 testes, incluindo tests/precisionAudit.test.js (38 novos)
+npm test            # 389 testes em 27 arquivos, incluindo tests/precisionAudit.test.js (38)
 npm run build       # build de produção
 ```
 
@@ -534,7 +559,7 @@ O relatório anterior declarava 12 problemas corrigidos e "4 suítes passando". 
 
 ---
 
-**Resumo final:** 11 defeitos corrigidos, 151 testes verdes, build limpo. O projeto ganhou precisão não por adicionar complexidade, mas por remover três fontes de erro: um cálculo errado, testes que não testavam nada, e dados que não eram dados.
+**Resumo final:** 11 defeitos corrigidos nesta auditoria (a suíte tinha então 151 testes), build limpo. Números atuais na seção 11. O projeto ganhou precisão não por adicionar complexidade, mas por remover três fontes de erro: um cálculo errado, testes que não testavam nada, e dados que não eram dados.
 
 ---
 
@@ -573,3 +598,37 @@ superior da união (`m × p`), que é válido; o fator de ortogonalidade foi rem
 
 Este achado reforça a conclusão da seção 7: a ameaça à precisão não era a matemática de base, e sim os
 **multiplicadores inventados** que faziam um número honesto parecer melhor do que é.
+
+---
+
+## 11. Estado atual do roadmap
+
+Esta seção é a **fonte única da verdade** sobre o que já foi feito. Ela é
+verificada por `tests/docs.test.js`: o marcador do cabeçalho
+(`<!-- suite: arquivos=N testes=M -->`) precisa bater com a suíte real, e os
+links internos precisam apontar para arquivos que existem.
+
+| Item | Assunto | Status | Onde está documentado |
+| :-- | :--- | :--- | :--- |
+| 6.1 | Multiplicidade da seleção de janelas | ✅ | seção 6 / `BacktestEngine` |
+| 6.2 | Inferência sequencial (always-valid) | ✅ | [INFERENCIA_SEQUENCIAL.md](./INFERENCIA_SEQUENCIAL.md) |
+| 6.3 | Encolhimento bayesiano das frequências | ✅ | [FREQUENCIAS.md](./FREQUENCIAS.md) |
+| 6.4 | Peso proporcional à evidência | ✅ | seção 6 |
+| 6.5 | Fim do preenchimento sintético | ✅ | seção 6 |
+| 6.6 | Teste de permutação do pipeline | ✅ | seção 6 |
+| 6.7 | Fonte oficial dos dados | ✅ | seção 6 |
+| 6.8 | Anti-Crowd: direção × magnitude | ✅ | seção 6 |
+| 6.9 | CI + lint | 🟡 CI completo; **ESLint pendente** | `.github/workflows/ci.yml` |
+| 6.10 | Memória da análise | ✅ | [DESEMPENHO_ANALISE.md](./DESEMPENHO_ANALISE.md) |
+| 6.11 | Interface decomposta e testada | ✅ | [INTERFACE.md](./INTERFACE.md) |
+| 6.12 | Encerrar o `legacyHash` | 📋 pendente | seção 6 |
+| 6.13 | CSRF / Origin | 📋 pendente | seção 6 |
+| 6.14 | Documentação atualizada | ✅ | [DOCUMENTACAO.md](./DOCUMENTACAO.md) |
+| — | Módulo de projeções futuras | ✅ | [PROJECOES.md](./PROJECOES.md) |
+
+**Contagem atual:** 27 arquivos de teste, 389 testes, `npm audit` 0, build
+limpo, CI com 6 verificações.
+
+O que **continua em aberto**, sem enfeite: ESLint/formatador no CI, o hash legado
+de senha (6.12), a proteção CSRF/Origin (6.13) e a calibração brasileira do
+Anti-Crowd — que depende de dado público que não existe, não de código.
