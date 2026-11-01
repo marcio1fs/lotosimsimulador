@@ -8,8 +8,10 @@
   },
   "main": "index.html",
   "scripts": {
-    "dev": "vite --host",
-    "build": "vite build",
+    "dev": "node scripts/build-html.mjs && vite --host",
+    "build": "node scripts/build-html.mjs && vite build",
+    "build:html": "node scripts/build-html.mjs",
+    "check:html": "node scripts/build-html.mjs --check",
     "preview": "vite preview",
     "test": "node --test tests/*.test.js"
   },
