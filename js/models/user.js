@@ -1,5 +1,16 @@
 import { Database } from '../db/database.js';
 import { isLegacyHash, legacyDeadlineReached, LEGACY_HASH_SUNSET_LABEL } from '../../shared/passwordPolicy.js';
+import { passwordProblem } from '../../shared/accountRecovery.js';
+
+/**
+ * Modo offline não tem como recuperar senha, e o texto diz isso em vez de deixar
+ * o usuário tentando. Sem servidor não existe e-mail: a senha (PBKDF2) está no
+ * IndexedDB daquele navegador e ninguém — nem o app — pode provar que o endereço
+ * digitado pertence a quem está pedindo.
+ */
+const OFFLINE_RECOVERY_MESSAGE =
+    'Recuperação por e-mail só funciona com a conta na nuvem. No modo offline a senha fica ' +
+    'guardada neste navegador e não há como confirmar seu e-mail.';
 
 async function authFetch(path, method = 'POST', body = undefined) {
     const opts = { method, credentials: 'include', headers: {} };
@@ -277,6 +288,48 @@ export class UserModel {
         if (typeof localStorage !== 'undefined') localStorage.removeItem('loteria_session_token');
         if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('loteria_session_token');
         return { success: true };
+    }
+
+    // ------------------------------------------------ recuperação de conta
+    /**
+     * Pede o link de redefinição.
+     *
+     * A mensagem de sucesso é a mesma que o servidor devolve para qualquer
+     * endereço — o cliente não tenta adivinhar se a conta existe, porque quem
+     * decide isso é o servidor, e ele decidiu não contar.
+     */
+    static async requestPasswordReset(email) {
+        if (!Database.useApi) return { success: false, offline: true, error: OFFLINE_RECOVERY_MESSAGE };
+        const { ok, data } = await authFetch('/api/auth/forgot-password', 'POST', { email });
+        return ok
+            ? { success: true, message: data.message }
+            : { success: false, status: data.status, error: data.error || 'Não foi possível enviar o link' };
+    }
+
+    static async resetPassword(token, password) {
+        if (!Database.useApi) return { success: false, offline: true, error: OFFLINE_RECOVERY_MESSAGE };
+        const problem = passwordProblem(password);
+        if (problem) return { success: false, error: problem, field: 'newPassword' };
+        const { ok, data } = await authFetch('/api/auth/reset-password', 'POST', { token, password });
+        return ok
+            ? { success: true, message: data.message }
+            : { success: false, error: data.error || 'Link inválido ou expirado', field: 'newPassword' };
+    }
+
+    static async verifyEmail(token) {
+        if (!Database.useApi) return { success: false, offline: true, error: OFFLINE_RECOVERY_MESSAGE };
+        const { ok, data } = await authFetch('/api/auth/verify-email', 'POST', { token });
+        return ok
+            ? { success: true, message: data.message }
+            : { success: false, error: data.error || 'Link inválido ou expirado' };
+    }
+
+    static async resendVerification() {
+        if (!Database.useApi) return { success: false, offline: true, error: OFFLINE_RECOVERY_MESSAGE };
+        const { ok, data } = await authFetch('/api/auth/resend-verification', 'POST', {});
+        return ok
+            ? { success: true, alreadyVerified: Boolean(data.alreadyVerified) }
+            : { success: false, error: data.error || 'Não foi possível reenviar o e-mail' };
     }
 
     static async getStats(userId) {

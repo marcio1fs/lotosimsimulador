@@ -1817,3 +1817,89 @@ body {
     color: var(--accent-purple);
     font-weight: 600;
 }
+
+/* ======================================================================
+   RECUPERAÇÃO DE CONTA (redefinição de senha + verificação de e-mail)
+   ====================================================================== */
+
+.auth-link-row {
+    display: flex;
+    justify-content: flex-end;
+    margin: 0.25rem 0 0.75rem;
+}
+
+.auth-link-row a {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    text-decoration: none;
+}
+
+.auth-link-row a:hover {
+    color: var(--accent-gold, #f0c040);
+    text-decoration: underline;
+}
+
+/* Explicação antes do formulário: diz o que vai acontecer, inclusive o que a
+   resposta NÃO revela. Texto curto de propósito. */
+.form-hint {
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+}
+
+/* Resposta do servidor (não é erro de campo): tom informativo, não vermelho. */
+.form-notice {
+    display: none;
+    margin-top: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    background: rgba(80, 200, 140, 0.12);
+    border: 1px solid rgba(80, 200, 140, 0.35);
+    color: #9be8c4;
+}
+
+.form-notice.show {
+    display: block;
+}
+
+.form-notice.danger {
+    background: rgba(248, 113, 113, 0.12);
+    border-color: rgba(248, 113, 113, 0.35);
+    color: #fca5a5;
+}
+
+.verify-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    padding: 0.5rem 1rem;
+    background: rgba(240, 192, 64, 0.12);
+    border-bottom: 1px solid rgba(240, 192, 64, 0.3);
+    font-size: 0.78rem;
+    color: var(--text-primary, #e8e8e8);
+}
+
+.verify-banner-btn {
+    padding: 0.3rem 0.7rem;
+    border-radius: 6px;
+    border: 1px solid rgba(240, 192, 64, 0.5);
+    background: transparent;
+    color: var(--accent-gold, #f0c040);
+    font-size: 0.75rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.verify-banner-btn:hover:not(:disabled) {
+    background: rgba(240, 192, 64, 0.18);
+}
+
+.verify-banner-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
