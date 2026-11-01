@@ -388,7 +388,12 @@ export class AppView {
                     <span class="game-number">${cfg.icon} Jogo #${i + 1}</span>
                     <div style="display:flex; gap:0.30rem; align-items:center; flex-wrap:wrap;">
                         <span class="badge badge-green" style="font-size:0.60rem;" title="Índice de Qualidade na Curva de Gauss">Gauss: ${gaussianIdx}%</span>
-                        <span class="badge badge-gold" style="font-size:0.60rem;" title="Proteção Anti-Rateio (Teoria dos Jogos)">EV: ${evMult}x</span>
+                        <span
+                            class="badge badge-gold"
+                            style="font-size:0.60rem;"
+                            title="Proteção Anti-Rateio (Teoria dos Jogos). Escala ORDINAL: serve para comparar bilhetes entre si, não é promessa de valor esperado. O nível não é calibrado — a análise de sensibilidade move este multiplicador entre 0,5x e 2,1x."
+                            >EV ≈ ${evMult}x</span
+                        >
                         <span class="game-prob badge-purple">Score: ${modelScore}/100</span>
                     </div>
                 </div>

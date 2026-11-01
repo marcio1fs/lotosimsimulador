@@ -2,8 +2,8 @@
 
 **Data:** 01/11/2026
 **Escopo:** 61 arquivos · ~8.700 linhas de JavaScript · 12 módulos de motor estatístico · API serverless (Neon) · interface SPA
-**Suíte de testes:** 113 → **436 testes em 30 arquivos** (100% passando), `npm run build` OK
-<!-- suite: arquivos=30 testes=436 -->
+**Suíte de testes:** 113 → **458 testes em 31 arquivos** (100% passando), `npm run build` OK
+<!-- suite: arquivos=31 testes=458 -->
 **Pergunta que guiou a auditoria:** *onde este projeto perde precisão — e como recuperá-la?*
 
 ---
@@ -394,6 +394,29 @@ Prêmio Sozinho (Anti-Crowd): prior de literatura —
 19 testes novos, incluindo um que impede um prior de `basis: 'literatura'` de existir sem
 fonte citável.
 
+**Fechamento do item (01/11/2026) — [ANTICROWD_CALIBRACAO.md](./ANTICROWD_CALIBRACAO.md).**
+A pergunta que sobrou foi "dá para calibrar com dado brasileiro?". A resposta é não, e o
+caminho alternativo que parecia existir também não:
+
+- a Caixa publica dezenas sorteadas, ganhadores e arrecadação por faixa, **não** apostas por
+  dezena — e a tabela `lottery_results` do projeto nem guarda ganhadores ou arrecadação;
+- usar ganhadores da faixa principal como proxy não tem denominador (quantas apostas por
+  concurso) e a faixa principal tem 0 ou 1 ganhador: o estimador teria variância de proporção
+  com `p ≈ 10⁻⁸`;
+- "quantas vezes saiu entre os ganhadores" mede o sorteio (uniforme por construção), não a
+  aposta — inferir a causa pelo resultado é exatamente o erro que esta auditoria corrige.
+
+No lugar, mediu-se o que se pode medir sem o dado: **a dependência do nível**. Com ±50% nos
+priors não verificados, a ordem das dezenas fica estável (ρ mediano 0,988 na Mega e 0,996 na
+Lotofácil), mas a **nota do bilhete e o multiplicador de EV não ficam**: o mesmo bilhete da
+Mega-Sena, com `EV ≈ 1,58x`, varia entre `0,50x` e `2,07x`, e a faixa de risco troca em 6,3%
+dos bilhetes. Por isso o badge passou a dizer **`EV ≈ Nx`**, com aviso de escala ordinal e da
+banda no `title` — o número de duas casas decimais era precisão fabricada. A contrapartida
+positiva: a ingestão (`parsePopularityCsv` + `deriveWeightsFromCounts`, com Wilson 95% por
+dezena e encolhimento λ) está pronta e testada; `npm run calibrar -- --file tabela.csv`
+converte a tabela em pesos no dia em que ela existir. 22 testes novos em
+`tests/crowdCalibration.test.js`.
+
 ### Prioridade média — engenharia
 
 **6.9 CI + lint — ✅ implementado.** Não havia workflow. Um `.github/workflows/ci.yml` de 15 linhas (`npm ci`, `npm test`, `npm run build`) impede regressões como o bug de intervalo, além de ativar Dependabot. Adicionar ESLint + Prettier (o código é consistente, a adoção tende a ser indolor).
@@ -582,7 +605,7 @@ falsa, sem tocar no banco. A defesa em camadas está descrita em
 
 
 **6.14 Atualizar a documentação — ✅ implementado.**
-`AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 30 arquivos de teste e 436 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
+`AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 31 arquivos de teste e 458 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
 
 *Implementado:* o `AUDIT_REPORT.md` foi **mantido como registro histórico e corrigido**
 (ver [DOCUMENTACAO.md](./DOCUMENTACAO.md)). Três decisões:
@@ -633,7 +656,7 @@ O valor real deste software é o que ele já faz bem: **demonstrar com rigor que
 
 ```bash
 npm install
-npm test            # 436 testes em 30 arquivos, incluindo tests/precisionAudit.test.js (38)
+npm test            # 458 testes em 31 arquivos, incluindo tests/precisionAudit.test.js (38)
 npm run build       # build de produção
 ```
 
@@ -720,7 +743,7 @@ links internos precisam apontar para arquivos que existem.
 | 6.5 | Fim do preenchimento sintético | ✅ | seção 6 |
 | 6.6 | Teste de permutação do pipeline | ✅ | seção 6 |
 | 6.7 | Fonte oficial dos dados | ✅ | seção 6 |
-| 6.8 | Anti-Crowd: direção × magnitude | ✅ | seção 6 |
+| 6.8 | Anti-Crowd: direção × magnitude | ✅ | seção 6 / [ANTICROWD_CALIBRACAO.md](./ANTICROWD_CALIBRACAO.md) |
 | 6.9 | CI + lint | ✅ | `.github/workflows/ci.yml` |
 | 6.10 | Memória da análise | ✅ | [DESEMPENHO_ANALISE.md](./DESEMPENHO_ANALISE.md) |
 | 6.11 | Interface decomposta e testada | ✅ | [INTERFACE.md](./INTERFACE.md) |
@@ -729,11 +752,18 @@ links internos precisam apontar para arquivos que existem.
 | 6.14 | Documentação atualizada | ✅ | [DOCUMENTACAO.md](./DOCUMENTACAO.md) |
 | — | Módulo de projeções futuras | ✅ | [PROJECOES.md](./PROJECOES.md) |
 
-**Contagem atual:** 30 arquivos de teste, 436 testes, `npm audit` 0, build
+**Contagem atual:** 31 arquivos de teste, 458 testes, `npm audit` 0, build
 limpo, CI com 6 verificações.
 
-O que **continua em aberto**, sem enfeite: a calibração brasileira do Anti-Crowd —
-que depende de dado público que não existe, não de código. O hash legado tem prazo
-correndo: em **31/01/2027** o verificador precisa sair do código, e há um teste
-que falha nesse dia se ele ainda estiver lá. Nenhum item do roadmap de 6.1 a 6.14
-segue em aberto.
+A calibração brasileira do Anti-Crowd **foi encerrada com veredito** em
+[ANTICROWD_CALIBRACAO.md](./ANTICROWD_CALIBRACAO.md): não existe dado público de
+apostas por dezena no Brasil, o proxy por ganhadores/arrecadação não é viável
+(falta denominador e a faixa principal tem 0–1 ganhador), e o que dá para medir sem
+o dado — sensibilidade da ordem e do EV aos priors — foi medido: a ordem é robusta
+(ρ mediano 0,99), o **nível do multiplicador de EV não** (0,5x a 2,1x para o mesmo
+bilhete). Por isso o EV passou a aparecer como `EV ≈ Nx`, ordinal. O pipeline de
+ingestão (`npm run calibrar -- --file`) fica pronto para quando a tabela existir.
+
+O único prazo correndo é o do hash legado: em **31/01/2027** o verificador precisa
+sair do código, e há um teste que falha nesse dia se ele ainda estiver lá. Nenhum
+item do roadmap de 6.1 a 6.14 segue em aberto.
