@@ -8,6 +8,7 @@ import { AutomationModel } from './models/automation.js';
 import { AuthView } from './views/auth.js';
 import { AppView } from './views/app.js';
 import { StatisticsView } from './views/statistics.js';
+import { ProjectionsView } from './views/projections.js';
 import { StatisticalAnalyzer } from './engine/statisticalAnalyzer.js';
 
 let currentUser = null;
@@ -210,7 +211,7 @@ class AppController {
         document.querySelectorAll('.tab-sub-btn').forEach(btn => btn.addEventListener('click', () => {
             document.querySelectorAll('.tab-sub-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            ['frequency', 'patterns', 'history'].forEach(tab => {
+            ['frequency', 'patterns', 'projections', 'history'].forEach(tab => {
                 document.getElementById(`stat-${tab}`).style.display = 'none';
             });
             document.getElementById(`stat-${btn.dataset.tab}`).style.display = 'block';
@@ -537,7 +538,22 @@ class AppController {
         if (!rd || !rd.analysis) {
             StatisticsView.showStats(false);
             StatisticsView.showPatterns(false);
+            ProjectionsView.showEmpty('Selecione uma modalidade e carregue o histórico para projetar.');
             return;
+        }
+
+        // Painel de projeções: usa o histórico real (para a taxa de acúmulo) e os
+        // jogos gerados (para a cobertura exata da carteira).
+        try {
+            ProjectionsView.render({
+                config: LotteryModel.CONFIG[type],
+                games: appState.generatedGames || [],
+                history: rd.data || [],
+                draws: 52
+            });
+        } catch (e) {
+            console.warn('Falha ao renderizar projeções:', e);
+            ProjectionsView.showEmpty('Não foi possível calcular as projeções.');
         }
 
         StatisticsView.showStats(true);
@@ -586,7 +602,8 @@ class AppController {
         content += `Data: ${new Date().toLocaleString('pt-BR')}\n`;
         content += `Estratégia: ${appState.currentStrategy.toUpperCase()}\n`;
         if (proj) {
-            content += `Projeção no Núcleo Gaussiano: ${proj.gaussianCorePortfolioOdds} (Poda de -${proj.spacePrunedPercentage})\n`;
+            content += `Premio maximo da carteira (exato): ${proj.portfolioDirectOdds}\n`;
+            content += `Observacao: a poda de ${proj.spacePrunedPercentage} reduz o espaco gerado, nao a probabilidade de acerto.\n`;
             if (proj.financial) {
                 content += `Custo Oficial da Carteira: ${proj.financial.totalInvestmentFormatted} (${proj.ticketCount} jogos x ${proj.financial.unitPriceFormatted})\n`;
             }
@@ -673,7 +690,7 @@ class AppController {
         </div>
     </div>
     <div class="summary-box">
-        ${proj ? `<div><strong>Projeção Combinatória:</strong> 1 Jogo: ${proj.rawSingleOdds} | Carteira Direta: ${proj.portfolioDirectOdds} | <strong>Núcleo Gaussiano (-${proj.spacePrunedPercentage}): ${proj.gaussianCorePortfolioOdds}</strong> | Chance de Prêmio (>= ${proj.minPrizeTier} pts): ${proj.anyPrizePortfolioOdds} (${proj.anyPrizePortfolioProbability}%)</div>` : ''}
+        ${proj ? `<div><strong>Projeção Combinatória:</strong> 1 Jogo: ${proj.rawSingleOdds} | Carteira (${proj.ticketCount} jogos distintos): <strong>${proj.portfolioDirectOdds}</strong> | P(≥ 1 prêmio ≥ ${proj.minPrizeTier} pts): ≤ ${proj.anyPrizePortfolioOdds} (${proj.anyPrizePortfolioProbability}%) <span style="color:#94a3b8;">— poda de ${proj.spacePrunedPercentage} não altera odds</span></div>` : ''}
         ${wheelMeta ? `<div><strong>Matriz de Fechamento (${wheelMeta.elitePoolSize} dezenas):</strong> [${wheelMeta.elitePool.map(n => String(n).padStart(2, '0')).join(', ')}] — Cobertura de Pares: ${wheelMeta.pairCoverageGuaranteePct}%</div>` : ''}
     </div>
     <div class="grid-wrapper">${cardsHtml}</div>

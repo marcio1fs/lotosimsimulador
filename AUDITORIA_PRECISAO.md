@@ -298,3 +298,41 @@ O relatório anterior declarava 12 problemas corrigidos e "4 suítes passando". 
 ---
 
 **Resumo final:** 11 defeitos corrigidos, 151 testes verdes, build limpo. O projeto ganhou precisão não por adicionar complexidade, mas por remover três fontes de erro: um cálculo errado, testes que não testavam nada, e dados que não eram dados.
+
+---
+
+## 10. Adendo — Módulo de Projeções Futuras (v1.3)
+
+Foi adicionado o `FutureProjectionEngine` (`js/engine/futureProjectionEngine.js`) com painel próprio na interface
+(📊 Estatísticas → 🔭 Projeções) e 42 testes. Documentação completa em **[PROJECOES.md](./PROJECOES.md)**.
+
+**O que ele projeta:** tempo até 50/90/99% de chance (geométrica exata), curva de sobrevivência, espera por dezena,
+custo determinístico, retorno esperado por faixa oficial, taxa de acúmulo com Wilson 95% e cobertura de carteira
+(hipergeométrica exata + limites de Bonferroni + Monte Carlo determinístico com IC quando o intervalo é largo).
+
+**O que ele NÃO faz:** prever dezenas. Em sorteio idôneo isso é impossível, e o relatório anterior já havia
+estabelecido isso do ponto de vista estatístico. O módulo existe porque "projetar o futuro" em loteria só tem
+sentido como projeção do *processo*.
+
+### 10.1 Novo achado crítico, encontrado ao construir este módulo
+
+`ProbabilityEngine.calculatePortfolioProjection` exibia **"Ganho de Eficiência Combinatória: 5x"** e uma
+"Projeção no Núcleo Gaussiano" com odds melhores que a carteira direta. A conta era:
+
+```js
+const effectiveSpace = Math.round((1 / p) * retentionRatio);
+const coreProb = Math.min(1, tickets / effectiveSpace);          // poda tratada como ganho de odds
+const orthogonalityFactor = 0.65 + 0.35 * (diversificationScore / 100); // constante inventada
+const portfolioAnyPrizeProb = 1 - Math.pow(1 - pAny, tickets * orthogonalityFactor);
+```
+
+**Isto é falso.** Descartar combinações não altera a probabilidade de nenhuma combinação — o sorteio não sabe
+o que o aplicativo descartou. A poda reduz o espaço *pesquisado*, não a chance de acerto.
+
+**Corrigido:** `gaussianCorePortfolioOdds` agora é idêntico a `portfolioDirectOdds`, com
+`gaussianCoreOddsAreUnchanged: true` e texto explicativo; a probabilidade de "qualquer prêmio" usa o limite
+superior da união (`m × p`), que é válido; o fator de ortogonalidade foi removido. Rótulos em `app.js`,
+`statistics.js` e nos exports foram reescritos. Teste de regressão impede a reintrodução.
+
+Este achado reforça a conclusão da seção 7: a ameaça à precisão não era a matemática de base, e sim os
+**multiplicadores inventados** que faziam um número honesto parecer melhor do que é.

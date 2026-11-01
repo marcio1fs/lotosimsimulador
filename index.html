@@ -336,6 +336,7 @@
             <div class="tab-sub">
                 <button class="tab-sub-btn active" data-tab="frequency">📈 Frequência</button>
                 <button class="tab-sub-btn" data-tab="patterns">🧩 Padrões</button>
+                <button class="tab-sub-btn" data-tab="projections">🔭 Projeções</button>
                 <button class="tab-sub-btn" data-tab="history">📋 Histórico</button>
             </div>
 
@@ -407,6 +408,14 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <div id="stat-projections" style="display:none;">
+                <div id="projectionsEmpty" class="empty-state">
+                    <div class="empty-state-icon">🔭</div>
+                    <div class="empty-state-text">Selecione uma modalidade e carregue o histórico para projetar</div>
+                </div>
+                <div id="projectionsContent" style="display:none;"></div>
             </div>
 
             <div id="stat-history" style="display:none;">

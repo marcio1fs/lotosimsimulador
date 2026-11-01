@@ -243,9 +243,9 @@ export class AppView {
             <div style="grid-column:1/-1; padding:1rem 1.2rem; border-radius:12px; background:linear-gradient(135deg, rgba(16,185,129,0.12), rgba(59,130,246,0.10)); border:1px solid rgba(16,185,129,0.35); margin-bottom:0.5rem;">
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem;">
                     <div style="font-size:0.9rem; font-weight:700; color:var(--text-main);">
-                        🚀 Projeção Combinatória da Carteira (${portfolioProj.ticketCount} Jogos Ortogonais + Poda Gaussiana + Markov)
+                        🚀 Projeção Combinatória da Carteira (${portfolioProj.ticketCount} jogos distintos)
                     </div>
-                    <span class="badge badge-green" style="font-size:0.72rem;">Ganho de Eficiência Combinatória: ${portfolioProj.totalFactorGain}</span>
+                    <span class="badge badge-blue" style="font-size:0.72rem;">Poda reduz o espaço gerado — não as odds</span>
                 </div>
                 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(175px, 1fr)); gap:0.75rem; font-size:0.76rem;">
                     <div style="background:rgba(0,0,0,0.25); padding:0.6rem 0.75rem; border-radius:8px;">
@@ -257,12 +257,12 @@ export class AppView {
                         <div style="font-weight:700; font-size:0.88rem; color:#60a5fa;">${portfolioProj.portfolioDirectOdds}</div>
                     </div>
                     <div style="background:rgba(0,0,0,0.25); padding:0.6rem 0.75rem; border-radius:8px; border:1px solid rgba(16,185,129,0.3);">
-                        <div style="color:var(--text-muted); font-size:0.68rem;">Projeção no Núcleo Gaussiano (-${portfolioProj.spacePrunedPercentage} caudas)</div>
-                        <div style="font-weight:800; font-size:0.92rem; color:var(--accent-green);">${portfolioProj.gaussianCorePortfolioOdds}</div>
+                        <div style="color:var(--text-muted); font-size:0.68rem;">Prêmio Máximo da Carteira (exato)</div>
+                        <div style="font-weight:800; font-size:0.92rem; color:var(--accent-green);">${portfolioProj.portfolioDirectOdds}</div>
                     </div>
                     <div style="background:rgba(0,0,0,0.25); padding:0.6rem 0.75rem; border-radius:8px;">
-                        <div style="color:var(--text-muted); font-size:0.68rem;">Chance de Prêmio (>= ${portfolioProj.minPrizeTier} pts na carteira)</div>
-                        <div style="font-weight:700; font-size:0.88rem; color:#fbbf24;">${portfolioProj.anyPrizePortfolioOdds} (${portfolioProj.anyPrizePortfolioProbability}%)</div>
+                        <div style="color:var(--text-muted); font-size:0.68rem;">P(≥ 1 prêmio ≥ ${portfolioProj.minPrizeTier} pts) — limite superior</div>
+                        <div style="font-weight:700; font-size:0.88rem; color:#fbbf24;">≤ ${portfolioProj.anyPrizePortfolioOdds} (${portfolioProj.anyPrizePortfolioProbability}%)</div>
                     </div>
                 </div>
                 ${wheelMeta ? `
@@ -355,8 +355,8 @@ export class AppView {
 
                 ${projection ? `
                 <div style="margin-top:0.5rem; font-size:0.7rem; color:var(--text-muted); background:rgba(59,130,246,0.06); padding:0.45rem 0.6rem; border-radius:6px; border:1px solid rgba(59,130,246,0.18);">
-                    <span style="font-weight:600;">Projeção (Espaço Filtrado):</span>
-                    média ${projection.expectedHits} acertos · IC 95%: ${projection.predictionInterval.lower}-${projection.predictionInterval.upper} · Núcleo Gaussiano: <strong>${projection.portfolioProjection?.gaussianCorePortfolioOdds || projection.fullHitOdds}</strong>
+                    <span style="font-weight:600;">Projeção do próximo sorteio:</span>
+                    média ${projection.expectedHits} acertos · IC 95%: ${projection.predictionInterval.lower}-${projection.predictionInterval.upper} · prêmio máximo: <strong>${projection.fullHitOdds || projection.portfolioProjection?.portfolioDirectOdds}</strong> (idêntico a qualquer outro jogo)
                 </div>
                 ` : ''}
 
