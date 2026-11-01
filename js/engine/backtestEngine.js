@@ -47,6 +47,12 @@ export class BacktestEngine {
         const baseSeed = options.seed ?? 123456;
         const prng = new SeededRandom(baseSeed);
 
+        // REDUÇÃO DE VARIÂNCIA: uma única aposta aleatória por concurso injeta ruído
+        // de ~0.7 acertos no comparativo, o que mascara qualquer efeito real. Média de
+        // `baselineSimsPerDraw` apostas reduz o desvio-padrão da baseline por sqrt(k).
+        const baselineSimsPerDraw = Math.max(1, Math.min(200, Number(options.baselineSimsPerDraw) || 12));
+        let leakageViolations = 0;
+
         // Executa o teste cego concurso por concurso
         for (let i = startIndex; i < totalDraws; i++) {
             // DATA LEAKAGE PREVENTION: usar rigorosamente apenas concursos anteriores a 'i'
@@ -54,6 +60,12 @@ export class BacktestEngine {
             const historyBefore = chronological.slice(0, i).reverse();
             const actualDraw = chronological[i];
             const actualNumbers = new Set(actualDraw.dezenas ? actualDraw.dezenas.map(Number) : []);
+
+            // Verificação REAL da fronteira temporal (O(1)):
+            //  (a) o gerador recebe exatamente i concursos;
+            //  (b) o concurso mais recente entregue é o i-1 (nunca o alvo, nunca o futuro).
+            if (historyBefore.length !== i) leakageViolations++;
+            else if (i > 0 && historyBefore[0] !== chronological[i - 1]) leakageViolations++;
 
             // Gera o jogo baseado apenas no passado
             const predictedGame = generatorFn(historyBefore, config);
@@ -74,13 +86,18 @@ export class BacktestEngine {
                 hitTierBreakdown[hits] = (hitTierBreakdown[hits] || 0) + 1;
             }
             
-            // Baseline local para t-test com PRNG controlado por seed
-            const baselineGame = BaselineEngine.generateRandomGame(config, prng);
-            let bHits = 0;
-            baselineGame.forEach(n => {
-                if (actualNumbers.has(n)) bHits++;
-            });
-            baselineHitsList.push(bHits);
+            // Baseline local para o teste pareado, com PRNG controlado por seed e
+            // média de várias apostas aleatórias (redução de variância).
+            let bHitsAcc = 0;
+            for (let b = 0; b < baselineSimsPerDraw; b++) {
+                const baselineGame = BaselineEngine.generateRandomGame(config, prng);
+                let bHits = 0;
+                baselineGame.forEach(n => {
+                    if (actualNumbers.has(n)) bHits++;
+                });
+                bHitsAcc += bHits;
+            }
+            baselineHitsList.push(bHitsAcc / baselineSimsPerDraw);
         }
 
         // Estatísticas de acerto do modelo
@@ -99,6 +116,53 @@ export class BacktestEngine {
 
         // Detecção de Overfitting (Walk-Forward Split)
         const trainTestSplit = this.evaluateWalkForward(chronological, config, generatorFn, windowSize);
+
+        // ------------------------------------------------------------------
+        // Benchmark ANALÍTICO (nulo exato): compara a média de acertos do modelo
+        // com a esperança hipergeométrica de uma aposta aleatória, usando o
+        // desvio-padrão teórico (sem ruído de amostragem). É o teste mais preciso
+        // disponível para decidir se existe vantagem real.
+        // ------------------------------------------------------------------
+        const totalNumbers = config.total;
+        const pickCount = config.pick;
+        const drawnCountForNull = config.drawn || pickCount;
+        const expectedHits = (pickCount * drawnCountForNull) / totalNumbers;
+        const hypergeometricVariance = totalNumbers > 1
+            ? drawnCountForNull * (pickCount / totalNumbers) * (1 - (pickCount / totalNumbers))
+              * ((totalNumbers - drawnCountForNull) / (totalNumbers - 1))
+            : 0;
+        const theoreticalSd = Math.sqrt(Math.max(1e-12, hypergeometricVariance));
+        const theoreticalBenchmark = StatisticalInference.zTestVersusExpected(
+            hitsList, expectedHits, theoreticalSd);
+
+        // Adequação amostral: quantos concursos seriam necessários para detectar
+        // uma vantagem de 10% sobre a esperança — resposta honesta ao "por que o
+        // p-value não fecha".
+        const mdeHits = StatisticalInference.minimumDetectableEffect(
+            Math.max(2, hitsList.length), theoreticalSd, 0.05, 0.8, true);
+        const drawsFor10 = StatisticalInference.requiredSampleSize(
+            theoreticalSd, expectedHits * 0.10, 0.05, 0.8, true);
+        // "Exploratório" quando o mínimo efeito detectável é comparável ao próprio
+        // valor esperado — ou seja, o teste só enxergaria vantagens de 50%+.
+        const onlyExploratory = mdeHits === null || expectedHits <= 0
+            ? true
+            : mdeHits >= 0.5 * expectedHits;
+        const sampleAdequacy = {
+            evaluatedDraws: hitsList.length,
+            theoreticalExpectedHits: Number(expectedHits.toFixed(4)),
+            theoreticalSd: Number(theoreticalSd.toFixed(4)),
+            minimumDetectableEffectHits: mdeHits,
+            minimumDetectableEffectPercent: (mdeHits !== null && expectedHits > 0)
+                ? Number(((mdeHits / expectedHits) * 100).toFixed(1))
+                : null,
+            drawsNeededFor10PercentEdge: drawsFor10,
+            drawsNeededFor20PercentEdge: StatisticalInference.requiredSampleSize(
+                theoreticalSd, expectedHits * 0.20, 0.05, 0.8, true),
+            onlyExploratory,
+            note: onlyExploratory
+                ? `Com ${hitsList.length} concursos o teste só detecta vantagens acima de ${((mdeHits / expectedHits) * 100).toFixed(0)}% (poder 80%). Seriam necessários ~${drawsFor10} concursos para detectar 10%.`
+                : `Amostra adequada para vantagens a partir de ${((mdeHits / expectedHits) * 100).toFixed(0)}% (poder 80%). Para 10% seriam necessários ~${drawsFor10} concursos.`
+        };
 
         return {
             evaluatedDraws: hitsList.length,
@@ -121,7 +185,11 @@ export class BacktestEngine {
             tTestResult: inferenceTest,
             bootstrapResult,
             walkForward: trainTestSplit,
-            dataLeakageDetected: false
+            theoreticalBenchmark,
+            sampleAdequacy,
+            baselineSimsPerDraw,
+            dataLeakageDetected: leakageViolations > 0,
+            leakageCheck: { violations: leakageViolations, evaluatedDraws: hitsList.length }
         };
     }
 

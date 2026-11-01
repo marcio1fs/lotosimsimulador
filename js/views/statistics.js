@@ -211,6 +211,14 @@ export class StatisticsView {
         const wheel = pipeline.wheelMetadata || null;
         const objBreakdown = opt.objectiveBreakdown || {};
         const statusHtml = statusBadges[pipeline.status] || statusBadges.NOT_VALIDATED;
+        const tb = bt.theoreticalBenchmark || {};
+        const ad = bt.sampleAdequacy || {};
+        const sig = pipeline.signalSummary || {};
+        const mkv = sig.markov || {};
+        const mkvTested = mkv.testedTransitions ?? 0;
+        const markovSig = mkv.significantTransitions ?? 0;
+        const chi2 = sig.chiSquare || null;
+        const paresSig = sig.pairs?.significantPairs ?? 0;
 
         const ciText = bt.confidenceInterval && typeof bt.confidenceInterval.lower === 'number'
             ? `[${bt.confidenceInterval.lower} — ${bt.confidenceInterval.upper}] (${bt.confidenceInterval.method || 'Student-t'})`
@@ -240,7 +248,13 @@ export class StatisticsView {
                 <div>Diversification Score: <strong>${pipeline.diversificationScore || '-'} / 100</strong></div>
                 <div>Objective Score (Otimizador): <strong>${opt.bestObjectiveScore || '-'}</strong> (Perf:${objBreakdown.performance||0} OutSample:${objBreakdown.outOfSample||0} Stab:${objBreakdown.stability||0} Pen:${objBreakdown.overfitPenalty||0})</div>
                 <div>Diagnóstico de Overfitting: <strong>${bt.walkForward?.isOverfitting ? 'DETECTADO (Desconto Aplicado)' : 'NÃO DETECTADO'}</strong></div>
-                <div>Data Leakage: <strong>${bt.dataLeakageDetected ? 'DETECTADO (❌)' : 'NÃO DETECTADO (✅)'}</strong></div>
+                <div>Data Leakage: <strong>${bt.dataLeakageDetected ? 'DETECTADO (❌)' : 'NÃO DETECTADO (✅)'}</strong>${bt.leakageCheck ? ` <span style="color:var(--text-muted);">(${bt.leakageCheck.violations} violação(ões) em ${bt.leakageCheck.evaluatedDraws} concursos)</span>` : ''}</div>
+                <div>Nulo Analítico (hipergeométrico): <strong>${tb.z !== null && tb.z !== undefined ? `z=${tb.z} · p=${Number(tb.pValue).toExponential(2)} · excesso ${tb.excessPercent !== null && tb.excessPercent !== undefined ? tb.excessPercent + '%' : '-'}` : '-'}</strong></div>
+                <div>Poder Estatístico: <strong>${ad.onlyExploratory ? 'EXPLORATÓRIO' : 'ADEQUADO'} · detecta só vantagens ≥ ${ad.minimumDetectableEffectPercent || '-'}% (80% de poder)</strong></div>
+                <div>Amostra Necessária p/ Vantagem de 10%: <strong>${ad.drawsNeededFor10PercentEdge ? `~${ad.drawsNeededFor10PercentEdge} concursos` : '-'}</strong></div>
+                <div>Sinal de Markov (FDR 5%): <strong>${markovSig > 0 ? `${markovSig} transição(ões) real(is) de ${mkvTested}` : `nenhuma de ${mkvTested} testadas`}</strong></div>
+                <div>Uniformidade (χ² exato): <strong>${chi2 ? `p=${Number(chi2.pValue).toExponential(2)} · V de Cramér ${chi2.cramersV} (${chi2.effectDescriptor})` : '-'}</strong></div>
+                <div>Pares com Co-ocorrência Real (FDR 5%): <strong>${sig.pairs ? `${paresSig} par(es)` : '-'}</strong></div>
                 <div>Reprodutibilidade: <strong>APROVADA (Seed: ${pipeline.seed || 123456})</strong></div>
                 <div>Monte Carlo Simulações: <strong>${mc.iterations || 10000} iterações</strong></div>
                 <div style="margin-top:0.6rem; color:var(--text-muted); font-size:0.7rem; border-top:1px dashed rgba(255,255,255,0.1); padding-top:0.4rem;">
