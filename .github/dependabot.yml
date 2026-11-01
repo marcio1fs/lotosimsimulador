@@ -36,10 +36,18 @@
 # -----------------
 # Não mescla nada sozinho e não roda `npm audit` no lugar da CI — a verificação de
 # vulnerabilidades de alto risco continua em `.github/workflows/ci.yml`
-# (`npm audit --audit-level=high`). Também não cobre as GitHub Actions usadas em
-# `.github/workflows/`: para isso seria preciso um segundo bloco
-# (`package-ecosystem: github-actions`), que não está aqui de propósito — as
-# actions estão presas em `@v4` e o bump é decisão consciente, não automática.
+# (`npm audit --audit-level=high`). Também não faz rollback: PR de dependência que
+# passa na CI e quebra em produção continua sendo decisão de quem mescla.
+#
+# GITHUB ACTIONS
+# --------------
+# O segundo bloco cobre as actions usadas em `.github/workflows/` (`checkout`,
+# `setup-node`, `cache`). Elas estão presas em tags como `@v4`, e é justamente por
+# isso que o bump merece atenção: `@v4` recebe correção sozinho, mas `@v5` muda
+# runtime e pode exigir Node novo. Então vale a mesma regra do npm — minor/patch
+# agrupados, major em PR individual. Sem `cooldown` declarado aqui de propósito: o
+# padrão da plataforma (3 dias) já cobre a janela em que uma tag recém-publicada
+# ainda está sob suspeita, e ação comprometida costuma ser detectada em horas.
 
 version: 2
 
@@ -72,3 +80,23 @@ updates:
         applies-to: security-updates
         patterns:
           - '*'
+
+  # Actions de `.github/workflows`: major (v4 → v5) em PR próprio, minor/patch juntos.
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: 'ci(deps)'
+    labels:
+      - dependencies
+    groups:
+      actions-minor-e-patch:
+        applies-to: version-updates
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch

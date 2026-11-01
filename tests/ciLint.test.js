@@ -139,6 +139,22 @@ describe('Dependabot — configuração versionada', () => {
         return bloco;
     };
 
+    /** Blocos `- package-ecosystem: X`, com as linhas de cada um (sem o marcador de lista). */
+    const ecossistemas = texto => {
+        const blocos = [];
+        let atual = null;
+        for (const linha of texto.split('\n')) {
+            const inicio = /^\s*-\s*package-ecosystem:\s*(\S+)/.exec(linha);
+            if (inicio) {
+                atual = { nome: inicio[1], linhas: [] };
+                blocos.push(atual);
+                continue;
+            }
+            if (atual) atual.linhas.push(linha.trim().replace(/^-\s+/, ''));
+        }
+        return blocos;
+    };
+
     it('existe, é versionado e cobre npm na raiz com janela semanal', async () => {
         const config = await read('.github/dependabot.yml');
         assert.match(config, /^version:\s*2\s*$/m, 'o dependabot.yml precisa declarar version: 2');
@@ -179,6 +195,25 @@ describe('Dependabot — configuração versionada', () => {
         assert.ok(
             cooldown.length > 0,
             'o cooldown contra versão recém-publicada (supply chain) precisa estar declarado'
+        );
+    });
+
+    it('cobre também as GitHub Actions, com major em PR separado', async () => {
+        const config = await read('.github/dependabot.yml');
+        const bloco = ecossistemas(config).find(item => item.nome === 'github-actions');
+        assert.ok(bloco, 'falta o bloco `package-ecosystem: github-actions`');
+
+        const linhas = bloco.linhas;
+        assert.ok(linhas.includes("directory: '/'"), 'as actions vivem em .github/workflows (raiz)');
+        assert.ok(linhas.includes('interval: weekly'), 'a janela acompanha a do npm');
+
+        // Mesma regra do npm: `v4` recebe correção sozinho, `v5` muda runtime e
+        // precisa de leitura — por isso major fica fora do grupo.
+        assert.ok(linhas.includes('minor') && linhas.includes('patch'), 'o grupo cobre minor e patch');
+        assert.ok(!linhas.includes('major'), 'major de action não pode entrar no grupo');
+        assert.ok(
+            linhas.some(linha => linha.startsWith('applies-to: version-updates')),
+            'o grupo é de atualização de versão'
         );
     });
 });
