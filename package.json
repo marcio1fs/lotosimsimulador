@@ -43,9 +43,9 @@
     "vite": "^8.2.1"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.1.0",
+    "@neondatabase/serverless": "^1.2.0",
     "bcryptjs": "^3.0.3",
-    "chart.js": "^4.4.0"
+    "chart.js": "^4.6.1"
   },
   "overrides": {
     "minimatch": "11.0.3"
