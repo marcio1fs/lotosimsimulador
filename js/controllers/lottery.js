@@ -3,6 +3,7 @@ import { LotteryAPIService } from '../services/lotteryApi.js';
 import { Database } from '../db/database.js';
 import { StatisticalAnalyzer } from '../engine/statisticalAnalyzer.js';
 import { executeBenchmark } from '../workers/engineWorker.js';
+import { PermutationTestEngine } from '../engine/permutationTestEngine.js';
 
 export class LotteryController {
     static _worker = null;
@@ -256,6 +257,33 @@ export class LotteryController {
      */
     static runStrategyBenchmark(fullHistory, config, windowSize = 50) {
         return executeBenchmark(fullHistory, config, windowSize);
+    }
+
+    /**
+     * Teste de permutação da ordem temporal. Roda no worker; se o worker não
+     * estiver disponível, executa na thread principal (mais lento, mas correto).
+     */
+    static async runPermutationTestAsync(fullHistory, config, options = {}) {
+        const payload = {
+            fullHistory,
+            config,
+            runs: options.runs ?? PermutationTestEngine.DEFAULT_RUNS,
+            windowSize: options.windowSize ?? PermutationTestEngine.DEFAULT_WINDOW,
+            seed: options.seed ?? 123456,
+            strategy: options.strategy || 'adaptive'
+        };
+        try {
+            return await this._postWorkerTask('PERMUTATION_TEST', payload, 90000);
+        } catch (_) {
+            return PermutationTestEngine.run({
+                history: payload.fullHistory,
+                config: payload.config,
+                runs: payload.runs,
+                windowSize: payload.windowSize,
+                seed: payload.seed,
+                strategy: payload.strategy
+            });
+        }
     }
 
     /**

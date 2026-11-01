@@ -285,6 +285,7 @@ class AppController {
 
         document.getElementById('fetchBtn').addEventListener('click', () => this.fetchResults());
         document.getElementById('generateBtn').addEventListener('click', () => this.generateGames());
+        document.getElementById('btnPermutationTest')?.addEventListener('click', (e) => this.runPermutationTest(e.currentTarget));
 
         document.getElementById('confLotteryType').addEventListener('change', (e) => {
             const type = e.target.value;
@@ -584,6 +585,41 @@ class AppController {
         if (rd.data && rd.data.length > 0) {
             const benchmark = await LotteryController.runStrategyBenchmarkAsync(rd.data, LotteryModel.CONFIG[type]);
             StatisticsView.renderStrategyBenchmark(benchmark);
+        }
+    }
+
+    /**
+     * Teste de permutação sob demanda: embaralha a ordem dos concursos N vezes e
+     * roda o pipeline em cada versão. Responde se a ordem temporal carrega
+     * informação — pergunta que o p-valor do backtest não responde.
+     */
+    static async runPermutationTest(button) {
+        const type = appState.currentLottery;
+        const rd = appState.resultsData[type];
+        if (!rd?.data || rd.data.length < 20) {
+            StatisticsView.renderPermutationTest({
+                available: false,
+                reason: 'Histórico insuficiente (mínimo de 20 concursos) para o teste de permutação.'
+            });
+            return;
+        }
+
+        const original = button ? button.textContent : null;
+        if (button) { button.disabled = true; button.textContent = '⏳ Rodando permutações...'; }
+        try {
+            const result = await LotteryController.runPermutationTestAsync(rd.data, LotteryModel.CONFIG[type], {
+                runs: 99,
+                windowSize: 30,
+                seed: 123456
+            });
+            StatisticsView.renderPermutationTest(result);
+        } catch (err) {
+            StatisticsView.renderPermutationTest({
+                available: false,
+                reason: `Falha ao executar o teste: ${err?.message || err}`
+            });
+        } finally {
+            if (button) { button.disabled = false; button.textContent = original; }
         }
     }
 

@@ -304,6 +304,66 @@ export class StatisticsView {
         `;
     }
 
+    /**
+     * Renderiza o resultado do teste de permutação (aleatorização temporal).
+     * @param {object|null} result
+     */
+    static renderPermutationTest(result) {
+        const el = document.getElementById('permutationResult');
+        if (!el) return;
+
+        if (!result) { el.innerHTML = ''; return; }
+
+        if (result.available === false) {
+            el.innerHTML = `<div style="color:#f59e0b; font-size:0.8rem;">${escapeHtml(result.reason || 'Indisponível')}</div>`;
+            return;
+        }
+
+        const pct = (v) => `${(v * 100).toFixed(1)}%`;
+        const num = (v) => (typeof v === 'number' ? v.toFixed(3) : '-');
+        const warn = result.underpowered
+            ? `<div style="color:#f59e0b; font-size:0.78rem; margin-bottom:0.5rem;">⚠️ ${escapeHtml(result.warning || 'Amostra de permutações insuficiente.')}</div>`
+            : '';
+        const badge = result.isSignificant
+            ? `<span class="badge badge-green">SINAL DETECTADO (p=${num(result.pValue)})</span>`
+            : `<span class="badge badge-gold">SEM SINAL (p=${num(result.pValue)})</span>`;
+
+        // Histograma simples da distribuição nula, com marca do valor observado.
+        const dist = Array.isArray(result.nullDistribution) ? result.nullDistribution : [];
+        let histogram = '';
+        if (dist.length > 3) {
+            const lo = Math.min(...dist);
+            const hi = Math.max(...dist);
+            const span = Math.max(1e-9, hi - lo);
+            const bins = 12;
+            const counts = new Array(bins).fill(0);
+            for (const v of dist) {
+                const idx = Math.min(bins - 1, Math.max(0, Math.floor(((v - lo) / span) * bins)));
+                counts[idx]++;
+            }
+            const maxCount = Math.max(...counts, 1);
+            const observedBin = Math.min(bins - 1, Math.max(0, Math.floor(((result.observed - lo) / span) * bins)));
+            histogram = `<div style="display:flex; align-items:flex-end; gap:2px; height:56px; margin:0.5rem 0 0.25rem;">${counts.map((c, i) =>
+                `<div title="${bins} bins · ${c} permutação(ões)" style="flex:1; height:${Math.max(4, (c / maxCount) * 100)}%; background:${i === observedBin ? '#22c55e' : 'rgba(139,92,246,0.55)'}; border-radius:2px;"></div>`
+            ).join('')}</div>
+            <div style="font-size:0.68rem; color:var(--text-muted);">Distribuição nula (${dist.length} permutações) · barra verde = posição do resultado real (${num(result.observed)})</div>`;
+        }
+
+        el.innerHTML = `
+            <div style="font-family:monospace; font-size:0.8rem; line-height:1.7;">
+                ${warn}
+                <div>Veredicto: ${badge}</div>
+                <div>Observado (ordem real): <strong>${num(result.observed)} acertos/concurso</strong></div>
+                <div>Nulo (ordem embaralhada): <strong>${num(result.nullMean)} ± ${num(result.nullSd)}</strong>
+                     <span style="color:var(--text-muted);">· IC 95% [${num(result.quantiles?.p2_5)}, ${num(result.quantiles?.p97_5)}]</span></div>
+                <div>p-valor unilateral: <strong>${num(result.pValue)}</strong> (${result.runs} permutações · janela de ${result.windowSize} concursos)</div>
+                <div>z: <strong>${num(result.z)}</strong></div>
+                ${histogram}
+                <div style="margin-top:0.5rem; color:${result.isSignificant ? '#22c55e' : 'var(--text-secondary)'};">${escapeHtml(result.verdict)}</div>
+                <div style="margin-top:0.4rem; font-size:0.68rem; color:var(--text-muted);">${escapeHtml(result.disclaimer || '')}</div>
+            </div>`;
+    }
+
     static showStats(show) { 
         document.getElementById('statsNoData').style.display = show ? 'none' : 'block'; 
         document.getElementById('statsContent').style.display = show ? 'block' : 'none'; 

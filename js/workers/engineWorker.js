@@ -9,6 +9,7 @@ import { StatisticalAnalyzer } from '../engine/statisticalAnalyzer.js';
 import { BacktestEngine } from '../engine/backtestEngine.js';
 import { GameGenerator } from '../engine/gameGenerator.js';
 import { BaselineEngine } from '../engine/baselineEngine.js';
+import { PermutationTestEngine } from '../engine/permutationTestEngine.js';
 
 /**
  * Correção step-down de Holm–Bonferroni para controlar falsos positivos (FWER)
@@ -131,6 +132,20 @@ if (typeof self !== 'undefined' && typeof self.postMessage === 'function') {
                         modelPipeline: games.modelPipeline || null
                     }
                 });
+            } else if (action === 'PERMUTATION_TEST') {
+                // Teste de aleatorização temporal: roda o pipeline inteiro em
+                // históricos com a ordem embaralhada. Caro por construção —
+                // por isso vive aqui, sob demanda, e nunca no caminho de geração.
+                const { fullHistory, config, runs, windowSize, seed, strategy } = payload;
+                const result = PermutationTestEngine.run({
+                    history: fullHistory,
+                    config,
+                    runs,
+                    windowSize,
+                    seed,
+                    strategy
+                });
+                self.postMessage({ taskId, success: true, result });
             } else if (action === 'BENCHMARK') {
                 const { fullHistory, config, windowSize } = payload;
                 const benchmark = executeBenchmark(fullHistory, config, windowSize || 50);

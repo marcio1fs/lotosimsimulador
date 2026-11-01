@@ -259,7 +259,35 @@ sinal que não passou no próprio teste do sistema.
 
 **6.5 Substituir o preenchimento sintético por estado vazio honesto.** Remover `ensureMinimumHistoryDepth`; exibir "histórico insuficiente para inferência" e oferecer sincronização. Validar continuidade dos concursos (sem lacunas, sem duplicatas) e armazenar um checksum por lote importado.
 
-**6.6 Teste de permutação do pipeline completo.** Além do nulo analítico por concurso, embaralhar a ordem temporal do histórico N vezes e rodar o pipeline inteiro. Se o desempenho observado estiver dentro da distribuição nula, isso é conclusivo — e comunica melhor que um p-value.
+**6.6 Teste de permutação do pipeline completo — ✅ implementado.** Além do nulo analítico por concurso, embaralhar a ordem temporal do histórico N vezes e rodar o pipeline inteiro. Se o desempenho observado estiver dentro da distribuição nula, isso é conclusivo — e comunica melhor que um p-value.
+
+*Implementado* em `js/engine/permutationTestEngine.js`, com botão próprio no painel
+de padrões (roda no Web Worker, ~5 s) e 16 testes. A lógica: embaralhar a ordem dos
+concursos 99 vezes, rodar o pipeline inteiro em cada versão e comparar com a ordem real.
+
+**Por que isso é melhor que o p-valor do backtest:** o backtest pergunta "o modelo acerta
+mais que um bilhete sorteado ao acaso?" — resposta que é sempre "não", porque todo bilhete
+tem a mesma chance. O teste de permutação pergunta "o modelo usa a *ordem* do histórico?",
+e o nulo é construído pelo próprio pipeline, absorvendo seus vícios (viés de paridade,
+restrições de soma, janelas deslizantes) — coisas que um nulo analítico ignora e que
+podem criar vantagem aparente sem sinal real.
+
+**Calibração verificada** (20 históricos i.i.d. independentes): z médio **−0,04** (esperado 0),
+desvio-padrão de z **0,91** (esperado 1), e **0 de 20** testes declarando significância a 5%.
+O teste não inventa sinal onde não há.
+
+**Execução real** (Lotofácil, 200 concursos, 99 permutações, janela 30):
+observado **8,933** acertos/concurso contra nulo **8,973 ± 0,207** (IC 95%: 8,548–9,333),
+z = −0,19, **p = 0,59**. O pipeline não extrai informação da ordem temporal.
+
+**Detalhe de potência que quase passa batido:** com R permutações, o menor p alcançável é
+`1/(R+1)`. Com 19 permutações o mínimo é 0,05 — que **não é** menor que α = 0,05, então o
+teste fica estruturalmente incapaz de rejeitar. O motor detecta isso e avisa
+(`underpowered`, `runsNeededForAlpha = ⌊1/α⌋ = 20`) em vez de devolver um "não
+significativo" que na prática significa "faltou permutação".
+
+O teste roda **sob demanda**, nunca no caminho de geração: cada estatística executa o
+pipeline completo sobre um histórico embaralhado (~1,3 ms por concurso avaliado).
 
 **6.7 Fonte oficial dos dados.** O espelho `loteriascaixa-api.herokuapp.com` é um serviço de terceiros em Heroku (risco de descontinuação). O endpoint oficial da Caixa (`servicebus2.caixa.gov.br`) está na CSP mas é usado só como fallback. Inverter a ordem e cachear no Neon com validação de esquema.
 
@@ -289,7 +317,7 @@ exigem uma passada de formatação sobre todo o código, que merece commit próp
 
 **6.13 CSRF/Origin.** `SameSite=Lax` já bloqueia POST cross-site; adicionar verificação de `Origin`/`Sec-Fetch-Site` nos endpoints de mutação fecha a borda.
 
-**6.14 Atualizar a documentação.** `AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 20 arquivos de teste e 246 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
+**6.14 Atualizar a documentação.** `AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 21 arquivos de teste e 262 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
 
 ---
 
