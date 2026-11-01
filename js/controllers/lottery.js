@@ -115,7 +115,7 @@ export class LotteryController {
         if (!entry || !Array.isArray(entry.data) || entry.data.length === 0) return null;
         const cfg = LotteryModel.CONFIG[type];
         const windowData = StatisticalAnalyzer.getWindow(entry.data, timeWindow);
-        const fullAnalysis = StatisticalAnalyzer.analyze(windowData, cfg);
+        const fullAnalysis = StatisticalAnalyzer.analyzeCached(windowData, cfg);
         const updated = {
             ...entry,
             windowData,
@@ -230,7 +230,7 @@ export class LotteryController {
 
             const cfg = LotteryModel.CONFIG[type];
             const windowData = StatisticalAnalyzer.getWindow(cachedData, timeWindow);
-            const fullAnalysis = StatisticalAnalyzer.analyze(windowData, cfg);
+            const fullAnalysis = StatisticalAnalyzer.analyzeCached(windowData, cfg);
 
             const syntheticDraws = LotteryAPIService.countSynthetic(cachedData);
             results[type] = {

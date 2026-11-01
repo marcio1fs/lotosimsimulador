@@ -6,6 +6,7 @@
  */
 
 import { StatisticalAnalyzer, PRIMES, FIBONACCI } from './statisticalAnalyzer.js';
+import { pairCount } from './pairMatrix.js';
 import { GaussianFilterEngine } from './gaussianFilterEngine.js';
 import { AntiCrowdEngine } from './antiCrowdEngine.js';
 import { SeededRandom } from './prng.js';
@@ -117,7 +118,7 @@ export class ScoringEngine {
             for (let j = i + 1; j < len; j++) {
                 const a = Math.min(sortedNumbers[i], sortedNumbers[j]);
                 const b = Math.max(sortedNumbers[i], sortedNumbers[j]);
-                const pairFreq = (analysis.pairMatrix?.[a] && analysis.pairMatrix[a][b]) || 0;
+                const pairFreq = pairCount(analysis.pairMatrix, a, b);
                 pairCountSum += pairFreq;
                 pairPairsCount++;
             }

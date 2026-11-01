@@ -32,7 +32,10 @@ export class LotteryModel {
         if (!cfg) return { freq: {}, atraso: {}, analysis: null };
 
         const windowData = StatisticalAnalyzer.getWindow(results, timeWindow);
-        const fullAnalysis = StatisticalAnalyzer.analyze(windowData, cfg);
+        // analyzeCached: abrir/alternar painéis repete a mesma janela; a análise
+        // custa ~100 ms na Lotomania e a cache por (último concurso, janela)
+        // devolve o mesmo resultado sem refazer o trabalho.
+        const fullAnalysis = StatisticalAnalyzer.analyzeCached(windowData, cfg);
         fullAnalysis.lastDrawNumbers = results[0]?.dezenas?.map(Number) || [];
 
         return {
@@ -85,7 +88,7 @@ export class LotteryModel {
         }
 
         const windowData = StatisticalAnalyzer.getWindow(fullHistory, timeWindow);
-        const analysis = StatisticalAnalyzer.analyze(windowData, cfg);
+        const analysis = StatisticalAnalyzer.analyzeCached(windowData, cfg);
         analysis.lastDrawNumbers = fullHistory[0]?.dezenas?.map(Number) || [];
 
         // Otimiza os pesos para a janela ativa se houver dados suficientes
