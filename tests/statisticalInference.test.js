@@ -28,7 +28,7 @@ describe('StatisticalInference - Funções Matemáticas Especiais', () => {
 
         const cdfPos = StatisticalInference.studentTCDF(2.0, 10);
         const cdfNeg = StatisticalInference.studentTCDF(-2.0, 10);
-        assert.ok(Math.abs((cdfPos + cdfNeg) - 1.0) < 1e-6, 'CDF(t) + CDF(-t) deve ser igual a 1.0');
+        assert.ok(Math.abs(cdfPos + cdfNeg - 1.0) < 1e-6, 'CDF(t) + CDF(-t) deve ser igual a 1.0');
     });
 
     it('studentTCriticalValue deve retornar o valor crítico correto para 95% de confiança', () => {
@@ -88,7 +88,10 @@ describe('StatisticalInference - Teste t Pareado e Cohen d', () => {
 
         assert.equal(test.statisticallySignificant, false);
         assert.ok(test.pValue >= 0.05, `p-value deve ser >= 0.05, obteve ${test.pValue}`);
-        assert.ok(test.conclusion.toLowerCase().includes('não há evidência estatística suficiente'), 'Conclusão transparente');
+        assert.ok(
+            test.conclusion.toLowerCase().includes('não há evidência estatística suficiente'),
+            'Conclusão transparente'
+        );
     });
 });
 

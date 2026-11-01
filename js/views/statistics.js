@@ -8,36 +8,28 @@ import { AntiCrowdEngine } from '../engine/antiCrowdEngine.js';
  */
 export class StatisticsView {
     static charts = {};
-    
+
     static getGradient(color) {
         const palettes = {
-            lotofacil: ['#9333ea','#a855f7','#c084fc','#d8b4fe','#e9d5ff'],
-            mega: ['#2d8b46','#4ade80','#86efac','#bbf7d0','#dcfce7'],
-            lotomania: ['#dc2626','#ef4444','#f87171','#fca5a5','#fecaca'],
-            quina: ['#2563eb','#3b82f6','#60a5fa','#93c5fd','#bfdbfe']
+            lotofacil: ['#9333ea', '#a855f7', '#c084fc', '#d8b4fe', '#e9d5ff'],
+            mega: ['#2d8b46', '#4ade80', '#86efac', '#bbf7d0', '#dcfce7'],
+            lotomania: ['#dc2626', '#ef4444', '#f87171', '#fca5a5', '#fecaca'],
+            quina: ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe']
         };
-        return palettes[color] || ['#9333ea','#a855f7','#c084fc'];
+        return palettes[color] || ['#9333ea', '#a855f7', '#c084fc'];
     }
 
-    static destroyChart(id) { 
-        if (this.charts[id]) { 
-            this.charts[id].destroy(); 
-            delete this.charts[id]; 
-        } 
+    static destroyChart(id) {
+        if (this.charts[id]) {
+            this.charts[id].destroy();
+            delete this.charts[id];
+        }
     }
 
     static _getFrequency(resultsData) {
-        const candidates = [
-            resultsData?.freq,
-            resultsData?.analysis?.freqAbsolute,
-            resultsData?.analysis?.freq
-        ];
+        const candidates = [resultsData?.freq, resultsData?.analysis?.freqAbsolute, resultsData?.analysis?.freq];
 
-        const freq = candidates.find(
-            value => value &&
-            typeof value === 'object' &&
-            !Array.isArray(value)
-        );
+        const freq = candidates.find(value => value && typeof value === 'object' && !Array.isArray(value));
 
         return freq || {};
     }
@@ -45,29 +37,52 @@ export class StatisticsView {
     static renderFrequency(type, resultsData) {
         const cfg = LotteryModel.CONFIG[type];
         const freq = this._getFrequency(resultsData);
-        const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 15);
-        this._renderBar('freqChart', sorted.map(s => String(s[0]).padStart(2,'0')), sorted.map(s => s[1]), this.getGradient(cfg.color));
+        const sorted = Object.entries(freq)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 15);
+        this._renderBar(
+            'freqChart',
+            sorted.map(s => String(s[0]).padStart(2, '0')),
+            sorted.map(s => s[1]),
+            this.getGradient(cfg.color)
+        );
     }
 
-    static renderParity(resultsData, type) {
+    static renderParity(resultsData, _type) {
         const results = resultsData.data;
-        let odds = 0, evens = 0;
-        results.forEach(r => { if (r.dezenas) r.dezenas.forEach(d => { const n = parseInt(d); if (n % 2 === 0) evens++; else odds++; }); });
-        this._renderDoughnut('parityChart', ['Pares','Ímpares'], [evens, odds], ['#3b82f6','#f59e0b']);
+        let odds = 0,
+            evens = 0;
+        results.forEach(r => {
+            if (r.dezenas)
+                r.dezenas.forEach(d => {
+                    const n = parseInt(d);
+                    if (n % 2 === 0) evens++;
+                    else odds++;
+                });
+        });
+        this._renderDoughnut('parityChart', ['Pares', 'Ímpares'], [evens, odds], ['#3b82f6', '#f59e0b']);
     }
 
     static renderRange(type, resultsData) {
         const cfg = LotteryModel.CONFIG[type];
         const rangeSize = Math.ceil(cfg.total / 5);
-        const labels = [], values = [];
+        const labels = [],
+            values = [];
         for (let r = 0; r < 5; r++) {
-            const start = r * rangeSize + 1; const end = Math.min(start + rangeSize - 1, cfg.total);
+            const start = r * rangeSize + 1;
+            const end = Math.min(start + rangeSize - 1, cfg.total);
             labels.push(`${start}-${end}`);
             let count = 0;
-            resultsData.data.forEach(res => { if (res.dezenas) res.dezenas.forEach(d => { const n = parseInt(d); if (n >= start && n <= end) count++; }); });
+            resultsData.data.forEach(res => {
+                if (res.dezenas)
+                    res.dezenas.forEach(d => {
+                        const n = parseInt(d);
+                        if (n >= start && n <= end) count++;
+                    });
+            });
             values.push(count);
         }
-        this._renderBar('rangeChart', labels, values, ['#8b5cf6','#a78bfa','#c4b5fd','#ddd6fe','#ede9fe']);
+        this._renderBar('rangeChart', labels, values, ['#8b5cf6', '#a78bfa', '#c4b5fd', '#ddd6fe', '#ede9fe']);
     }
 
     static renderFreqGrid(type, resultsData) {
@@ -91,15 +106,16 @@ export class StatisticsView {
                 bayes = null;
             }
         }
-        const pct = (v) => BayesFrequencyEngine.formatPct(v);
+        const pct = v => BayesFrequencyEngine.formatPct(v);
 
-        document.getElementById('freqGrid').innerHTML = Array.from({length: cfg.total}, (_, i) => {
-            const f = freq[i+1] || 0; const intensity = f / maxF;
+        document.getElementById('freqGrid').innerHTML = Array.from({ length: cfg.total }, (_, i) => {
+            const f = freq[i + 1] || 0;
+            const intensity = f / maxF;
             const b = bayes?.numbers[i];
             const tooltip = b
-                ? `${i+1}: ${f}x de ${drawCount} · estim. ${pct(b.shrunkRate)} (IC 95% ${pct(b.lower)}–${pct(b.upper)})`
-                : `${i+1}: ${f}x`;
-            return `<div class="freq-cell" style="background:hsla(220,60%,${15+intensity*35}%,${0.5+intensity*0.5});color:${intensity>0.5?'#fff':'var(--text-muted)'};">${String(i+1).padStart(2,'0')}<div class="freq-tooltip">${tooltip}</div></div>`;
+                ? `${i + 1}: ${f}x de ${drawCount} · estim. ${pct(b.shrunkRate)} (IC 95% ${pct(b.lower)}–${pct(b.upper)})`
+                : `${i + 1}: ${f}x`;
+            return `<div class="freq-cell" style="background:hsla(220,60%,${15 + intensity * 35}%,${0.5 + intensity * 0.5});color:${intensity > 0.5 ? '#fff' : 'var(--text-muted)'};">${String(i + 1).padStart(2, '0')}<div class="freq-tooltip">${tooltip}</div></div>`;
         }).join('');
     }
 
@@ -107,16 +123,22 @@ export class StatisticsView {
         const tbody = document.getElementById('strategyBenchmarkBody');
         if (!tbody || !benchmarkList) return;
 
-        tbody.innerHTML = benchmarkList.map(item => {
-            const isDiffPos = item.diff > 0;
-            const diffText = isDiffPos ? `+${item.diff.toFixed(4)}` : `${(item.diff || 0).toFixed(4)}`;
-            const badgeCls = isDiffPos ? 'badge-green' : item.diff === 0 ? 'badge-purple' : 'badge-red';
-            const pVal = typeof item.adjustedPValue === 'number' ? item.adjustedPValue.toFixed(4) : (item.pValue !== undefined ? item.pValue.toFixed(4) : '-');
-            const sigIcon = item.isSignificant ? '✅' : '⚠️';
-            const ciText = item.confidenceInterval 
-                ? `[${item.confidenceInterval.lower} — ${item.confidenceInterval.upper}]` 
-                : '-';
-            return `
+        tbody.innerHTML = benchmarkList
+            .map(item => {
+                const isDiffPos = item.diff > 0;
+                const diffText = isDiffPos ? `+${item.diff.toFixed(4)}` : `${(item.diff || 0).toFixed(4)}`;
+                const badgeCls = isDiffPos ? 'badge-green' : item.diff === 0 ? 'badge-purple' : 'badge-red';
+                const pVal =
+                    typeof item.adjustedPValue === 'number'
+                        ? item.adjustedPValue.toFixed(4)
+                        : item.pValue !== undefined
+                          ? item.pValue.toFixed(4)
+                          : '-';
+                const sigIcon = item.isSignificant ? '✅' : '⚠️';
+                const ciText = item.confidenceInterval
+                    ? `[${item.confidenceInterval.lower} — ${item.confidenceInterval.upper}]`
+                    : '-';
+                return `
                 <tr>
                     <td><strong>${escapeHtml(item.strategy)}</strong></td>
                     <td>${item.meanHits.toFixed(2)} acertos</td>
@@ -127,19 +149,30 @@ export class StatisticsView {
                     <td style="font-size:0.7rem;">${ciText}</td>
                 </tr>
             `;
-        }).join('');
+            })
+            .join('');
     }
 
     static renderProbChart(games) {
         const sorted = [...games].sort((a, b) => (b.modelScore || 0) - (a.modelScore || 0));
-        this._renderBar('probChart', sorted.map((g, i) => `Jogo #${i+1}`), sorted.map(g => parseFloat(g.modelScore || 0)), sorted.map((_, i) => `rgba(139,92,246,${0.3+(i/sorted.length)*0.7})`), true);
+        this._renderBar(
+            'probChart',
+            sorted.map((g, i) => `Jogo #${i + 1}`),
+            sorted.map(g => parseFloat(g.modelScore || 0)),
+            sorted.map((_, i) => `rgba(139,92,246,${0.3 + (i / sorted.length) * 0.7})`),
+            true
+        );
     }
 
     static renderComparisonChart(games, type, resultsData) {
         const cfg = LotteryModel.CONFIG[type];
         const freq = this._getFrequency(resultsData);
-        const avg = games.map(g => g.numbers.reduce((s, n) => s + (freq[n]||0), 0) / cfg.pick);
-        this._renderRadar('comparisonChart', games.map((g, i) => `J#${i+1}`), avg);
+        const avg = games.map(g => g.numbers.reduce((s, n) => s + (freq[n] || 0), 0) / cfg.pick);
+        this._renderRadar(
+            'comparisonChart',
+            games.map((g, i) => `J#${i + 1}`),
+            avg
+        );
     }
 
     /**
@@ -158,14 +191,16 @@ export class StatisticsView {
 
     static renderRanking(games) {
         const sorted = [...games].sort((a, b) => (b.modelScore || 0) - (a.modelScore || 0));
-        document.getElementById('rankingBody').innerHTML = sorted.map((g, i) => {
-            const score = g.modelScore || 0;
-            const perf = g.historicalPerformance || '+0.0%';
-            const expected = g.expectedHits || '-';
-            const ci = g.confidenceInterval;
-            const ciText = ci ? `[${ci.lower}—${ci.upper}]` : '';
-            return `<tr><td>${i+1}</td><td><span class="badge badge-purple">#${g.id}</span></td><td style="font-size:0.75rem;">${g.numbers.map(n => String(n).padStart(2,'0')).join(' ')}</td><td><span class="badge badge-gold">${score}/100</span></td><td>${expected} acertos <span style="font-size:0.65rem;color:var(--text-muted);">${ciText}</span></td><td><span class="badge badge-green">${perf}</span></td></tr>`;
-        }).join('');
+        document.getElementById('rankingBody').innerHTML = sorted
+            .map((g, i) => {
+                const score = g.modelScore || 0;
+                const perf = g.historicalPerformance || '+0.0%';
+                const expected = g.expectedHits || '-';
+                const ci = g.confidenceInterval;
+                const ciText = ci ? `[${ci.lower}—${ci.upper}]` : '';
+                return `<tr><td>${i + 1}</td><td><span class="badge badge-purple">#${g.id}</span></td><td style="font-size:0.75rem;">${g.numbers.map(n => String(n).padStart(2, '0')).join(' ')}</td><td><span class="badge badge-gold">${score}/100</span></td><td>${expected} acertos <span style="font-size:0.65rem;color:var(--text-muted);">${ciText}</span></td><td><span class="badge badge-green">${perf}</span></td></tr>`;
+            })
+            .join('');
     }
 
     /**
@@ -176,22 +211,28 @@ export class StatisticsView {
         if (!container || !walkForwardData) return;
 
         const ov = walkForwardData.isOverfitting;
-        const ovBadge = ov ? '<span class="badge badge-red">⚠️ DETECTADO</span>' : '<span class="badge badge-green">✅ NÃO DETECTADO</span>';
-        const degVal = typeof walkForwardData.degradation === 'number'
-            ? walkForwardData.degradation.toFixed(2)
-            : Math.max(0, (walkForwardData.inSampleMean || 0) - (walkForwardData.outSampleMean || 0)).toFixed(2);
-        
+        const ovBadge = ov
+            ? '<span class="badge badge-red">⚠️ DETECTADO</span>'
+            : '<span class="badge badge-green">✅ NÃO DETECTADO</span>';
+        const degVal =
+            typeof walkForwardData.degradation === 'number'
+                ? walkForwardData.degradation.toFixed(2)
+                : Math.max(0, (walkForwardData.inSampleMean || 0) - (walkForwardData.outSampleMean || 0)).toFixed(2);
+
         let foldsHtml = '';
         if (walkForwardData.foldResults) {
-            foldsHtml = walkForwardData.foldResults.map((f, i) => 
-                `<div style="display:flex;justify-content:space-between;padding:0.3rem 0;border-bottom:1px solid rgba(255,255,255,0.05);">
-                    <span>Fold ${i+1} (${f.size || 0} conc.)</span>
+            foldsHtml = walkForwardData.foldResults
+                .map(
+                    (f, i) =>
+                        `<div style="display:flex;justify-content:space-between;padding:0.3rem 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <span>Fold ${i + 1} (${f.size || 0} conc.)</span>
                     <span>Média: ${f.mean?.toFixed(2) || '-'}</span>
                     <span>In: ${f.inSampleMean?.toFixed(2) || '-'}</span>
                     <span>Out: ${f.outSampleMean?.toFixed(2) || '-'}</span>
                     <span>Degradação: ${f.degradation?.toFixed(2) || '0.00'}</span>
                 </div>`
-            ).join('');
+                )
+                .join('');
         }
 
         container.innerHTML = `
@@ -257,33 +298,42 @@ export class StatisticsView {
 
         const ev = pipeline.evidenceWeighting || null;
         const evidenceText = ev
-            ? (ev.applied
+            ? ev.applied
                 ? `${ev.gatedFactors.join(' + ')} zerado(s) · ${(ev.removedWeight * 100).toFixed(0)}% do score redistribuído`
-                : 'nenhum fator zerado por falta de evidência')
+                : 'nenhum fator zerado por falta de evidência'
             : '-';
-        const evidenceDetail = ev && Array.isArray(ev.factors) && ev.factors.length > 0
-            ? ` <span style="color:var(--text-muted);">(${ev.factors
-                .map(f => `${f.factor} ${(f.defaultWeight * 100).toFixed(0)}%→${(f.effectiveWeight * 100).toFixed(0)}%`)
-                .join(' · ')})</span>`
-            : '';
+        const evidenceDetail =
+            ev && Array.isArray(ev.factors) && ev.factors.length > 0
+                ? ` <span style="color:var(--text-muted);">(${ev.factors
+                      .map(
+                          f =>
+                              `${f.factor} ${(f.defaultWeight * 100).toFixed(0)}%→${(f.effectiveWeight * 100).toFixed(0)}%`
+                      )
+                      .join(' · ')})</span>`
+                : '';
 
         // Inferência sequencial: o p clássico vale para UMA olhada combinada de
         // antemão. Quem gera de novo e troca a janela está olhando várias vezes,
         // e aí o erro tipo I cresce. O p always-valid não cresce.
         const seq = bt.sequentialAnalysis;
-        const seqText = seq && seq.available
-            ? `p=${Number(seq.alwaysValidPValue).toFixed(4)} · IC sequencial [${seq.confidenceSequence.lower.toFixed(2)}; ${seq.confidenceSequence.upper.toFixed(2)}]`
-            : (seq && seq.reason ? seq.reason : 'Dados Insuficientes');
+        const seqText =
+            seq && seq.available
+                ? `p=${Number(seq.alwaysValidPValue).toFixed(4)} · IC sequencial [${seq.confidenceSequence.lower.toFixed(2)}; ${seq.confidenceSequence.upper.toFixed(2)}]`
+                : seq && seq.reason
+                  ? seq.reason
+                  : 'Dados Insuficientes';
 
         const look = pipeline.sessionLook || null;
         const budget = pipeline.sessionBudget || null;
-        const budgetText = look && budget
-            ? `${budget.looks} olhada(s) · limiar desta ${look.threshold.toFixed(4)} · α restante ${budget.remaining.toFixed(4)}`
-            : 'nenhuma olhada registrada nesta sessão';
+        const budgetText =
+            look && budget
+                ? `${budget.looks} olhada(s) · limiar desta ${look.threshold.toFixed(4)} · α restante ${budget.remaining.toFixed(4)}`
+                : 'nenhuma olhada registrada nesta sessão';
 
-        const ciText = bt.confidenceInterval && typeof bt.confidenceInterval.lower === 'number'
-            ? `[${bt.confidenceInterval.lower} — ${bt.confidenceInterval.upper}] (${bt.confidenceInterval.method || 'Student-t'})`
-            : 'Dados Insuficientes';
+        const ciText =
+            bt.confidenceInterval && typeof bt.confidenceInterval.lower === 'number'
+                ? `[${bt.confidenceInterval.lower} — ${bt.confidenceInterval.upper}] (${bt.confidenceInterval.method || 'Student-t'})`
+                : 'Dados Insuficientes';
 
         container.innerHTML = `
             <div style="font-family:monospace; background:rgba(0,0,0,0.4); padding:1rem; border-radius:8px; border:1px solid rgba(255,255,255,0.1); font-size:0.8rem; line-height:1.6;">
@@ -309,7 +359,7 @@ export class StatisticsView {
                 <div>Stability Score: <strong>${mc.stabilityScore || bt.walkForward?.stabilityScore || 50} / 100</strong></div>
                 <div>Coverage Score: <strong>${pipeline.coverageScore || pipeline.portfolioCoverage || '-'} / 100</strong></div>
                 <div>Diversification Score: <strong>${pipeline.diversificationScore || '-'} / 100</strong></div>
-                <div>Objective Score (Otimizador): <strong>${opt.bestObjectiveScore || '-'}</strong> (Perf:${objBreakdown.performance||0} OutSample:${objBreakdown.outOfSample||0} Stab:${objBreakdown.stability||0} Pen:${objBreakdown.overfitPenalty||0})</div>
+                <div>Objective Score (Otimizador): <strong>${opt.bestObjectiveScore || '-'}</strong> (Perf:${objBreakdown.performance || 0} OutSample:${objBreakdown.outOfSample || 0} Stab:${objBreakdown.stability || 0} Pen:${objBreakdown.overfitPenalty || 0})</div>
                 <div>Diagnóstico de Overfitting: <strong>${bt.walkForward?.isOverfitting ? 'DETECTADO (Desconto Aplicado)' : 'NÃO DETECTADO'}</strong></div>
                 <div>Data Leakage: <strong>${bt.dataLeakageDetected ? 'DETECTADO (❌)' : 'NÃO DETECTADO (✅)'}</strong>${bt.leakageCheck ? ` <span style="color:var(--text-muted);">(${bt.leakageCheck.violations} violação(ões) em ${bt.leakageCheck.evaluatedDraws} concursos)</span>` : ''}</div>
                 <div>Nulo Analítico (hipergeométrico): <strong>${tb.z !== null && tb.z !== undefined ? `z=${tb.z} · p=${Number(tb.pValue).toExponential(2)} · excesso ${tb.excessPercent !== null && tb.excessPercent !== undefined ? tb.excessPercent + '%' : '-'}` : '-'}</strong></div>
@@ -338,15 +388,17 @@ export class StatisticsView {
         const el = document.getElementById('permutationResult');
         if (!el) return;
 
-        if (!result) { el.innerHTML = ''; return; }
+        if (!result) {
+            el.innerHTML = '';
+            return;
+        }
 
         if (result.available === false) {
             el.innerHTML = `<div style="color:#f59e0b; font-size:0.8rem;">${escapeHtml(result.reason || 'Indisponível')}</div>`;
             return;
         }
 
-        const pct = (v) => `${(v * 100).toFixed(1)}%`;
-        const num = (v) => (typeof v === 'number' ? v.toFixed(3) : '-');
+        const num = v => (typeof v === 'number' ? v.toFixed(3) : '-');
         const warn = result.underpowered
             ? `<div style="color:#f59e0b; font-size:0.78rem; margin-bottom:0.5rem;">⚠️ ${escapeHtml(result.warning || 'Amostra de permutações insuficiente.')}</div>`
             : '';
@@ -369,9 +421,12 @@ export class StatisticsView {
             }
             const maxCount = Math.max(...counts, 1);
             const observedBin = Math.min(bins - 1, Math.max(0, Math.floor(((result.observed - lo) / span) * bins)));
-            histogram = `<div style="display:flex; align-items:flex-end; gap:2px; height:56px; margin:0.5rem 0 0.25rem;">${counts.map((c, i) =>
-                `<div title="${bins} bins · ${c} permutação(ões)" style="flex:1; height:${Math.max(4, (c / maxCount) * 100)}%; background:${i === observedBin ? '#22c55e' : 'rgba(139,92,246,0.55)'}; border-radius:2px;"></div>`
-            ).join('')}</div>
+            histogram = `<div style="display:flex; align-items:flex-end; gap:2px; height:56px; margin:0.5rem 0 0.25rem;">${counts
+                .map(
+                    (c, i) =>
+                        `<div title="${bins} bins · ${c} permutação(ões)" style="flex:1; height:${Math.max(4, (c / maxCount) * 100)}%; background:${i === observedBin ? '#22c55e' : 'rgba(139,92,246,0.55)'}; border-radius:2px;"></div>`
+                )
+                .join('')}</div>
             <div style="font-size:0.68rem; color:var(--text-muted);">Distribuição nula (${dist.length} permutações) · barra verde = posição do resultado real (${num(result.observed)})</div>`;
         }
 
@@ -390,64 +445,86 @@ export class StatisticsView {
             </div>`;
     }
 
-    static showStats(show) { 
-        document.getElementById('statsNoData').style.display = show ? 'none' : 'block'; 
-        document.getElementById('statsContent').style.display = show ? 'block' : 'none'; 
+    static showStats(show) {
+        document.getElementById('statsNoData').style.display = show ? 'none' : 'block';
+        document.getElementById('statsContent').style.display = show ? 'block' : 'none';
     }
-    
-    static showPatterns(show) { 
-        document.getElementById('patternsNoData').style.display = show ? 'none' : 'block'; 
-        document.getElementById('patternsContent').style.display = show ? 'block' : 'none'; 
+
+    static showPatterns(show) {
+        document.getElementById('patternsNoData').style.display = show ? 'none' : 'block';
+        document.getElementById('patternsContent').style.display = show ? 'block' : 'none';
     }
 
     static _renderBar(id, labels, data, colors, horizontal = false) {
-        const ctx = document.getElementById(id); if (!ctx) return;
+        const ctx = document.getElementById(id);
+        if (!ctx) return;
         this.destroyChart(id);
-        this.charts[id] = new Chart(ctx, { 
-            type: 'bar', 
-            data: { labels, datasets: [{ data, backgroundColor: Array.isArray(colors) ? colors : colors, borderRadius: 6 }] }, 
-            options: { 
-                responsive: true, 
-                maintainAspectRatio: false, 
-                indexAxis: horizontal ? 'y' : 'x', 
-                plugins: { legend: { display: false } }, 
-                scales: { 
-                    x: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } }, 
-                    y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } } 
-                } 
-            } 
+        this.charts[id] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{ data, backgroundColor: Array.isArray(colors) ? colors : colors, borderRadius: 6 }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: horizontal ? 'y' : 'x',
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                }
+            }
         });
     }
 
     static _renderDoughnut(id, labels, data, colors) {
-        const ctx = document.getElementById(id); if (!ctx) return;
+        const ctx = document.getElementById(id);
+        if (!ctx) return;
         this.destroyChart(id);
-        this.charts[id] = new Chart(ctx, { 
-            type: 'doughnut', 
-            data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] }, 
-            options: { 
-                responsive: true, 
-                maintainAspectRatio: false, 
-                cutout: '65%', 
-                plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11 }, padding: 15 } } } 
-            } 
+        this.charts[id] = new Chart(ctx, {
+            type: 'doughnut',
+            data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '65%',
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11 }, padding: 15 } }
+                }
+            }
         });
     }
 
     static _renderRadar(id, labels, data) {
-        const ctx = document.getElementById(id); if (!ctx) return;
+        const ctx = document.getElementById(id);
+        if (!ctx) return;
         this.destroyChart(id);
-        this.charts[id] = new Chart(ctx, { 
-            type: 'radar', 
-            data: { labels, datasets: [{ data, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.2)', pointBackgroundColor: '#f59e0b' }] }, 
-            options: { 
-                responsive: true, 
-                maintainAspectRatio: false, 
-                plugins: { legend: { display: false } }, 
-                scales: { 
-                    r: { ticks: { color: '#64748b', backdropColor: 'transparent' }, grid: { color: 'rgba(255,255,255,0.05)' }, pointLabels: { color: '#94a3b8', font: { size: 10 } } } 
-                } 
-            } 
+        this.charts[id] = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        data,
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245,158,11,0.2)',
+                        pointBackgroundColor: '#f59e0b'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    r: {
+                        ticks: { color: '#64748b', backdropColor: 'transparent' },
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        pointLabels: { color: '#94a3b8', font: { size: 10 } }
+                    }
+                }
+            }
         });
     }
 }

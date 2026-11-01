@@ -20,8 +20,14 @@ describe('Out-of-the-Box Innovations: Anti-Crowd EV+, Markov Chains, Simulated A
         const smartTicket = [8, 19, 34, 43, 51, 58];
         const smartEval = AntiCrowdEngine.evaluateTicketAntiCrowd(smartTicket, megaCfg);
 
-        assert.ok(smartEval.antiCrowdScore > crowdEval.antiCrowdScore, 'Smart ticket should have higher Anti-Crowd score');
-        assert.ok(smartEval.expectedValueMultiplier > crowdEval.expectedValueMultiplier, 'Smart ticket should have higher EV multiplier');
+        assert.ok(
+            smartEval.antiCrowdScore > crowdEval.antiCrowdScore,
+            'Smart ticket should have higher Anti-Crowd score'
+        );
+        assert.ok(
+            smartEval.expectedValueMultiplier > crowdEval.expectedValueMultiplier,
+            'Smart ticket should have higher EV multiplier'
+        );
         assert.equal(crowdEval.hasArithmeticProgression, true);
         assert.equal(smartEval.hasArithmeticProgression, false);
     });
@@ -53,7 +59,10 @@ describe('Out-of-the-Box Innovations: Anti-Crowd EV+, Markov Chains, Simulated A
 
         const topScenario = wheel.wheelMetadata.conditionalGuarantees.find(g => g.conditionHitsInPool === 15);
         assert.ok(topScenario, 'Should include 15-hit conditional guarantee scenario for Lotofacil');
-        assert.ok(topScenario.guaranteedMinBestHit >= 11, 'If 15 drawn numbers fall in 19-number elite pool, minimum best hit must be >= 11');
+        assert.ok(
+            topScenario.guaranteedMinBestHit >= 11,
+            'If 15 drawn numbers fall in 19-number elite pool, minimum best hit must be >= 11'
+        );
     });
 
     it('ProbabilityEngine calculates official Caixa financial summary, Bolão shares and Teimosinha', () => {
@@ -61,9 +70,9 @@ describe('Out-of-the-Box Innovations: Anti-Crowd EV+, Markov Chains, Simulated A
         const proj = ProbabilityEngine.calculatePortfolioProjection(megaCfg, 10, 6, 85);
 
         assert.ok(proj.financial, 'Portfolio projection should include financial summary');
-        assert.equal(proj.financial.unitPrice, 6.00);
-        assert.equal(proj.financial.totalInvestment, 60.00);
-        assert.equal(proj.financial.costPerShare, 12.00);
+        assert.equal(proj.financial.unitPrice, 6.0);
+        assert.equal(proj.financial.totalInvestment, 60.0);
+        assert.equal(proj.financial.costPerShare, 12.0);
     });
 
     it('LotteryModel.generateSmartGames supports new anti_crowd and markov strategies end-to-end', () => {

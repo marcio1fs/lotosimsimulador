@@ -19,15 +19,8 @@ export class StatisticalInference {
     static logGamma(x) {
         if (x <= 0) return 0;
         const p = [
-            0.99999999999980993,
-            676.5203681218851,
-            -1259.1392167224028,
-            771.32342877765313,
-            -176.61502916214059,
-            12.507343278686905,
-            -0.13857109526572012,
-            9.9843695780195716e-6,
-            1.5056327351493116e-7
+            0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059,
+            12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7
         ];
         if (x < 0.5) {
             return Math.log(Math.PI / Math.sin(Math.PI * x)) - this.logGamma(1 - x);
@@ -53,10 +46,10 @@ export class StatisticalInference {
             return 1 - this.regIncompleteBeta(1 - x, b, a);
         }
 
-        const front = Math.exp(
-            a * Math.log(x) + b * Math.log(1 - x) -
-            (this.logGamma(a) + this.logGamma(b) - this.logGamma(a + b))
-        ) / a;
+        const front =
+            Math.exp(
+                a * Math.log(x) + b * Math.log(1 - x) - (this.logGamma(a) + this.logGamma(b) - this.logGamma(a + b))
+            ) / a;
 
         // Fração continuada de Lentz para 1 / (1 + d1 / (1 + d2 / ...))
         const maxIter = 200;
@@ -289,7 +282,10 @@ export class StatisticalInference {
         }
         // maior p tal que p <= alpha * r / m
         for (let r = k; r >= 1; r--) {
-            if (cleaned[r - 1].p <= (alpha * r) / m) { threshold = cleaned[r - 1].p; break; }
+            if (cleaned[r - 1].p <= (alpha * r) / m) {
+                threshold = cleaned[r - 1].p;
+                break;
+            }
         }
         const rejected = cleaned.map(entry => qValues[entry.i] <= alpha);
         return {
@@ -310,31 +306,41 @@ export class StatisticalInference {
             if (p === 1) return Infinity;
             return NaN;
         }
-        const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
-            1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
-        const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
-            6.680131188771972e+01, -1.328068155288572e+01];
-        const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
-            -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
-        const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
-            3.754408661907416e+00];
+        const a = [
+            -3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.38357751867269e2, -3.066479806614716e1,
+            2.506628277459239
+        ];
+        const b = [
+            -5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2, 6.680131188771972e1, -1.328068155288572e1
+        ];
+        const c = [
+            -7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838, -2.549732539343734, 4.374664141464968,
+            2.938163982698783
+        ];
+        const d = [7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996, 3.754408661907416];
         const pLow = 0.02425;
         const pHigh = 1 - pLow;
 
         if (p < pLow) {
             const q = Math.sqrt(-2 * Math.log(p));
-            return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
-                   ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+            return (
+                (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+                ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+            );
         }
         if (p > pHigh) {
             const q = Math.sqrt(-2 * Math.log(1 - p));
-            return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
-                    ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+            return (
+                -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+                ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+            );
         }
         const q = p - 0.5;
         const r = q * q;
-        return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q /
-               (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+        return (
+            ((((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q) /
+            (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
+        );
     }
 
     /**
@@ -346,7 +352,7 @@ export class StatisticalInference {
         if (!(n > 1) || !(sd > 0)) return null;
         const zAlpha = this.normalQuantile(1 - (oneSided ? alpha : alpha / 2));
         const zPower = this.normalQuantile(power);
-        return Number(((zAlpha + zPower) * sd / Math.sqrt(n)).toFixed(4));
+        return Number((((zAlpha + zPower) * sd) / Math.sqrt(n)).toFixed(4));
     }
 
     /**
@@ -365,7 +371,7 @@ export class StatisticalInference {
     static observedPower(effect, n, sd, alpha = 0.05, oneSided = true) {
         if (!(n > 1) || !(sd > 0)) return null;
         const zAlpha = this.normalQuantile(1 - (oneSided ? alpha : alpha / 2));
-        const lambda = (Math.abs(effect) / (sd / Math.sqrt(n))) - zAlpha;
+        const lambda = Math.abs(effect) / (sd / Math.sqrt(n)) - zAlpha;
         const power = this.normalCDF(lambda);
         if (!Number.isFinite(power)) return null;
         return Number(Math.max(0, Math.min(1, power)).toFixed(4));
@@ -384,15 +390,15 @@ export class StatisticalInference {
     static erf(x) {
         const sign = x < 0 ? -1 : 1;
         x = Math.abs(x);
-        const a1 =  0.254829592;
+        const a1 = 0.254829592;
         const a2 = -0.284496736;
-        const a3 =  1.421413741;
+        const a3 = 1.421413741;
         const a4 = -1.453152027;
-        const a5 =  1.061405429;
-        const p  =  0.3275911;
+        const a5 = 1.061405429;
+        const p = 0.3275911;
 
         const t = 1.0 / (1.0 + p * x);
-        const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+        const y = 1.0 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
         return sign * y;
     }
 
@@ -407,12 +413,14 @@ export class StatisticalInference {
         const q = p - 0.5;
         if (Math.abs(q) < 0.42) {
             const r = q * q;
-            return q * (((-25.44106049637 * r + 41.39119773534) * r - 18.61500062529) * r + 2.50662823884) /
-                       ((((3.13082909833 * r - 21.06224101826) * r + 31.3082909833) * r - 16.08378514874) * r + 1.0);
+            return (
+                (q * (((-25.44106049637 * r + 41.39119773534) * r - 18.61500062529) * r + 2.50662823884)) /
+                ((((3.13082909833 * r - 21.06224101826) * r + 31.3082909833) * r - 16.08378514874) * r + 1.0)
+            );
         } else {
             const r = p < 0.5 ? p : 1 - p;
             const y = Math.sqrt(-2.0 * Math.log(r));
-            const z = y - ((2.30753 + 0.27061 * y) / (1.0 + (0.99229 + 0.04481 * y) * y));
+            const z = y - (2.30753 + 0.27061 * y) / (1.0 + (0.99229 + 0.04481 * y) * y);
             return p < 0.5 ? -z : z;
         }
     }
@@ -475,9 +483,7 @@ export class StatisticalInference {
         const sum = sorted.reduce((a, b) => a + b, 0);
         const mean = sum / n;
 
-        const median = n % 2 === 0 
-            ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2 
-            : sorted[Math.floor(n / 2)];
+        const median = n % 2 === 0 ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2 : sorted[Math.floor(n / 2)];
 
         if (n < 2) {
             return {
@@ -529,8 +535,8 @@ export class StatisticalInference {
         const df = n - 1;
         const isSmallSample = n < 30;
         const method = isSmallSample ? 'Student-t' : 'Normal Z';
-        
-        const critValue = isSmallSample 
+
+        const critValue = isSmallSample
             ? this.studentTCriticalValue(confidenceLevel, df)
             : this.normalZCriticalValue(confidenceLevel);
 
@@ -598,7 +604,13 @@ export class StatisticalInference {
         const meanDiff = rawMean;
         const df = n - 1;
 
-        const mde = this.minimumDetectableEffect(n, rawSd > 0 ? rawSd : Math.sqrt(rawVariance + 1e-12), alpha, 0.8, true);
+        const mde = this.minimumDetectableEffect(
+            n,
+            rawSd > 0 ? rawSd : Math.sqrt(rawVariance + 1e-12),
+            alpha,
+            0.8,
+            true
+        );
 
         if (!(seDiff > 0) || !Number.isFinite(seDiff)) {
             // Variância nula: o teste t é degenerado. Em vez de inventar
@@ -608,17 +620,19 @@ export class StatisticalInference {
             const negatives = diffs.filter(d => d < 0).length;
             const effective = positives + negatives;
             const isModelBetter = meanDiff > 0;
-            const signP = effective > 0
-                ? (isModelBetter
-                    ? this.binomialUpperTail(positives, effective, 0.5)
-                    : this.binomialUpperTail(negatives, effective, 0.5))
-                : 1;
+            const signP =
+                effective > 0
+                    ? isModelBetter
+                        ? this.binomialUpperTail(positives, effective, 0.5)
+                        : this.binomialUpperTail(negatives, effective, 0.5)
+                    : 1;
             const signPV = Number(Math.max(1e-16, Math.min(1, signP)).toFixed(10));
             return {
                 modelMean: modelStats.mean,
                 baselineMean: baselineStats.mean,
                 difference: Number(meanDiff.toFixed(4)),
-                relativeImprovement: baselineStats.mean > 0 ? `${((meanDiff / baselineStats.mean) * 100).toFixed(2)}%` : '0.0%',
+                relativeImprovement:
+                    baselineStats.mean > 0 ? `${((meanDiff / baselineStats.mean) * 100).toFixed(2)}%` : '0.0%',
                 tStatistic: 0,
                 df,
                 pValue: signPV,
@@ -655,21 +669,21 @@ export class StatisticalInference {
 
         const observedPower = this.observedPower(meanDiff, n, rawSd, alpha, true);
 
-        let conclusion = '';
+        let conclusion;
         if (statisticallySignificant) {
             conclusion = `Existe evidência estatística significativa (p=${pValue} < ${alpha}) de que o modelo supera a baseline aleatória.`;
         } else if (meanDiff > 0) {
-            const powerNote = (observedPower !== null && observedPower < 0.8 && mde !== null)
-                ? ` Poder estatístico de ${(observedPower * 100).toFixed(0)}%: este teste só detectaria vantagens a partir de +${mde} acertos/concurso.`
-                : '';
+            const powerNote =
+                observedPower !== null && observedPower < 0.8 && mde !== null
+                    ? ` Poder estatístico de ${(observedPower * 100).toFixed(0)}%: este teste só detectaria vantagens a partir de +${mde} acertos/concurso.`
+                    : '';
             conclusion = `Não há evidência estatística suficiente (p=${pValue} >= ${alpha}) para afirmar superioridade do modelo, apesar da diferença média positiva (+${meanDiff.toFixed(2)} acertos).${powerNote}`;
         } else {
             conclusion = `Não há evidência estatística de superioridade (diferença média: ${meanDiff.toFixed(2)} acertos).`;
         }
 
-        const relativeImprovement = baselineStats.mean > 0 
-            ? `${((meanDiff / baselineStats.mean) * 100).toFixed(2)}%` 
-            : '0.0%';
+        const relativeImprovement =
+            baselineStats.mean > 0 ? `${((meanDiff / baselineStats.mean) * 100).toFixed(2)}%` : '0.0%';
 
         return {
             modelMean: modelStats.mean,
@@ -721,7 +735,7 @@ export class StatisticalInference {
             let sumDiff = 0;
             for (let i = 0; i < n; i++) {
                 const idx = prng.nextInt(0, n - 1);
-                sumDiff += (modelHits[idx] - baselineHits[idx]);
+                sumDiff += modelHits[idx] - baselineHits[idx];
             }
             const sampleMeanDiff = sumDiff / n;
             bootstrapMeans.push(sampleMeanDiff);

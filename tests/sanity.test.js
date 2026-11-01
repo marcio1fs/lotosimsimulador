@@ -47,7 +47,7 @@ describe('Sanity Tests - Dataset com Padrão Controlado (Viés Injetado)', () =>
         for (let i = 0; i < 50; i++) {
             biasedHistory.push({
                 concurso: 3000 - i,
-                dezenas: ['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15'],
+                dezenas: ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15'],
                 data: '2025-01-01'
             });
         }

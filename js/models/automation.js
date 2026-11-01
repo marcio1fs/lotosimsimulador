@@ -4,7 +4,18 @@ import { Database } from '../db/database.js';
  * Model: Automation - Automation settings and state
  */
 export class AutomationModel {
-    static state = { active: false, autoFetch: false, autoGenerate: false, autoConference: false, autoAllLotteries: false, intervalMinutes: 30, timer: null, nextRun: null, execCountToday: 0, log: [] };
+    static state = {
+        active: false,
+        autoFetch: false,
+        autoGenerate: false,
+        autoConference: false,
+        autoAllLotteries: false,
+        intervalMinutes: 30,
+        timer: null,
+        nextRun: null,
+        execCountToday: 0,
+        log: []
+    };
 
     static async load(userId) {
         const settings = await Database.get('auto_settings', userId);
@@ -17,20 +28,22 @@ export class AutomationModel {
             this.state.active = settings.active || false;
         }
         const logs = await Database.getAllByIndex('auto_log', 'userId', userId);
-        this.state.log = logs.slice(-50).map(l => ({ time: new Date(l.timestamp).toLocaleTimeString('pt-BR'), type: l.type, message: l.message }));
+        this.state.log = logs
+            .slice(-50)
+            .map(l => ({ time: new Date(l.timestamp).toLocaleTimeString('pt-BR'), type: l.type, message: l.message }));
         return this.state;
     }
 
     static async save(userId) {
         const settings = await Database.get('auto_settings', userId);
         if (settings) {
-            Object.assign(settings, { 
-                autoFetch: this.state.autoFetch, 
-                autoGenerate: this.state.autoGenerate, 
-                autoConference: this.state.autoConference, 
-                autoAllLotteries: this.state.autoAllLotteries, 
-                intervalMinutes: this.state.intervalMinutes, 
-                active: this.state.active 
+            Object.assign(settings, {
+                autoFetch: this.state.autoFetch,
+                autoGenerate: this.state.autoGenerate,
+                autoConference: this.state.autoConference,
+                autoAllLotteries: this.state.autoAllLotteries,
+                intervalMinutes: this.state.intervalMinutes,
+                active: this.state.active
             });
             await Database.update('auto_settings', settings);
         }

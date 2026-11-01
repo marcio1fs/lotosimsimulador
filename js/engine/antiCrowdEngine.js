@@ -40,10 +40,13 @@ export const LUCKY_CROWD_NUMBERS = new Set([7, 13, 10, 17, 21, 22, 25, 33]);
  * magnitudes deste arquivo — ver `basis` em cada prior.
  */
 export const CROWD_SOURCES = {
-    COOK_CLOTFELTER_1993: 'Cook & Clotfelter (1993), "The Peculiar Scale Economies of Lotto", American Economic Review 83(3)',
-    CLOTFELTER_COOK_1993: 'Clotfelter & Cook (1993), "The \'Gambler\'s Fallacy\' in Lottery Play", Management Science 39(12)',
+    COOK_CLOTFELTER_1993:
+        'Cook & Clotfelter (1993), "The Peculiar Scale Economies of Lotto", American Economic Review 83(3)',
+    CLOTFELTER_COOK_1993:
+        "Clotfelter & Cook (1993), \"The 'Gambler's Fallacy' in Lottery Play\", Management Science 39(12)",
     HAIGH_1997: 'Haigh (1997), "The Statistics of the National Lottery", JRSS Series A 160(2)',
-    SIMON_1998: 'Simon (1998), "An Analysis of the Distribution of Combinations Chosen by UK National Lottery Players", J. Risk & Uncertainty 17',
+    SIMON_1998:
+        'Simon (1998), "An Analysis of the Distribution of Combinations Chosen by UK National Lottery Players", J. Risk & Uncertainty 17',
     ZIEMBA_1986: 'Ziemba, Brumelle, Gautier & Schwartz (1986), "Dr Z\'s 6/49 Lotto Guidebook"'
 };
 
@@ -60,38 +63,93 @@ export const CROWD_SOURCES = {
  * popularidade real por dezena.
  */
 export const CROWD_PRIORS = {
-    baseWeight: { value: 0.70, basis: 'arbitrário', source: null, note: 'ponto neutro da escala de peso individual' },
-    above31Bonus: { value: 0.25, basis: 'literatura', source: CROWD_SOURCES.COOK_CLOTFELTER_1993, note: 'dezenas > 31 fogem do viés de aniversário' },
-    monthOverlapPenalty: { value: 0.22, basis: 'literatura', source: CROWD_SOURCES.ZIEMBA_1986, note: '01..12 valem dia e mês' },
-    dayOnlyPenalty: { value: 0.10, basis: 'literatura', source: CROWD_SOURCES.COOK_CLOTFELTER_1993, note: '13..31 são apenas dias' },
+    baseWeight: { value: 0.7, basis: 'arbitrário', source: null, note: 'ponto neutro da escala de peso individual' },
+    above31Bonus: {
+        value: 0.25,
+        basis: 'literatura',
+        source: CROWD_SOURCES.COOK_CLOTFELTER_1993,
+        note: 'dezenas > 31 fogem do viés de aniversário'
+    },
+    monthOverlapPenalty: {
+        value: 0.22,
+        basis: 'literatura',
+        source: CROWD_SOURCES.ZIEMBA_1986,
+        note: '01..12 valem dia e mês'
+    },
+    dayOnlyPenalty: {
+        value: 0.1,
+        basis: 'literatura',
+        source: CROWD_SOURCES.COOK_CLOTFELTER_1993,
+        note: '13..31 são apenas dias'
+    },
     edgePenaltyLotofacil: { value: 0.08, basis: 'arbitrário', source: null, note: '1 e 25 na Lotofácil' },
-    luckyPenalty: { value: 0.10, basis: 'literatura', source: CROWD_SOURCES.ZIEMBA_1986, note: 'números de sorte culturais' },
+    luckyPenalty: {
+        value: 0.1,
+        basis: 'literatura',
+        source: CROWD_SOURCES.ZIEMBA_1986,
+        note: 'números de sorte culturais'
+    },
     roundTenPenalty: { value: 0.08, basis: 'arbitrário', source: null, note: 'múltiplos de 10' },
     roundFivePenalty: { value: 0.04, basis: 'arbitrário', source: null, note: 'múltiplos de 5' },
     minWeight: { value: 0.15, basis: 'arbitrário', source: null, note: 'piso da escala' },
-    maxWeight: { value: 1.00, basis: 'arbitrário', source: null, note: 'teto da escala' },
+    maxWeight: { value: 1.0, basis: 'arbitrário', source: null, note: 'teto da escala' },
     scoreBase: { value: 65, basis: 'arbitrário', source: null, note: 'base do índice 0..100' },
     birthdayBonus: { value: 22, basis: 'arbitrário', source: null, note: 'bônus por proteger de datas' },
-    birthdayPenalty: { value: 35, basis: 'arbitrário', source: null, note: 'penalidade proporcional ao excesso de datas' },
+    birthdayPenalty: {
+        value: 35,
+        basis: 'arbitrário',
+        source: null,
+        note: 'penalidade proporcional ao excesso de datas'
+    },
     monthPenalty: { value: 12, basis: 'arbitrário', source: null, note: 'maioria das dezenas em meses' },
-    arithmeticPenalty: { value: 25, basis: 'literatura', source: CROWD_SOURCES.HAIGH_1997, note: 'progressões aritméticas são populares' },
+    arithmeticPenalty: {
+        value: 25,
+        basis: 'literatura',
+        source: CROWD_SOURCES.HAIGH_1997,
+        note: 'progressões aritméticas são populares'
+    },
     arithmeticBonus: { value: 10, basis: 'arbitrário', source: null, note: 'bônus por espaçamento irregular' },
-    endingPenaltyUnit: { value: 10, basis: 'literatura', source: CROWD_SOURCES.SIMON_1998, note: 'terminações repetidas são populares' },
+    endingPenaltyUnit: {
+        value: 10,
+        basis: 'literatura',
+        source: CROWD_SOURCES.SIMON_1998,
+        note: 'terminações repetidas são populares'
+    },
     endingBonus: { value: 8, basis: 'arbitrário', source: null, note: 'bônus sem concentração de terminação' },
     luckyPenaltyUnit: { value: 6, basis: 'arbitrário', source: null, note: 'por dezena de sorte acima do esperado' },
     luckyBonus: { value: 6, basis: 'arbitrário', source: null, note: 'sem excesso de dezenas de sorte' },
-    geometryPenalty: { value: 15, basis: 'literatura', source: CROWD_SOURCES.HAIGH_1997, note: 'desenhos lineares no volante' },
-    repetitionPenaltyUnit: { value: 8, basis: 'arbitrário', source: null, note: 'por dezena copiada do concurso anterior' },
-    evScaleLarge: { value: 1.45, basis: 'sem fonte', source: null, note: 'escala do multiplicador de EV (universo >= 60)' },
+    geometryPenalty: {
+        value: 15,
+        basis: 'literatura',
+        source: CROWD_SOURCES.HAIGH_1997,
+        note: 'desenhos lineares no volante'
+    },
+    repetitionPenaltyUnit: {
+        value: 8,
+        basis: 'arbitrário',
+        source: null,
+        note: 'por dezena copiada do concurso anterior'
+    },
+    evScaleLarge: {
+        value: 1.45,
+        basis: 'sem fonte',
+        source: null,
+        note: 'escala do multiplicador de EV (universo >= 60)'
+    },
     evScaleSmall: { value: 0.65, basis: 'sem fonte', source: null, note: 'escala do multiplicador de EV (demais)' },
     riskThresholdHigh: { value: 45, basis: 'arbitrário', source: null, note: 'corte de risco ALTO' },
     riskThresholdModerate: { value: 68, basis: 'arbitrário', source: null, note: 'corte de risco MODERADO' },
     /** Força do encolhimento na calibração: λ = n / (n + k). */
-    calibrationShrinkage: { value: 100000, basis: 'arbitrário', source: null, note: 'apostas necessárias para metade do peso vir do dado observado' }
+    calibrationShrinkage: {
+        value: 100000,
+        basis: 'arbitrário',
+        source: null,
+        note: 'apostas necessárias para metade do peso vir do dado observado'
+    }
 };
 
 /** Atalho: valor de um prior. */
-const P = (name) => CROWD_PRIORS[name].value;
+const P = name => CROWD_PRIORS[name].value;
 
 export class AntiCrowdEngine {
     /**
@@ -164,7 +222,9 @@ export class AntiCrowdEngine {
     static _observedWeight(num, total) {
         const pop = this._calibration?.popularityByNumber;
         if (!pop) return null;
-        const valores = Object.entries(pop).filter(([n]) => Number(n) <= total).map(([, v]) => v);
+        const valores = Object.entries(pop)
+            .filter(([n]) => Number(n) <= total)
+            .map(([, v]) => v);
         if (valores.length < 2) return null;
 
         const pmin = Math.min(...valores);
@@ -259,7 +319,7 @@ export class AntiCrowdEngine {
             } else {
                 const excess = (birthdayRatio - expectedBirthdayRatio) / (1 - expectedBirthdayRatio);
                 penaltyPoints += P('birthdayPenalty') * excess;
-                if (birthdayRatio >= 0.80) {
+                if (birthdayRatio >= 0.8) {
                     details.push(`- Alto risco de divisão: ${birthdayCount}/${len} dezenas na faixa de datas (01-31)`);
                 }
             }
@@ -287,7 +347,8 @@ export class AntiCrowdEngine {
             }
         }
 
-        const hasArithmeticProgression = hasFullAP || (len <= 6 && maxEqualDiffStreak >= 3) || (len >= 15 && maxEqualDiffStreak >= 6);
+        const hasArithmeticProgression =
+            hasFullAP || (len <= 6 && maxEqualDiffStreak >= 3) || (len >= 15 && maxEqualDiffStreak >= 6);
         if (hasArithmeticProgression) {
             penaltyPoints += P('arithmeticPenalty');
             details.push(`- Padrão de progressão aritmética detectado (muito jogado por humanos)`);
@@ -391,8 +452,11 @@ export class AntiCrowdEngine {
             sources: CROWD_SOURCES,
             note: calibration
                 ? 'Calibração ativa: pesos encolhidos entre prior e popularidade observada.'
-                : 'Sem calibração: ' + byBasis.literatura + ' priors têm direção documentada; ' +
-                  (byBasis.arbitrário + byBasis['sem fonte']) + ' são escolha de julgamento sem verificação empírica no Brasil.'
+                : 'Sem calibração: ' +
+                  byBasis.literatura +
+                  ' priors têm direção documentada; ' +
+                  (byBasis.arbitrário + byBasis['sem fonte']) +
+                  ' são escolha de julgamento sem verificação empírica no Brasil.'
         };
     }
 }

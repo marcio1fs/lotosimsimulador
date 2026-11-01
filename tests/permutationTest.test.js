@@ -63,7 +63,10 @@ describe('PermutationTestEngine — mecânica', () => {
 
     it('rejeita configuração inválida', () => {
         assert.throws(() => PermutationTestEngine.run({ history: makeHistory(30), config: null }), TypeError);
-        assert.throws(() => PermutationTestEngine.run({ history: makeHistory(30), config: { total: 'x', drawn: 5 } }), TypeError);
+        assert.throws(
+            () => PermutationTestEngine.run({ history: makeHistory(30), config: { total: 'x', drawn: 5 } }),
+            TypeError
+        );
     });
 });
 
@@ -71,12 +74,17 @@ describe('PermutationTestEngine — p-valor', () => {
     const history = makeHistory(40);
 
     /** Estatística controlada: valor do primeiro concurso. */
-    const firstValueStat = (h) => h[0].dezenas[0];
+    const firstValueStat = h => h[0].dezenas[0];
 
     it('p = (1 + #{nulo ≥ observado}) / (runs + 1)', () => {
         const runs = 19;
         const r = PermutationTestEngine.run({
-            history, config: cfg, runs, windowSize: 5, seed: 3, statisticFn: firstValueStat
+            history,
+            config: cfg,
+            runs,
+            windowSize: 5,
+            seed: 3,
+            statisticFn: firstValueStat
         });
 
         const atLeast = r.nullDistribution.filter(v => v >= r.observed).length;
@@ -87,7 +95,12 @@ describe('PermutationTestEngine — p-valor', () => {
 
     it('estatística constante produz p = 1 (nunca "significativa")', () => {
         const r = PermutationTestEngine.run({
-            history, config: cfg, runs: 29, windowSize: 5, seed: 3, statisticFn: () => 9
+            history,
+            config: cfg,
+            runs: 29,
+            windowSize: 5,
+            seed: 3,
+            statisticFn: () => 9
         });
         assert.equal(r.observed, 9);
         assert.equal(r.pValue, 1);
@@ -102,7 +115,7 @@ describe('PermutationTestEngine — p-valor', () => {
      * nenhum elemento específico cair em posição específica, então o resultado
      * é estável para qualquer semente.
      */
-    const descents = (h) => {
+    const descents = h => {
         let c = 0;
         for (let i = 0; i < h.length - 1; i++) if (h[i].concurso > h[i + 1].concurso) c++;
         return c;
@@ -111,7 +124,12 @@ describe('PermutationTestEngine — p-valor', () => {
     it('ordem real que carrega estrutura é detectada (cauda superior)', () => {
         const sorted = [...history].sort((a, b) => b.concurso - a.concurso);
         const r = PermutationTestEngine.run({
-            history: sorted, config: cfg, runs: 29, windowSize: 5, seed: 3, statisticFn: descents
+            history: sorted,
+            config: cfg,
+            runs: 29,
+            windowSize: 5,
+            seed: 3,
+            statisticFn: descents
         });
         assert.equal(r.observed, sorted.length - 1);
         assert.ok(Math.abs(r.pValue - 1 / 30) < 1e-6, `p = ${r.pValue}`);
@@ -123,7 +141,12 @@ describe('PermutationTestEngine — p-valor', () => {
     it('ordem que prejudica o modelo é reportada na cauda inferior', () => {
         const reversed = [...history].sort((a, b) => a.concurso - b.concurso);
         const r = PermutationTestEngine.run({
-            history: reversed, config: cfg, runs: 29, windowSize: 5, seed: 3, statisticFn: descents
+            history: reversed,
+            config: cfg,
+            runs: 29,
+            windowSize: 5,
+            seed: 3,
+            statisticFn: descents
         });
         assert.equal(r.observed, 0);
         assert.equal(r.isSignificant, false, 'cauda inferior não é evidência de vantagem');
@@ -137,7 +160,12 @@ describe('PermutationTestEngine — p-valor', () => {
         // é estruturalmente incapaz de rejeitar. Isso precisa ser dito, não
         // virar um "não significativo" silencioso.
         const r = PermutationTestEngine.run({
-            history, config: cfg, runs: 19, windowSize: 5, seed: 3, statisticFn: firstValueStat
+            history,
+            config: cfg,
+            runs: 19,
+            windowSize: 5,
+            seed: 3,
+            statisticFn: firstValueStat
         });
         assert.equal(r.underpowered, true);
         assert.ok(Math.abs(r.minAchievableP - 1 / 20) < 1e-6);
@@ -148,7 +176,12 @@ describe('PermutationTestEngine — p-valor', () => {
 
     it('não avisa quando há permutações suficientes', () => {
         const r = PermutationTestEngine.run({
-            history, config: cfg, runs: 39, windowSize: 5, seed: 3, statisticFn: firstValueStat
+            history,
+            config: cfg,
+            runs: 39,
+            windowSize: 5,
+            seed: 3,
+            statisticFn: firstValueStat
         });
         assert.equal(r.underpowered, false);
         assert.equal(r.warning, null);
@@ -163,7 +196,12 @@ describe('PermutationTestEngine — p-valor', () => {
 
     it('quantis do nulo são ordenados', () => {
         const r = PermutationTestEngine.run({
-            history, config: cfg, runs: 29, windowSize: 5, seed: 8, statisticFn: firstValueStat
+            history,
+            config: cfg,
+            runs: 29,
+            windowSize: 5,
+            seed: 8,
+            statisticFn: firstValueStat
         });
         assert.ok(r.quantiles.p2_5 <= r.quantiles.p50);
         assert.ok(r.quantiles.p50 <= r.quantiles.p97_5);
@@ -175,7 +213,11 @@ describe('PermutationTestEngine — pipeline real', () => {
     it('roda o pipeline e devolve estrutura completa', () => {
         const history = makeHistory(60, 555);
         const r = PermutationTestEngine.run({
-            history, config: cfg, runs: 9, windowSize: 10, seed: 2026
+            history,
+            config: cfg,
+            runs: 9,
+            windowSize: 10,
+            seed: 2026
         });
 
         assert.equal(r.available, true);

@@ -4,47 +4,110 @@
  */
 export const TABLES = {
     games: {
-        pk: 'id', owner: 'user_id',
-        columns: ['lottery_type', 'numbers', 'strategy', 'model_score', 'historical_performance', 'expected_hits',
-            'confidence_level', 'probability_type', 'explanations', 'stats', 'status', 'created_at'],
+        pk: 'id',
+        owner: 'user_id',
+        columns: [
+            'lottery_type',
+            'numbers',
+            'strategy',
+            'model_score',
+            'historical_performance',
+            'expected_hits',
+            'confidence_level',
+            'probability_type',
+            'explanations',
+            'stats',
+            'status',
+            'created_at'
+        ],
         json: ['numbers', 'explanations', 'stats'],
         indexes: ['user_id', 'lottery_type'],
         order: 'id DESC'
     },
     simulations: {
-        pk: 'id', owner: 'user_id',
-        columns: ['lottery_type', 'strategy', 'total_games', 'games_count', 'results_count', 'results', 'score', 'created_at'],
+        pk: 'id',
+        owner: 'user_id',
+        columns: [
+            'lottery_type',
+            'strategy',
+            'total_games',
+            'games_count',
+            'results_count',
+            'results',
+            'score',
+            'created_at'
+        ],
         json: ['results'],
         indexes: ['user_id'],
         order: 'id DESC'
     },
     user_stats: {
-        pk: 'user_id', owner: 'user_id',
-        columns: ['games_generated', 'simulations', 'results_analyzed', 'total_games', 'total_wins', 'total_spent', 'total_prize'],
-        json: [], indexes: [], order: 'user_id'
+        pk: 'user_id',
+        owner: 'user_id',
+        columns: [
+            'games_generated',
+            'simulations',
+            'results_analyzed',
+            'total_games',
+            'total_wins',
+            'total_spent',
+            'total_prize'
+        ],
+        json: [],
+        indexes: [],
+        order: 'user_id'
     },
     auto_settings: {
-        pk: 'user_id', owner: 'user_id',
-        columns: ['active', 'auto_fetch', 'auto_generate', 'auto_conference', 'auto_all_lotteries', 'interval_minutes',
-            'lottery_type', 'strategy', 'games_per_draw', 'max_spend_per_draw'],
-        json: [], indexes: [], order: 'user_id'
+        pk: 'user_id',
+        owner: 'user_id',
+        columns: [
+            'active',
+            'auto_fetch',
+            'auto_generate',
+            'auto_conference',
+            'auto_all_lotteries',
+            'interval_minutes',
+            'lottery_type',
+            'strategy',
+            'games_per_draw',
+            'max_spend_per_draw'
+        ],
+        json: [],
+        indexes: [],
+        order: 'user_id'
     },
     auto_log: {
-        pk: 'id', owner: 'user_id',
+        pk: 'id',
+        owner: 'user_id',
         columns: ['type', 'message', 'action', 'details', 'timestamp'],
-        json: ['details'], indexes: ['user_id'], order: 'id DESC'
+        json: ['details'],
+        indexes: ['user_id'],
+        order: 'id DESC'
     },
     lottery_results: {
-        pk: 'id', owner: null, shared: true,
-        columns: ['lottery_type', 'concurso', 'data', 'data_apuracao', 'dezenas', 'acumulou', 'valor_estimado', 'fetched_at'],
-        json: ['dezenas'], indexes: ['lottery_type', 'concurso'], order: 'concurso DESC',
+        pk: 'id',
+        owner: null,
+        shared: true,
+        columns: [
+            'lottery_type',
+            'concurso',
+            'data',
+            'data_apuracao',
+            'dezenas',
+            'acumulou',
+            'valor_estimado',
+            'fetched_at'
+        ],
+        json: ['dezenas'],
+        indexes: ['lottery_type', 'concurso'],
+        order: 'concurso DESC',
         conflict: '(lottery_type, concurso)',
         noUpdate: true
     }
 };
 
-export const toSnake = (s) => s.replace(/[A-Z]/g, (l) => `_${l.toLowerCase()}`);
-export const toCamel = (s) => s.replace(/_([a-z])/g, (_, l) => l.toUpperCase());
+export const toSnake = s => s.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`);
+export const toCamel = s => s.replace(/_([a-z])/g, (_, l) => l.toUpperCase());
 
 export function rowToCamel(row) {
     if (!row) return row;
@@ -75,9 +138,14 @@ export function sanitizePayload(table, data) {
         if (payload[col] === undefined || payload[col] === null) continue;
         let v = payload[col];
         // Corrige dupla serialização vinda de versões antigas do cliente
-        if (typeof v === 'string') { try { v = JSON.parse(v); } catch { /* mantém string */ } }
+        if (typeof v === 'string') {
+            try {
+                v = JSON.parse(v);
+            } catch {
+                /* mantém string */
+            }
+        }
         payload[col] = JSON.stringify(v);
     }
     return payload;
 }
-

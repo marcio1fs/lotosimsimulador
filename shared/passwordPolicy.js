@@ -57,8 +57,7 @@ export const LEGACY_HASH_SUNSET_LABEL = '31/01/2027';
 const MS_PER_DAY = 86400000;
 
 /** `stored` é um hash no formato antigo (`h_…`)? */
-export const isLegacyHash = (stored) =>
-    typeof stored === 'string' && stored.startsWith(LEGACY_HASH_PREFIX);
+export const isLegacyHash = stored => typeof stored === 'string' && stored.startsWith(LEGACY_HASH_PREFIX);
 
 /**
  * A data-limite já passou?

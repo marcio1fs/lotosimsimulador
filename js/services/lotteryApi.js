@@ -101,7 +101,9 @@ export class LotteryAPIService {
         if (!config) return existingDraws || [];
 
         const currentList = [...(existingDraws || [])].sort((a, b) => b.concurso - a.concurso);
-        const latestConcurso = currentList[0]?.concurso || (type === 'lotofacil' ? 3250 : type === 'mega' ? 2800 : type === 'quina' ? 6600 : 2700);
+        const latestConcurso =
+            currentList[0]?.concurso ||
+            (type === 'lotofacil' ? 3250 : type === 'mega' ? 2800 : type === 'quina' ? 6600 : 2700);
         const existingConcursos = new Set(currentList.map(d => d.concurso));
         const drawnCount = config.drawn || config.pick;
 
@@ -162,7 +164,7 @@ export class LotteryAPIService {
         if (!result.draw) {
             console.error(
                 `Não foi possível obter dados oficiais para ${type}. Tentativas: ` +
-                result.errors.map(e => `${e.source}: ${e.error}`).join(' | ')
+                    result.errors.map(e => `${e.source}: ${e.error}`).join(' | ')
             );
             return null;
         }

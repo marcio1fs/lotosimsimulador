@@ -27,9 +27,10 @@ export class BacktestEngine {
         const totalDraws = chronological.length;
 
         // Janela de avaliação (quantos concursos testar do final da série)
-        const windowSize = options.windowSize && options.windowSize !== 'full' 
-            ? Math.min(options.windowSize, totalDraws - 5) 
-            : Math.max(10, totalDraws - 20);
+        const windowSize =
+            options.windowSize && options.windowSize !== 'full'
+                ? Math.min(options.windowSize, totalDraws - 5)
+                : Math.max(10, totalDraws - 20);
 
         const startIndex = totalDraws - windowSize;
         const hitsList = [];
@@ -43,7 +44,7 @@ export class BacktestEngine {
 
         const baselineHitsList = [];
         const hitTierBreakdown = {};
-        const minPrizeTier = config.total === 25 ? 11 : (config.total === 60 ? 4 : (config.total === 80 ? 2 : 15));
+        const minPrizeTier = config.total === 25 ? 11 : config.total === 60 ? 4 : config.total === 80 ? 2 : 15;
 
         const baseSeed = options.seed ?? 123456;
         const prng = new SeededRandom(baseSeed);
@@ -70,9 +71,13 @@ export class BacktestEngine {
 
             // Gera o jogo baseado apenas no passado
             const predictedGame = generatorFn(historyBefore, config);
-            const predArray = Array.isArray(predictedGame) ? predictedGame : 
-                              (predictedGame && predictedGame.dezenas ? predictedGame.dezenas : 
-                              (predictedGame && predictedGame.numbers ? predictedGame.numbers : []));
+            const predArray = Array.isArray(predictedGame)
+                ? predictedGame
+                : predictedGame && predictedGame.dezenas
+                  ? predictedGame.dezenas
+                  : predictedGame && predictedGame.numbers
+                    ? predictedGame.numbers
+                    : [];
 
             // Calcula quantidade de acertos no concurso 'i'
             let hits = 0;
@@ -82,11 +87,11 @@ export class BacktestEngine {
 
             hitsList.push(hits);
             hitsDistribution[hits] = (hitsDistribution[hits] || 0) + 1;
-            
+
             if (hits >= minPrizeTier) {
                 hitTierBreakdown[hits] = (hitTierBreakdown[hits] || 0) + 1;
             }
-            
+
             // Baseline local para o teste pareado, com PRNG controlado por seed e
             // média de várias apostas aleatórias (redução de variância).
             let bHitsAcc = 0;
@@ -128,37 +133,45 @@ export class BacktestEngine {
         const pickCount = config.pick;
         const drawnCountForNull = config.drawn || pickCount;
         const expectedHits = (pickCount * drawnCountForNull) / totalNumbers;
-        const hypergeometricVariance = totalNumbers > 1
-            ? drawnCountForNull * (pickCount / totalNumbers) * (1 - (pickCount / totalNumbers))
-              * ((totalNumbers - drawnCountForNull) / (totalNumbers - 1))
-            : 0;
+        const hypergeometricVariance =
+            totalNumbers > 1
+                ? drawnCountForNull *
+                  (pickCount / totalNumbers) *
+                  (1 - pickCount / totalNumbers) *
+                  ((totalNumbers - drawnCountForNull) / (totalNumbers - 1))
+                : 0;
         const theoreticalSd = Math.sqrt(Math.max(1e-12, hypergeometricVariance));
-        const theoreticalBenchmark = StatisticalInference.zTestVersusExpected(
-            hitsList, expectedHits, theoreticalSd);
+        const theoreticalBenchmark = StatisticalInference.zTestVersusExpected(hitsList, expectedHits, theoreticalSd);
 
         // Adequação amostral: quantos concursos seriam necessários para detectar
         // uma vantagem de 10% sobre a esperança — resposta honesta ao "por que o
         // p-value não fecha".
         const mdeHits = StatisticalInference.minimumDetectableEffect(
-            Math.max(2, hitsList.length), theoreticalSd, 0.05, 0.8, true);
-        const drawsFor10 = StatisticalInference.requiredSampleSize(
-            theoreticalSd, expectedHits * 0.10, 0.05, 0.8, true);
+            Math.max(2, hitsList.length),
+            theoreticalSd,
+            0.05,
+            0.8,
+            true
+        );
+        const drawsFor10 = StatisticalInference.requiredSampleSize(theoreticalSd, expectedHits * 0.1, 0.05, 0.8, true);
         // "Exploratório" quando o mínimo efeito detectável é comparável ao próprio
         // valor esperado — ou seja, o teste só enxergaria vantagens de 50%+.
-        const onlyExploratory = mdeHits === null || expectedHits <= 0
-            ? true
-            : mdeHits >= 0.5 * expectedHits;
+        const onlyExploratory = mdeHits === null || expectedHits <= 0 ? true : mdeHits >= 0.5 * expectedHits;
         const sampleAdequacy = {
             evaluatedDraws: hitsList.length,
             theoreticalExpectedHits: Number(expectedHits.toFixed(4)),
             theoreticalSd: Number(theoreticalSd.toFixed(4)),
             minimumDetectableEffectHits: mdeHits,
-            minimumDetectableEffectPercent: (mdeHits !== null && expectedHits > 0)
-                ? Number(((mdeHits / expectedHits) * 100).toFixed(1))
-                : null,
+            minimumDetectableEffectPercent:
+                mdeHits !== null && expectedHits > 0 ? Number(((mdeHits / expectedHits) * 100).toFixed(1)) : null,
             drawsNeededFor10PercentEdge: drawsFor10,
             drawsNeededFor20PercentEdge: StatisticalInference.requiredSampleSize(
-                theoreticalSd, expectedHits * 0.20, 0.05, 0.8, true),
+                theoreticalSd,
+                expectedHits * 0.2,
+                0.05,
+                0.8,
+                true
+            ),
             onlyExploratory,
             note: onlyExploratory
                 ? `Com ${hitsList.length} concursos o teste só detecta vantagens acima de ${((mdeHits / expectedHits) * 100).toFixed(0)}% (poder 80%). Seriam necessários ~${drawsFor10} concursos para detectar 10%.`
@@ -227,25 +240,25 @@ export class BacktestEngine {
 
         const effectiveWindow = Math.min(evalWindow, total - 5);
         const mid = total - Math.floor(effectiveWindow / 2);
-        
+
         // In-sample test (metade anterior da janela)
-        let inSampleHits = [];
+        const inSampleHits = [];
         for (let i = total - effectiveWindow; i < mid; i++) {
             const past = chronologicalHistory.slice(0, i).reverse();
             const actual = new Set(chronologicalHistory[i].dezenas ? chronologicalHistory[i].dezenas.map(Number) : []);
             const game = generatorFn(past, config);
-            const predArray = Array.isArray(game) ? game : (game && game.dezenas ? game.dezenas : []);
+            const predArray = Array.isArray(game) ? game : game && game.dezenas ? game.dezenas : [];
             const hits = predArray.filter(n => actual.has(n)).length;
             inSampleHits.push(hits);
         }
 
         // Out-of-sample test (metade recente da janela)
-        let outSampleHits = [];
+        const outSampleHits = [];
         for (let i = mid; i < total; i++) {
             const past = chronologicalHistory.slice(0, i).reverse();
             const actual = new Set(chronologicalHistory[i].dezenas ? chronologicalHistory[i].dezenas.map(Number) : []);
             const game = generatorFn(past, config);
-            const predArray = Array.isArray(game) ? game : (game && game.dezenas ? game.dezenas : []);
+            const predArray = Array.isArray(game) ? game : game && game.dezenas ? game.dezenas : [];
             const hits = predArray.filter(n => actual.has(n)).length;
             outSampleHits.push(hits);
         }
@@ -260,17 +273,19 @@ export class BacktestEngine {
         const foldResults = [];
         if (effectiveWindow >= 12 && foldSize >= 2) {
             for (let f = 0; f < folds; f++) {
-                const foldStart = total - effectiveWindow + (f * foldSize);
+                const foldStart = total - effectiveWindow + f * foldSize;
                 const foldEnd = f === folds - 1 ? total : foldStart + foldSize;
                 const foldMid = foldStart + Math.floor((foldEnd - foldStart) / 2);
-                let foldHits = [];
-                let foldInHits = [];
-                let foldOutHits = [];
+                const foldHits = [];
+                const foldInHits = [];
+                const foldOutHits = [];
                 for (let i = foldStart; i < foldEnd; i++) {
                     const past = chronologicalHistory.slice(0, i).reverse();
-                    const actual = new Set(chronologicalHistory[i].dezenas ? chronologicalHistory[i].dezenas.map(Number) : []);
+                    const actual = new Set(
+                        chronologicalHistory[i].dezenas ? chronologicalHistory[i].dezenas.map(Number) : []
+                    );
                     const game = generatorFn(past, config);
-                    const predArray = Array.isArray(game) ? game : (game && game.dezenas ? game.dezenas : []);
+                    const predArray = Array.isArray(game) ? game : game && game.dezenas ? game.dezenas : [];
                     const hits = predArray.filter(n => actual.has(n)).length;
                     foldHits.push(hits);
                     if (i < foldMid) foldInHits.push(hits);
@@ -291,7 +306,7 @@ export class BacktestEngine {
         }
 
         // Se a performance despencar bruscamente na amostra nova, há overfitting
-        const isOverfitting = (inStats.mean - outStats.mean) > ((inStats.stdDev || 1) * 0.8);
+        const isOverfitting = inStats.mean - outStats.mean > (inStats.stdDev || 1) * 0.8;
 
         // Estabilidade entre folds (0 a 100) — exige ao menos 2 folds válidos
         let stabilityScore = null;
@@ -300,10 +315,10 @@ export class BacktestEngine {
             const foldMeanAvg = foldMeans.reduce((a, b) => a + b, 0) / foldMeans.length;
             const foldVar = foldMeans.reduce((s, m) => s + Math.pow(m - foldMeanAvg, 2), 0) / foldMeans.length;
             const foldStd = Math.sqrt(foldVar);
-            
-            const cv = foldMeanAvg > 0 ? (foldStd / foldMeanAvg) : 0;
+
+            const cv = foldMeanAvg > 0 ? foldStd / foldMeanAvg : 0;
             const overfitGap = Math.max(0, inStats.mean - outStats.mean);
-            const overfitRatio = foldMeanAvg > 0 ? (overfitGap / foldMeanAvg) : 0;
+            const overfitRatio = foldMeanAvg > 0 ? overfitGap / foldMeanAvg : 0;
 
             const rawStability = 100 * Math.max(0, 1 - (cv * 1.5 + overfitRatio * 1.0));
             const calculatedScore = Number(rawStability.toFixed(1));
@@ -337,7 +352,15 @@ export class BacktestEngine {
             pValue: null,
             isStatisticallySignificant: false,
             tTestResult: { tStatistic: 0, pValue: null, isSignificant: false },
-            walkForward: { isOverfitting: false, inSampleMean: 0, outSampleMean: 0, diff: 0, degradation: 0, stabilityScore: null, foldResults: [] },
+            walkForward: {
+                isOverfitting: false,
+                inSampleMean: 0,
+                outSampleMean: 0,
+                diff: 0,
+                degradation: 0,
+                stabilityScore: null,
+                foldResults: []
+            },
             dataLeakageDetected: false
         };
     }

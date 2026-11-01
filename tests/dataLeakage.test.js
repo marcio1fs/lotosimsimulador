@@ -33,7 +33,7 @@ const mockConfig = { total: 25, pick: 15, drawn: 15, apiName: 'lotofacil', name:
 describe('Data Leakage Prevention Test', () => {
     it('alterar um concurso futuro NÃO DEVE alterar a previsão de um concurso passado', () => {
         const originalHistory = createMockHistory(50);
-        
+
         // Suponhamos que queremos a previsão para o concurso no índice 10 (concurso passado)
         const pastCutoffIndex = 10;
         const pastHistorySlice = originalHistory.slice(pastCutoffIndex); // concursos antigos do passado
@@ -50,7 +50,23 @@ describe('Data Leakage Prevention Test', () => {
         // Agora criamos um histórico modificado mutando um concurso no FUTURO em relação a pastCutoffIndex (ex: índice 0 ou 1)
         const mutatedHistory = JSON.parse(JSON.stringify(originalHistory));
         // Altera totalmente o concurso mais recente no futuro (índice 0)
-        mutatedHistory[0].dezenas = ['20', '21', '22', '23', '24', '25', '19', '18', '17', '16', '15', '14', '13', '12', '11'];
+        mutatedHistory[0].dezenas = [
+            '20',
+            '21',
+            '22',
+            '23',
+            '24',
+            '25',
+            '19',
+            '18',
+            '17',
+            '16',
+            '15',
+            '14',
+            '13',
+            '12',
+            '11'
+        ];
 
         // Previsão 2 para a MESMA posição do passado (pastCutoffIndex)
         const pastMutatedHistorySlice = mutatedHistory.slice(pastCutoffIndex);
@@ -63,8 +79,11 @@ describe('Data Leakage Prevention Test', () => {
         const mutatedPrediction = generatorFn2(pastMutatedHistorySlice, mockConfig);
 
         // Asserção estrita: as duas previsões devem ser 100% idênticas
-        assert.deepStrictEqual(originalPrediction, mutatedPrediction, 
-            'ERRO GRAVE: DATA LEAKAGE DETECTADO! A alteração de um concurso futuro alterou a previsão do passado.');
+        assert.deepStrictEqual(
+            originalPrediction,
+            mutatedPrediction,
+            'ERRO GRAVE: DATA LEAKAGE DETECTADO! A alteração de um concurso futuro alterou a previsão do passado.'
+        );
     });
 
     it('o motor de BacktestEngine deve certificar dataLeakageDetected: false', () => {

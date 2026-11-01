@@ -102,7 +102,8 @@ export class BayesFrequencyEngine {
 
         for (let i = 0; i < 120; i++) {
             const cdf = this.betaCDF(mid, a, b);
-            if (cdf < q) lo = mid; else hi = mid;
+            if (cdf < q) lo = mid;
+            else hi = mid;
             const next = 0.5 * (lo + hi);
             if (next === mid || hi - lo < 1e-15) break;
             mid = next;
@@ -141,9 +142,7 @@ export class BayesFrequencyEngine {
         const minStrength = options.minStrength ?? this.DEFAULT_MIN_STRENGTH;
 
         const observedVariance = this.sampleVariance(rates);
-        const samplingVariance = drawCount > 0
-            ? (baselineRate * (1 - baselineRate)) / drawCount
-            : 0;
+        const samplingVariance = drawCount > 0 ? (baselineRate * (1 - baselineRate)) / drawCount : 0;
         const tau2 = observedVariance - samplingVariance;
 
         // Sem heterogeneidade detectável: as dezenas são estatisticamente
@@ -224,9 +223,7 @@ export class BayesFrequencyEngine {
         // Contagens normalizadas: aceita objeto {1: k, 2: k...} ou array
         const counts = new Array(total);
         for (let n = 1; n <= total; n++) {
-            const raw = Array.isArray(freqAbsolute)
-                ? freqAbsolute[n - 1]
-                : freqAbsolute?.[n];
+            const raw = Array.isArray(freqAbsolute) ? freqAbsolute[n - 1] : freqAbsolute?.[n];
             const k = N > 0 ? Math.min(N, Math.max(0, Number(raw) || 0)) : 0;
             counts[n - 1] = drawCount > 0 ? k : 0;
         }
@@ -234,10 +231,7 @@ export class BayesFrequencyEngine {
         // κ: fixo se pedido, senão estimado dos dados
         let priorInfo;
         if (Number.isFinite(config.priorStrength)) {
-            const strength = Math.max(
-                config.minStrength ?? this.DEFAULT_MIN_STRENGTH,
-                config.priorStrength
-            );
+            const strength = Math.max(config.minStrength ?? this.DEFAULT_MIN_STRENGTH, config.priorStrength);
             priorInfo = {
                 strength,
                 observedVariance: this.sampleVariance(counts.map(k => k / Math.max(1, N))),
@@ -322,9 +316,10 @@ export class BayesFrequencyEngine {
 
         let verdict;
         if (distinguishableSimultaneous.length === 0) {
-            verdict = distinguishable.length === 0
-                ? 'Nenhuma dezena se distingue da taxa base: as frequências observadas são compatíveis com sorteio justo.'
-                : `Nenhuma dezena sobrevive à correção para múltiplas comparações. As ${distinguishable.length} que parecem desviar-se à primeira vista (esperado ~${expectedByChance.toFixed(1)} por azar) não se sustentam.`;
+            verdict =
+                distinguishable.length === 0
+                    ? 'Nenhuma dezena se distingue da taxa base: as frequências observadas são compatíveis com sorteio justo.'
+                    : `Nenhuma dezena sobrevive à correção para múltiplas comparações. As ${distinguishable.length} que parecem desviar-se à primeira vista (esperado ~${expectedByChance.toFixed(1)} por azar) não se sustentam.`;
         } else {
             verdict = `${distinguishableSimultaneous.length} dezena(s) com intervalo simultâneo fora da base. Atenção: com ${total} dezenas testadas a ${(confidence * 100).toFixed(0)}%, espera-se ~${expectedByChance.toFixed(1)} desvio(s) só por acaso.`;
         }

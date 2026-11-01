@@ -35,13 +35,15 @@ global.gc();
 global.gc();
 const after = process.memoryUsage().heapUsed;
 
-process.stdout.write(JSON.stringify({
-    retainedMb: Number(((after - before) / 1048576).toFixed(3)),
-    pairMatrixBytes: analysis.pairMatrix.values.byteLength,
-    fastPairMatrixBytes: fast.pairMatrix.values.byteLength,
-    expectedBytes: (total + 1) * (total + 1) * 4,
-    pairKeys: Object.keys(analysis.pairMatrix).length,
-    topPairs: analysis.topPairs.length,
-    examined: analysis.pairStats.examined,
-    expectedExamined: (total * (total - 1)) / 2
-}));
+process.stdout.write(
+    JSON.stringify({
+        retainedMb: Number(((after - before) / 1048576).toFixed(3)),
+        pairMatrixBytes: analysis.pairMatrix.values.byteLength,
+        fastPairMatrixBytes: fast.pairMatrix.values.byteLength,
+        expectedBytes: (total + 1) * (total + 1) * 4,
+        pairKeys: Object.keys(analysis.pairMatrix).length,
+        topPairs: analysis.topPairs.length,
+        examined: analysis.pairStats.examined,
+        expectedExamined: (total * (total - 1)) / 2
+    })
+);

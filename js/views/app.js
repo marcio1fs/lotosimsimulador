@@ -8,7 +8,12 @@ import { BayesFrequencyEngine, BAYES_DISCLAIMER } from '../engine/bayesFrequency
  */
 export class AppView {
     static setUser(user) {
-        const initials = user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+        const initials = user.name
+            .split(' ')
+            .map(n => n[0])
+            .join('')
+            .substring(0, 2)
+            .toUpperCase();
         document.getElementById('userAvatarHeader').textContent = initials;
         document.getElementById('userNameHeader').textContent = user.name;
         document.getElementById('dropdownName').textContent = user.name;
@@ -16,7 +21,8 @@ export class AppView {
         document.getElementById('profileAvatar').textContent = initials;
         document.getElementById('profileName').textContent = user.name;
         document.getElementById('profileEmail').textContent = user.email;
-        document.getElementById('profileJoined').textContent = `Membro desde: ${new Date(user.createdAt).toLocaleDateString('pt-BR')}`;
+        document.getElementById('profileJoined').textContent =
+            `Membro desde: ${new Date(user.createdAt).toLocaleDateString('pt-BR')}`;
     }
 
     static updateStats(stats) {
@@ -42,7 +48,8 @@ export class AppView {
     }
 
     static showToast(message, type = 'success') {
-        const existing = document.querySelector('.toast'); if (existing) existing.remove();
+        const existing = document.querySelector('.toast');
+        if (existing) existing.remove();
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
         toast.textContent = message;
@@ -70,15 +77,22 @@ export class AppView {
 
     static setLotteryStatus(type, text, ready) {
         const el = document.getElementById('status-' + type);
-        if (el) { el.textContent = text; el.className = 'lottery-card-status' + (ready ? ' ready' : ''); }
+        if (el) {
+            el.textContent = text;
+            el.className = 'lottery-card-status' + (ready ? ' ready' : '');
+        }
     }
 
     static renderLotteryCards(type) {
-        document.querySelectorAll('.lottery-card').forEach(c => c.classList.toggle('selected', c.dataset.type === type));
+        document
+            .querySelectorAll('.lottery-card')
+            .forEach(c => c.classList.toggle('selected', c.dataset.type === type));
     }
 
     static renderStrategies(strategy) {
-        document.querySelectorAll('.strategy-option').forEach(o => o.classList.toggle('selected', o.dataset.strategy === strategy));
+        document
+            .querySelectorAll('.strategy-option')
+            .forEach(o => o.classList.toggle('selected', o.dataset.strategy === strategy));
     }
 
     static renderNumberSelectors(type, fixed = [], excluded = []) {
@@ -91,12 +105,12 @@ export class AppView {
         if (!containers.fixed || !containers.excluded) return;
 
         const renderPool = (container, list, otherList, className) => {
-            container.innerHTML = Array.from({length: cfg.total}, (_, i) => {
+            container.innerHTML = Array.from({ length: cfg.total }, (_, i) => {
                 const num = i + 1;
                 const isSelected = list.includes(num);
                 const isDisabled = otherList.includes(num);
                 return `<div class="selector-ball ${isSelected ? className : ''} ${isDisabled ? 'disabled' : ''}" 
-                             data-num="${num}" data-type="${className}">${String(num).padStart(2,'0')}</div>`;
+                             data-num="${num}" data-type="${className}">${String(num).padStart(2, '0')}</div>`;
             }).join('');
         };
 
@@ -120,39 +134,45 @@ export class AppView {
         const sorted = [...entries].sort((a, b) => b.freq - a.freq);
         const hot = sorted.slice(0, 5);
         const cold = sorted.slice(-5).reverse();
-        
+
         const atrasoEntries = Object.entries(atraso).map(([num, a]) => ({ num: parseInt(num), atraso: a }));
         const mostDelayed = [...atrasoEntries].sort((a, b) => b.atraso - a.atraso).slice(0, 3);
         const missingCycle = analysis.cycleStats?.missingInCurrentCycle || [];
-        const cycleDisplay = missingCycle.length > 0
-            ? missingCycle.slice(0, 6).map(n => String(n).padStart(2, '0')).join(', ') + (missingCycle.length > 6 ? '...' : '')
-            : 'Ciclo Fechado!';
+        const cycleDisplay =
+            missingCycle.length > 0
+                ? missingCycle
+                      .slice(0, 6)
+                      .map(n => String(n).padStart(2, '0'))
+                      .join(', ') + (missingCycle.length > 6 ? '...' : '')
+                : 'Ciclo Fechado!';
 
         const markovTop = analysis.markovStats?.topTriggeredNumbers?.slice(0, 4) || [];
-        const markovDisplay = markovTop.length > 0
-            ? markovTop.map(m => String(m.num).padStart(2, '0')).join(', ')
-            : '-';
+        const markovDisplay =
+            markovTop.length > 0 ? markovTop.map(m => String(m.num).padStart(2, '0')).join(', ') : '-';
 
         // Honestidade estatística: o lift só vira "padrão" se sobreviver ao controle
         // de múltiplas comparações (Benjamini-Hochberg, FDR 5%).
         const markovSignificant = analysis.markovStats?.significantTransitions ?? 0;
         const markovTested = analysis.markovStats?.testedTransitions ?? 0;
-        const markovDetail = markovTested > 0
-            ? (markovSignificant > 0
-                ? `${markovSignificant} de ${markovTested} transições com significância real (FDR 5%)`
-                : `Nenhuma das ${markovTested} transições sobrevive ao FDR 5% — consistente com sorteio justo`)
-            : 'Puxadas pelo último sorteio';
+        const markovDetail =
+            markovTested > 0
+                ? markovSignificant > 0
+                    ? `${markovSignificant} de ${markovTested} transições com significância real (FDR 5%)`
+                    : `Nenhuma das ${markovTested} transições sobrevive ao FDR 5% — consistente com sorteio justo`
+                : 'Puxadas pelo último sorteio';
 
         const chi = analysis.chiSquare;
         const uniformityDetail = chi
             ? `p exato ${Number(chi.pValue).toExponential(2)} · V=${chi.cramersV} (${chi.effectDescriptor})`
             : 'Teste indisponível';
-        const uniformityValue = chi
-            ? (chi.isUniform ? 'Uniforme' : 'Desvio detectado')
-            : '-';
-        const uniformityNote = chi && !chi.isUniform && chi.topDeviations?.length
-            ? `Dezenas fora do padrão: ${chi.topDeviations.slice(0, 4).map(d => String(d.number).padStart(2, '0')).join(', ')}`
-            : 'Frequências compatíveis com sorteio justo';
+        const uniformityValue = chi ? (chi.isUniform ? 'Uniforme' : 'Desvio detectado') : '-';
+        const uniformityNote =
+            chi && !chi.isUniform && chi.topDeviations?.length
+                ? `Dezenas fora do padrão: ${chi.topDeviations
+                      .slice(0, 4)
+                      .map(d => String(d.number).padStart(2, '0'))
+                      .join(', ')}`
+                : 'Frequências compatíveis com sorteio justo';
 
         // Encolhimento bayesiano (Beta-Binomial) das frequências.
         // A frequência bruta de uma amostra pequena não é estimativa da taxa
@@ -174,7 +194,7 @@ export class AppView {
             }
         }
 
-        const pct = (v) => BayesFrequencyEngine.formatPct(v);
+        const pct = v => BayesFrequencyEngine.formatPct(v);
         const hotNumbers = bayes ? bayes.hot.map(h => h.number) : hot.map(h => h.num);
         const coldNumbers = bayes ? bayes.cold.map(c => c.number) : cold.map(c => c.num);
         const hotDetail = bayes
@@ -184,9 +204,7 @@ export class AppView {
             ? `Bruto ${pct(bayes.cold[0].rawRate)} → ${pct(bayes.cold[0].shrunkRate)} · IC 95% ${pct(bayes.cold[0].lower)}–${pct(bayes.cold[0].upper)}`
             : `Menor frequência: ${pct(cold[0].freq / Math.max(1, analysis.drawCount))}`;
 
-        const syntheticNote = syntheticDraws > 0
-            ? ` · ⚠️ inclui ${syntheticDraws} sintético(s)`
-            : '';
+        const syntheticNote = syntheticDraws > 0 ? ` · ⚠️ inclui ${syntheticDraws} sintético(s)` : '';
         const bayesCard = bayes
             ? `<div class="insight-card" title="${escapeHtml(BAYES_DISCLAIMER)}"><div class="insight-card-title">🎯 Frequência × Ruído</div><div class="insight-card-value">${bayes.summary.distinguishableSimultaneous === 0 ? 'Nenhuma se destaca' : `${bayes.summary.distinguishableSimultaneous} dezena(s)`}</div><div class="insight-card-detail">${bayes.summary.distinguishableSimultaneous === 0 ? `IC 95% simultâneo · esperado ~${bayes.summary.expectedByChance.toFixed(1)} desvio(s) por azar${syntheticNote}` : `IC 95% simultâneo · base ${pct(bayes.baselineRate)}${syntheticNote}`}</div></div>`
             : '';
@@ -210,16 +228,14 @@ export class AppView {
     static renderMiniVolanteGrid(numbers, total) {
         const { rows, cols } = StatisticalAnalyzer.getGridDimensions(total);
         const numSet = new Set(numbers);
-        const cellSize = total === 100 ? '14px' : (total >= 60 ? '16px' : '20px');
+        const cellSize = total === 100 ? '14px' : total >= 60 ? '16px' : '20px';
         const fontSize = total === 100 ? '0.48rem' : '0.55rem';
 
         let cellsHtml = '';
         for (let n = 1; n <= total; n++) {
             const isPicked = numSet.has(n);
             const isFrame = StatisticalAnalyzer.isFrameNumber(n, total);
-            const bg = isPicked
-                ? 'var(--accent-green)'
-                : (isFrame ? 'rgba(255,255,255,0.08)' : 'rgba(59,130,246,0.08)');
+            const bg = isPicked ? 'var(--accent-green)' : isFrame ? 'rgba(255,255,255,0.08)' : 'rgba(59,130,246,0.08)';
             const color = isPicked ? '#090d16' : 'var(--text-muted)';
             const weight = isPicked ? '800' : '400';
             cellsHtml += `<div style="width:${cellSize};height:${cellSize};display:flex;align-items:center;justify-content:center;font-size:${fontSize};font-weight:${weight};border-radius:3px;background:${bg};color:${color};">${String(n).padStart(2, '0')}</div>`;
@@ -240,11 +256,11 @@ export class AppView {
     static renderGames(games, type) {
         const cfg = LotteryModel.CONFIG[type];
         const exportActions = document.getElementById('exportActions');
-        
-        if (!games || !games.length) { 
-            this.renderEmptyGames(); 
+
+        if (!games || !games.length) {
+            this.renderEmptyGames();
             if (exportActions) exportActions.style.display = 'none';
-            return; 
+            return;
         }
 
         if (exportActions) exportActions.style.display = 'flex';
@@ -255,30 +271,40 @@ export class AppView {
         const fin = portfolioProj?.financial;
         const guarantees = wheelMeta?.conditionalGuarantees || [];
 
-        const guaranteeHtml = guarantees.length > 0 ? `
+        const guaranteeHtml =
+            guarantees.length > 0
+                ? `
             <div style="margin-top:0.65rem; padding:0.6rem 0.75rem; background:rgba(0,0,0,0.28); border-radius:8px; border:1px solid rgba(59,130,246,0.25); font-size:0.72rem;">
                 <div style="font-weight:700; color:#93c5fd; margin-bottom:0.35rem;">
                     🛡️ Tabela de Garantia Condicional Fechada (${wheelMeta.elitePoolSize} Dezenas de Elite · Otimização Simulated Annealing ${wheelMeta.annealingSwapsAccepted ? `+${wheelMeta.annealingSwapsAccepted} permutações` : 'Ativa'}):
                 </div>
                 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:0.45rem;">
-                    ${guarantees.map(g => `
+                    ${guarantees
+                        .map(
+                            g => `
                         <div style="background:rgba(255,255,255,0.03); padding:0.4rem 0.55rem; border-radius:6px;">
                             Se caírem <strong>${g.conditionHitsInPool} dezenas</strong> no Grupo de Elite:<br>
                             ✅ Mínimo garantido: <strong>${g.guaranteedMinBestHit} pts</strong> (Média: <strong>${g.averageBestHit} pts</strong> · ~${g.averagePrizeTickets} bilhetes premiados)
                         </div>
-                    `).join('')}
+                    `
+                        )
+                        .join('')}
                 </div>
             </div>
-        ` : '';
+        `
+                : '';
 
-        const financialHtml = fin ? `
+        const financialHtml = fin
+            ? `
             <div style="margin-top:0.65rem; display:flex; flex-wrap:wrap; gap:0.75rem; align-items:center; justify-content:space-between; padding:0.55rem 0.75rem; background:rgba(245,158,11,0.09); border-radius:8px; border:1px solid rgba(245,158,11,0.25); font-size:0.73rem;">
                 <div>💰 <strong>Gestão de Banca (Preços Oficiais Caixa):</strong> Custo Unitário <strong>${fin.unitPriceFormatted}</strong> · Investimento Total (${fin.ticketCount} jogos): <strong style="color:#fbbf24;">${fin.totalInvestmentFormatted}</strong></div>
                 <div>🤝 <strong>Bolão (5 cotas):</strong> ${fin.costPerShareFormatted}/pessoa · 🔁 <strong>Teimosinha (3 conc.):</strong> ${fin.teimosinha3DrawsFormatted}</div>
             </div>
-        ` : '';
+        `
+            : '';
 
-        const portfolioBanner = portfolioProj ? `
+        const portfolioBanner = portfolioProj
+            ? `
             <div style="grid-column:1/-1; padding:1rem 1.2rem; border-radius:12px; background:linear-gradient(135deg, rgba(16,185,129,0.12), rgba(59,130,246,0.10)); border:1px solid rgba(16,185,129,0.35); margin-bottom:0.5rem;">
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem;">
                     <div style="font-size:0.9rem; font-weight:700; color:var(--text-main);">
@@ -304,48 +330,62 @@ export class AppView {
                         <div style="font-weight:700; font-size:0.88rem; color:#fbbf24;">≤ ${portfolioProj.anyPrizePortfolioOdds} (${portfolioProj.anyPrizePortfolioProbability}%)</div>
                     </div>
                 </div>
-                ${wheelMeta ? `
+                ${
+                    wheelMeta
+                        ? `
                 <div style="margin-top:0.65rem; font-size:0.73rem; color:var(--text-muted); padding-top:0.55rem; border-top:1px dashed rgba(255,255,255,0.12);">
-                    🎯 <strong>Matriz de Fechamento (${wheelMeta.elitePoolSize} dezenas de elite):</strong> [${wheelMeta.elitePool.map(n => String(n).padStart(2,'0')).join(', ')}] · Cobertura de Pares: <strong>${wheelMeta.pairCoverageGuaranteePct}%</strong> (${wheelMeta.coveredPairsCount}/${wheelMeta.totalPoolPairs} pares · Limite Schoenheim: ${wheelMeta.schoenheimLowerBound || '-'} jgs)
-                </div>` : ''}
+                    🎯 <strong>Matriz de Fechamento (${wheelMeta.elitePoolSize} dezenas de elite):</strong> [${wheelMeta.elitePool.map(n => String(n).padStart(2, '0')).join(', ')}] · Cobertura de Pares: <strong>${wheelMeta.pairCoverageGuaranteePct}%</strong> (${wheelMeta.coveredPairsCount}/${wheelMeta.totalPoolPairs} pares · Limite Schoenheim: ${wheelMeta.schoenheimLowerBound || '-'} jgs)
+                </div>`
+                        : ''
+                }
                 ${guaranteeHtml}
                 ${financialHtml}
             </div>
-        ` : '';
+        `
+            : '';
 
-        const policyNotice = policy ? `
+        const policyNotice = policy
+            ? `
             <div style="grid-column:1/-1;padding:0.75rem 1rem;border-radius:10px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.28);font-size:0.74rem;line-height:1.4;color:var(--text-main);">
                 <strong>Transparência Estatística — ${policy.label}:</strong> ${policy.detail}
                 <span style="color:var(--text-muted)">(${policy.probabilityLabel || 'Chance bruta individual'}: ${policy.probabilityPerCombination}. ${policy.disclaimer})</span>
-            </div>` : '';
+            </div>`
+            : '';
 
-        document.getElementById('gamesGrid').innerHTML = portfolioBanner + policyNotice + games.map((g, i) => {
-            const stats = typeof g.stats === 'string' ? JSON.parse(g.stats) : g.stats;
-            const explanations = typeof g.explanations === 'string' ? JSON.parse(g.explanations) : (g.explanations || []);
-            const modelScore = g.modelScore || 0;
-            const gaussianIdx = g.gaussianQualityIndex || 85;
-            const antiCrowdScore = g.antiCrowdScore || stats?.antiCrowdScore || 75;
-            const evMult = g.expectedValueMultiplier || stats?.evMultiplier || 1.1;
-            const perf = g.historicalPerformance ? g.historicalPerformance : 'Calibrado';
-            const expectedHitsDisplay = typeof g.expectedHits === 'number' ? `${g.expectedHits} acertos` : 'Calculado';
-            const ci = g.confidenceInterval;
-            const seed = g.seed;
-            const mc = g.monteCarlo;
-            const coverage = g.portfolioCoverage;
-            const projection = g.futureProjection;
+        document.getElementById('gamesGrid').innerHTML =
+            portfolioBanner +
+            policyNotice +
+            games
+                .map((g, i) => {
+                    const stats = typeof g.stats === 'string' ? JSON.parse(g.stats) : g.stats;
+                    const explanations =
+                        typeof g.explanations === 'string' ? JSON.parse(g.explanations) : g.explanations || [];
+                    const modelScore = g.modelScore || 0;
+                    const gaussianIdx = g.gaussianQualityIndex || 85;
+                    const antiCrowdScore = g.antiCrowdScore || stats?.antiCrowdScore || 75;
+                    const evMult = g.expectedValueMultiplier || stats?.evMultiplier || 1.1;
+                    const perf = g.historicalPerformance ? g.historicalPerformance : 'Calibrado';
+                    const expectedHitsDisplay =
+                        typeof g.expectedHits === 'number' ? `${g.expectedHits} acertos` : 'Calculado';
+                    const ci = g.confidenceInterval;
+                    const seed = g.seed;
+                    const mc = g.monteCarlo;
+                    const coverage = g.portfolioCoverage;
+                    const projection = g.futureProjection;
 
-            const sigBadge = g.statisticallySignificant === true || g.isStatisticallySignificant === true 
-                ? '<span class="badge badge-green" style="font-size:0.6rem;">✅ Significante</span>'
-                : g.statisticallySignificant === false || g.isStatisticallySignificant === false
-                    ? '<span class="badge badge-gold" style="font-size:0.6rem;">⚡ Filtro Gaussiano</span>'
-                    : '';
+                    const sigBadge =
+                        g.statisticallySignificant === true || g.isStatisticallySignificant === true
+                            ? '<span class="badge badge-green" style="font-size:0.6rem;">✅ Significante</span>'
+                            : g.statisticallySignificant === false || g.isStatisticallySignificant === false
+                              ? '<span class="badge badge-gold" style="font-size:0.6rem;">⚡ Filtro Gaussiano</span>'
+                              : '';
 
-            const ciMethodText = ci && ci.method ? ` (${ci.method})` : '';
+                    const ciMethodText = ci && ci.method ? ` (${ci.method})` : '';
 
-            return `
-            <div class="game-card animate-in" style="animation-delay:${i*0.03}s">
+                    return `
+            <div class="game-card animate-in" style="animation-delay:${i * 0.03}s">
                 <div class="game-card-header">
-                    <span class="game-number">${cfg.icon} Jogo #${i+1}</span>
+                    <span class="game-number">${cfg.icon} Jogo #${i + 1}</span>
                     <div style="display:flex; gap:0.30rem; align-items:center; flex-wrap:wrap;">
                         <span class="badge badge-green" style="font-size:0.60rem;" title="Índice de Qualidade na Curva de Gauss">Gauss: ${gaussianIdx}%</span>
                         <span class="badge badge-gold" style="font-size:0.60rem;" title="Proteção Anti-Rateio (Teoria dos Jogos)">EV: ${evMult}x</span>
@@ -362,10 +402,12 @@ export class AppView {
                 </div>
 
                 <div class="game-balls">
-                    ${g.numbers.map((n, ni) => `<div class="ball ${cfg.color} ball-animate" style="animation-delay:${(i*0.03)+(ni*0.02)}s">${String(n).padStart(2,'0')}</div>`).join('')}
+                    ${g.numbers.map((n, ni) => `<div class="ball ${cfg.color} ball-animate" style="animation-delay:${i * 0.03 + ni * 0.02}s">${String(n).padStart(2, '0')}</div>`).join('')}
                 </div>
 
-                ${stats ? `
+                ${
+                    stats
+                        ? `
                 <div class="game-stats">
                     <div class="game-stat-item">
                         <div class="game-stat-label">Pares</div>
@@ -382,57 +424,81 @@ export class AppView {
                     ${stats.frame !== undefined ? `<div class="game-stat-item"><div class="game-stat-label">Moldura</div><div class="game-stat-value">${stats.frame}</div></div>` : ''}
                     ${coverage ? `<div class="game-stat-item"><div class="game-stat-label">Cobertura</div><div class="game-stat-value">${coverage}%</div></div>` : ''}
                 </div>
-                ` : ''}
+                `
+                        : ''
+                }
 
                 ${this.renderMiniVolanteGrid(g.numbers, cfg.total)}
 
-                ${mc ? `
+                ${
+                    mc
+                        ? `
                 <div style="margin-top:0.5rem; font-size:0.7rem; color:var(--text-muted); background:rgba(139,92,246,0.05); padding:0.4rem 0.6rem; border-radius:6px; border:1px solid rgba(139,92,246,0.1);">
                     <span style="font-weight:600;">🎲 Monte Carlo:</span> Estabilidade ${mc.stabilityScore}/100 · ${mc.iterations} sims
                 </div>
-                ` : ''}
+                `
+                        : ''
+                }
 
-                ${projection ? `
+                ${
+                    projection
+                        ? `
                 <div style="margin-top:0.5rem; font-size:0.7rem; color:var(--text-muted); background:rgba(59,130,246,0.06); padding:0.45rem 0.6rem; border-radius:6px; border:1px solid rgba(59,130,246,0.18);">
                     <span style="font-weight:600;">Projeção do próximo sorteio:</span>
                     média ${projection.expectedHits} acertos · IC 95%: ${projection.predictionInterval.lower}-${projection.predictionInterval.upper} · prêmio máximo: <strong>${projection.fullHitOdds || projection.portfolioProjection?.portfolioDirectOdds}</strong> (idêntico a qualquer outro jogo)
                 </div>
-                ` : ''}
+                `
+                        : ''
+                }
 
-                ${explanations && explanations.length > 0 ? `
+                ${
+                    explanations && explanations.length > 0
+                        ? `
                 <div class="game-explanations" style="margin-top:0.75rem; font-size:0.72rem; color:var(--text-muted); border-top:1px dashed rgba(255,255,255,0.1); padding-top:0.5rem;">
                     <div style="font-weight:600; color:var(--text-main); margin-bottom:0.25rem;">🔍 Motivos da Seleção:</div>
-                    ${explanations.slice(0, 4).map(exp => `<div style="margin-bottom:0.15rem;">${escapeHtml(exp)}</div>`).join('')}
+                    ${explanations
+                        .slice(0, 4)
+                        .map(exp => `<div style="margin-bottom:0.15rem;">${escapeHtml(exp)}</div>`)
+                        .join('')}
                 </div>
-                ` : ''}
+                `
+                        : ''
+                }
 
                 ${seed ? `<div style="font-size:0.6rem; color:var(--text-muted); margin-top:0.4rem; opacity:0.6;">Seed: ${seed}</div>` : ''}
             </div>`;
-        }).join('');
+                })
+                .join('');
     }
 
     static renderEmptyGames() {
-        document.getElementById('gamesGrid').innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">🤖</div><div class="empty-state-text">Sincronize os dados e clique em "Gerar Jogos Inteligentes"</div></div>';
+        document.getElementById('gamesGrid').innerHTML =
+            '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">🤖</div><div class="empty-state-text">Sincronize os dados e clique em "Gerar Jogos Inteligentes"</div></div>';
     }
 
     static renderConferenceInputs(type) {
         const cfg = LotteryModel.CONFIG[type];
         const drawnCount = cfg.drawn || cfg.pick;
         document.getElementById('confHint').textContent = `Digite as ${drawnCount} dezenas sorteadas`;
-        document.getElementById('confInputs').innerHTML = Array.from({length: drawnCount}, (_, i) => `<input type="number" class="number-input" min="1" max="${cfg.total}" placeholder="${String(i+1).padStart(2,'0')}" id="conf-${i}">`).join('');
+        document.getElementById('confInputs').innerHTML = Array.from(
+            { length: drawnCount },
+            (_, i) =>
+                `<input type="number" class="number-input" min="1" max="${cfg.total}" placeholder="${String(i + 1).padStart(2, '0')}" id="conf-${i}">`
+        ).join('');
     }
 
     static renderLastResult(type, lastResult) {
-        if (!lastResult) { 
-            document.getElementById('lastResultContainer').innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-text">Dados não disponíveis para esta loteria</div></div>'; 
-            return; 
+        if (!lastResult) {
+            document.getElementById('lastResultContainer').innerHTML =
+                '<div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-text">Dados não disponíveis para esta loteria</div></div>';
+            return;
         }
         const cfg = LotteryModel.CONFIG[type];
         document.getElementById('lastResultContainer').innerHTML = `
             <div class="last-result-card animate-in">
                 <div class="last-result-header"><div><h3>${cfg.icon} Concurso #${lastResult.concurso} - ${cfg.name}</h3></div></div>
                 <div class="last-result-info" style="margin-bottom:1.5rem;"><span>📅 ${lastResult.data}</span>${lastResult.valor ? `<span>💰 ${lastResult.valor}</span>` : ''}${lastResult.acumulado ? '<span class="badge badge-gold">ACUMULOU!</span>' : ''}</div>
-                <div class="last-result-balls">${lastResult.dezenas.map((d, i) => `<div class="ball ${cfg.color} ball-animate" style="animation-delay:${i*0.05}s;width:45px;height:45px;font-size:0.9rem;font-weight:800;">${d}</div>`).join('')}</div>
+                <div class="last-result-balls">${lastResult.dezenas.map((d, i) => `<div class="ball ${cfg.color} ball-animate" style="animation-delay:${i * 0.05}s;width:45px;height:45px;font-size:0.9rem;font-weight:800;">${d}</div>`).join('')}</div>
             </div>`;
     }
 
@@ -446,7 +512,7 @@ export class AppView {
             <div class="result-summary">
                 <div class="result-item"><div class="result-item-value neutral">${results.length}</div><div class="result-item-label">Jogos</div></div>
                 <div class="result-item"><div class="result-item-value neutral">${totalHits}</div><div class="result-item-label">Acertos totais</div></div>
-                <div class="result-item"><div class="result-item-value ${maxHits>0?'win':'lose'}">${maxHits}/${drawnCount}</div><div class="result-item-label">Melhor Jogo</div></div>
+                <div class="result-item"><div class="result-item-value ${maxHits > 0 ? 'win' : 'lose'}">${maxHits}/${drawnCount}</div><div class="result-item-label">Melhor Jogo</div></div>
                 <div class="result-item"><div class="result-item-value neutral">${avgHits}</div><div class="result-item-label">Média</div></div>
             </div>`;
         if (lastResult?.dezenas) {
@@ -456,8 +522,8 @@ export class AppView {
         results.forEach(r => {
             const pct = ((r.hitCount / drawnCount) * 100).toFixed(0);
             const bar = pct > 50 ? 'green' : pct > 20 ? 'gold' : 'purple';
-            html += `<div style="padding:0.75rem 0;border-bottom:1px solid rgba(255,255,255,0.05);"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;"><span style="font-size:0.8rem;font-weight:600;">Jogo #${r.id}</span><span class="badge ${r.hitCount>0?'badge-green':'badge-red'}">${r.hitCount}/${drawnCount} acertos</span></div>
-                <div style="display:flex;gap:0.3rem;flex-wrap:wrap;margin-bottom:0.5rem;">${r.numbers.map(n => `<div class="ball ${cfg.color} ${r.hits?.includes(n)?'hit':'miss'}" style="width:30px;height:30px;font-size:0.65rem;">${String(n).padStart(2,'0')}</div>`).join('')}</div>
+            html += `<div style="padding:0.75rem 0;border-bottom:1px solid rgba(255,255,255,0.05);"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;"><span style="font-size:0.8rem;font-weight:600;">Jogo #${r.id}</span><span class="badge ${r.hitCount > 0 ? 'badge-green' : 'badge-red'}">${r.hitCount}/${drawnCount} acertos</span></div>
+                <div style="display:flex;gap:0.3rem;flex-wrap:wrap;margin-bottom:0.5rem;">${r.numbers.map(n => `<div class="ball ${cfg.color} ${r.hits?.includes(n) ? 'hit' : 'miss'}" style="width:30px;height:30px;font-size:0.65rem;">${String(n).padStart(2, '0')}</div>`).join('')}</div>
                 <div class="progress-bar-container"><div class="progress-label"><span>Percentual de Acerto</span><span>${pct}%</span></div><div class="progress-bar"><div class="progress-fill ${bar}" style="width:${pct}%"></div></div></div></div>`;
         });
         html += '</div>';
@@ -466,14 +532,28 @@ export class AppView {
 
     static renderHistory(history) {
         const tbody = document.getElementById('historyBody');
-        if (!history.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">Nenhuma simulação registrada</td></tr>'; return; }
-        tbody.innerHTML = history.map(h => `<tr><td>${escapeHtml(h.date)}</td><td><span class="badge badge-purple">${escapeHtml(h.lottery)}</span></td><td>${escapeHtml(h.strategy)}</td><td>${escapeHtml(h.games)}</td><td><span class="badge badge-green">Concluído</span></td></tr>`).join('');
+        if (!history.length) {
+            tbody.innerHTML =
+                '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">Nenhuma simulação registrada</td></tr>';
+            return;
+        }
+        tbody.innerHTML = history
+            .map(
+                h =>
+                    `<tr><td>${escapeHtml(h.date)}</td><td><span class="badge badge-purple">${escapeHtml(h.lottery)}</span></td><td>${escapeHtml(h.strategy)}</td><td>${escapeHtml(h.games)}</td><td><span class="badge badge-green">Concluído</span></td></tr>`
+            )
+            .join('');
     }
 
     static renderAutoLog(log) {
         const container = document.getElementById('autoLog');
         if (!container) return;
-        container.innerHTML = log.map(e => `<div class="auto-log-entry"><span class="auto-log-time">${escapeHtml(e.time)}</span><span class="auto-log-type ${escapeHtml(e.type)}">${e.type==='fetch'?'🔄':e.type==='generate'?'⚡':e.type==='conference'?'🔍':e.type==='error'?'❌':'ℹ️'} ${escapeHtml(e.message)}</span></div>`).join('');
+        container.innerHTML = log
+            .map(
+                e =>
+                    `<div class="auto-log-entry"><span class="auto-log-time">${escapeHtml(e.time)}</span><span class="auto-log-type ${escapeHtml(e.type)}">${e.type === 'fetch' ? '🔄' : e.type === 'generate' ? '⚡' : e.type === 'conference' ? '🔍' : e.type === 'error' ? '❌' : 'ℹ️'} ${escapeHtml(e.message)}</span></div>`
+            )
+            .join('');
     }
 
     static updateAutoUI(state) {
@@ -487,7 +567,9 @@ export class AppView {
             const diff = Math.round((state.nextRun - new Date()) / 60000);
             document.getElementById('nextRunTime').textContent = diff > 0 ? diff + 'min' : 'Agora';
         }
-        document.querySelectorAll('.interval-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.minutes) === state.intervalMinutes));
+        document
+            .querySelectorAll('.interval-btn')
+            .forEach(b => b.classList.toggle('active', parseInt(b.dataset.minutes) === state.intervalMinutes));
         document.getElementById('autoIndicator').style.display = state.active ? 'flex' : 'none';
     }
 }

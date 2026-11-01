@@ -35,7 +35,6 @@ function createMockHistoryForConfig(config, drawCount = 40) {
 }
 
 describe('Multi-Lottery Pipeline Certification Suite', () => {
-
     const lotteries = [
         { key: 'lotofacil', name: 'Lotofácil', total: 25, pick: 15, drawn: 15 },
         { key: 'mega', name: 'Mega-Sena', total: 60, pick: 6, drawn: 6 },
@@ -51,31 +50,57 @@ describe('Multi-Lottery Pipeline Certification Suite', () => {
 
             const history = createMockHistoryForConfig(config, 40);
             const seed = 98765;
-            const games = LotteryModel.generateSmartGames(lottery.key, history, 'maximum_precision', [], [], 5, 'full', seed);
+            const games = LotteryModel.generateSmartGames(
+                lottery.key,
+                history,
+                'maximum_precision',
+                [],
+                [],
+                5,
+                'full',
+                seed
+            );
 
             assert.ok(Array.isArray(games), 'Retorno deve ser um array de jogos');
             assert.equal(games.length, 5, 'Deve gerar exatamente 5 jogos');
 
             // Validação individual dos jogos
             games.forEach((game, idx) => {
-                assert.equal(game.numbers.length, config.pick, `Jogo #${idx+1} de ${lottery.name} deve conter exatamente ${config.pick} dezenas`);
+                assert.equal(
+                    game.numbers.length,
+                    config.pick,
+                    `Jogo #${idx + 1} de ${lottery.name} deve conter exatamente ${config.pick} dezenas`
+                );
                 game.numbers.forEach(n => {
                     assert.ok(n >= 1 && n <= config.total, `Dezena ${n} deve estar no intervalo [1, ${config.total}]`);
                 });
-                assert.ok(Number.isFinite(game.modelScore), `modelScore do jogo #${idx+1} deve ser um número finito`);
+                assert.ok(Number.isFinite(game.modelScore), `modelScore do jogo #${idx + 1} deve ser um número finito`);
             });
 
             // Validação dos metadados do pipeline
             const pipeline = games.modelPipeline;
             assert.ok(pipeline, 'Metadados do pipeline devem estar anexados');
             assert.ok(pipeline.coverageScore !== null, `Coverage score para ${lottery.name} não deve ser null`);
-            assert.ok(pipeline.diversificationScore !== null, `Diversification score para ${lottery.name} não deve ser null`);
-            assert.ok(pipeline.coverageScore >= 0 && pipeline.coverageScore <= 100, `Coverage score deve estar em [0, 100], obteve ${pipeline.coverageScore}`);
-            assert.ok(pipeline.diversificationScore >= 0 && pipeline.diversificationScore <= 100, `Diversification score deve estar em [0, 100], obteve ${pipeline.diversificationScore}`);
+            assert.ok(
+                pipeline.diversificationScore !== null,
+                `Diversification score para ${lottery.name} não deve ser null`
+            );
+            assert.ok(
+                pipeline.coverageScore >= 0 && pipeline.coverageScore <= 100,
+                `Coverage score deve estar em [0, 100], obteve ${pipeline.coverageScore}`
+            );
+            assert.ok(
+                pipeline.diversificationScore >= 0 && pipeline.diversificationScore <= 100,
+                `Diversification score deve estar em [0, 100], obteve ${pipeline.diversificationScore}`
+            );
 
             // Teste de cálculo explícito de Coverage sem fallback silencioso para 25
             const explicitCoverage = MonteCarloEngine.calculateCoverageScore(games, config);
-            assert.equal(explicitCoverage, pipeline.coverageScore, 'Coverage calculado deve bater com o metadado do pipeline');
+            assert.equal(
+                explicitCoverage,
+                pipeline.coverageScore,
+                'Coverage calculado deve bater com o metadado do pipeline'
+            );
         });
     });
 });

@@ -177,9 +177,10 @@ export class FutureProjectionEngine {
                 probabilityAtLeastOneWin: Number(this.probabilityWithinDraws(pPerDraw, n).toFixed(10))
             })),
             expectedDrawsToWin: Number((1 / pPerDraw).toFixed(1)),
-            expectedYearsToWin: Number(((1 / pPerDraw) / (drawsPerWeek * 52.1775)).toFixed(1)),
-            note: 'Independência entre concursos é premissa verdadeira: cada sorteio é um experimento novo. '
-                + 'Por isso esta projeção é exata — e é justamente ela que mostra por que "jogar sempre o mesmo jogo" não melhora nada.'
+            expectedYearsToWin: Number((1 / pPerDraw / (drawsPerWeek * 52.1775)).toFixed(1)),
+            note:
+                'Independência entre concursos é premissa verdadeira: cada sorteio é um experimento novo. ' +
+                'Por isso esta projeção é exata — e é justamente ela que mostra por que "jogar sempre o mesmo jogo" não melhora nada.'
         };
     }
 
@@ -198,12 +199,11 @@ export class FutureProjectionEngine {
         const p = Math.min(1, drawn / total);
         const mean = 1 / p;
         const median = Math.ceil(Math.log(0.5) / Math.log(1 - p));
-        const p90 = Math.ceil(Math.log(0.10) / Math.log(1 - p));
+        const p90 = Math.ceil(Math.log(0.1) / Math.log(1 - p));
         const p99 = Math.ceil(Math.log(0.01) / Math.log(1 - p));
 
-        const list = Array.isArray(numbers) && numbers.length > 0
-            ? numbers.map(Number).filter(n => n >= 1 && n <= total)
-            : null;
+        const list =
+            Array.isArray(numbers) && numbers.length > 0 ? numbers.map(Number).filter(n => n >= 1 && n <= total) : null;
 
         return {
             method: 'Distribuição geométrica exata',
@@ -216,13 +216,16 @@ export class FutureProjectionEngine {
             horizonDraws,
             probabilityWithinHorizon: Number(this.probabilityWithinDraws(p, horizonDraws).toFixed(4)),
             probabilityAbsentWithinHorizon: Number(Math.pow(1 - p, horizonDraws).toFixed(6)),
-            perNumber: list ? list.map(n => ({
-                number: n,
-                expectedDraws: Number(mean.toFixed(2)),
-                probabilityWithinHorizon: Number(this.probabilityWithinDraws(p, horizonDraws).toFixed(4))
-            })) : null,
-            note: 'Todas as dezenas têm a MESMA expectativa de retorno. Atraso não aumenta a probabilidade '
-                + 'da próxima saída: o processo não tem memória (propriedade da geométrica).'
+            perNumber: list
+                ? list.map(n => ({
+                      number: n,
+                      expectedDraws: Number(mean.toFixed(2)),
+                      probabilityWithinHorizon: Number(this.probabilityWithinDraws(p, horizonDraws).toFixed(4))
+                  }))
+                : null,
+            note:
+                'Todas as dezenas têm a MESMA expectativa de retorno. Atraso não aumenta a probabilidade ' +
+                'da próxima saída: o processo não tem memória (propriedade da geométrica).'
         };
     }
 
@@ -290,8 +293,9 @@ export class FutureProjectionEngine {
                 costPerShare: Number((totalCost / bolaoShares).toFixed(2)),
                 expectedReturnPerShare: Number((expectedReturnTotal / bolaoShares).toFixed(2))
             },
-            caveat: 'O retorno é um TETO: assume prêmio integral, sem rateio. Com ganhadores múltiplos, '
-                + 'o retorno real é menor. Nenhuma estratégia de escolha de dezenas altera o custo nem as probabilidades.'
+            caveat:
+                'O retorno é um TETO: assume prêmio integral, sem rateio. Com ganhadores múltiplos, ' +
+                'o retorno real é menor. Nenhuma estratégia de escolha de dezenas altera o custo nem as probabilidades.'
         };
     }
 
@@ -301,9 +305,9 @@ export class FutureProjectionEngine {
      * Projeção de acúmulo do prêmio estimada do HISTÓRICO REAL, com intervalo de
      * confiança de Wilson (95%) — em vez de um número pontual sem incerteza.
      */
-    static accumulationForecast(history, options = {}) {
+    static accumulationForecast(history) {
         const draws = Array.isArray(history) ? history : [];
-        const flagOf = (d) => {
+        const flagOf = d => {
             if (!d || typeof d !== 'object') return null;
             if (typeof d.acumulou === 'boolean') return d.acumulou;
             if (typeof d.acumulado === 'boolean') return d.acumulado;
@@ -357,8 +361,9 @@ export class FutureProjectionEngine {
             longestStreak: maxRun,
             averageStreak: Number(meanRun.toFixed(2)),
             probabilityOfTwoInARow: Number((rate * rate).toFixed(6)),
-            caveat: 'Acúmulo depende do número de acertadores, não das dezenas. Serve para dimensionar expectativa de prêmio, '
-                + 'não para escolher números.'
+            caveat:
+                'Acúmulo depende do número de acertadores, não das dezenas. Serve para dimensionar expectativa de prêmio, ' +
+                'não para escolher números.'
         };
     }
 
@@ -408,10 +413,11 @@ export class FutureProjectionEngine {
                 for (let z = zMin; z <= zMax; z++) {
                     const fromNeutral = rest - z;
                     if (fromNeutral < 0 || fromNeutral > neutral) continue;
-                    favourable += this.combinations(s, x)
-                        * this.combinations(onlyA, y)
-                        * this.combinations(onlyA, z)
-                        * this.combinations(neutral, fromNeutral);
+                    favourable +=
+                        this.combinations(s, x) *
+                        this.combinations(onlyA, y) *
+                        this.combinations(onlyA, z) *
+                        this.combinations(neutral, fromNeutral);
                 }
             }
         }
@@ -438,7 +444,9 @@ export class FutureProjectionEngine {
         const prng = new SeededRandom(seed);
         const masks = list.map(t => {
             const arr = new Uint8Array(total + 1);
-            t.forEach(n => { if (n >= 1 && n <= total) arr[n] = 1; });
+            t.forEach(n => {
+                if (n >= 1 && n <= total) arr[n] = 1;
+            });
             return arr;
         });
         const pool = new Int32Array(total);
@@ -488,9 +496,10 @@ export class FutureProjectionEngine {
      *    Substitui o antigo fator "ortogonalidade" inventado, que inflava o número.
      */
     static portfolioCoverage(config, tickets = null, options = {}) {
-        const ticketList = Array.isArray(tickets) && tickets.length > 0
-            ? tickets.map(t => [...new Set((t?.numbers || t).map(Number))].sort((a, b) => a - b))
-            : null;
+        const ticketList =
+            Array.isArray(tickets) && tickets.length > 0
+                ? tickets.map(t => [...new Set((t?.numbers || t).map(Number))].sort((a, b) => a - b))
+                : null;
         const m = ticketList ? ticketList.length : Math.max(1, Math.floor(config?.ticketCount) || 1);
         const tiers = ProbabilityEngine.getPrizeTiers(config);
         const minTier = tiers[0];
@@ -505,7 +514,7 @@ export class FutureProjectionEngine {
         // o limite superior da união (sempre válido).
         const canComputePairs = m > 1 && m <= 24 && pick <= 20 && drawn <= 20;
 
-        const pairSum = (k) => {
+        const pairSum = k => {
             if (!canComputePairs || !ticketList) return { sum: 0, pairs: 0 };
             let sum = 0;
             let pairs = 0;
@@ -519,7 +528,7 @@ export class FutureProjectionEngine {
             return { sum, pairs };
         };
 
-        const tierEntry = (k) => {
+        const tierEntry = k => {
             const pSingle = this.probabilityAtLeastHits(config, k);
             const single = ProbabilityEngine.hypergeometric(config, pick);
             const exactlyProbability = single.distribution[k] || 0;
@@ -528,13 +537,15 @@ export class FutureProjectionEngine {
                 return {
                     exact: true,
                     probability: Math.min(1, m * pSingle),
-                    odds: m === 1
-                        ? this.exactOddsAtLeastHits(config, k)
-                        : ProbabilityEngine.probabilityToOdds(Math.min(1, m * pSingle)),
+                    odds:
+                        m === 1
+                            ? this.exactOddsAtLeastHits(config, k)
+                            : ProbabilityEngine.probabilityToOdds(Math.min(1, m * pSingle)),
                     singleProbability: pSingle,
                     exactlyProbability,
                     exactlyOdds: this.exactOddsForExactlyHits(config, k),
-                    method: m === 1 ? 'exato (hipergeométrica, odds em BigInt)' : 'exato (eventos mutuamente exclusivos)'
+                    method:
+                        m === 1 ? 'exato (hipergeométrica, odds em BigInt)' : 'exato (eventos mutuamente exclusivos)'
                 };
             }
             const { sum, pairs } = pairSum(k);
@@ -558,7 +569,7 @@ export class FutureProjectionEngine {
             // Critério ABSOLUTO + relativo: o intervalo só é "informativo" se reduzir a
             // incerteza a, no máximo, 10 pontos percentuais (e a 25% do próprio valor).
             const largura = upper - (lower ?? 0);
-            const larguraMaximaAceitavel = Math.min(0.10, Math.max(0.25 * upper, 1e-12));
+            const larguraMaximaAceitavel = Math.min(0.1, Math.max(0.25 * upper, 1e-12));
             const bonferroniInformativo = lower !== null && largura <= larguraMaximaAceitavel;
             if (bonferroniInformativo) {
                 const mid = (lower + upper) / 2;
@@ -607,19 +618,19 @@ export class FutureProjectionEngine {
         // Sena/acerto máximo: exato apenas quando pick === drawn.
         const jackpot = isExactCombination
             ? {
-                probability: Math.min(1, m * pJackpot),
-                odds: ProbabilityEngine.probabilityToOdds(Math.min(1, m * pJackpot)),
-                exact: true,
-                method: 'exato (eventos mutuamente exclusivos)'
-            }
+                  probability: Math.min(1, m * pJackpot),
+                  odds: ProbabilityEngine.probabilityToOdds(Math.min(1, m * pJackpot)),
+                  exact: true,
+                  method: 'exato (eventos mutuamente exclusivos)'
+              }
             : {
-                probability: jackpotEntry.probability,
-                odds: jackpotEntry.odds,
-                exact: Boolean(jackpotEntry.exact),
-                lowerBound: jackpotEntry.lowerBound ?? null,
-                upperBound: jackpotEntry.upperBound ?? jackpotEntry.probability,
-                method: jackpotEntry.method
-            };
+                  probability: jackpotEntry.probability,
+                  odds: jackpotEntry.odds,
+                  exact: Boolean(jackpotEntry.exact),
+                  lowerBound: jackpotEntry.lowerBound ?? null,
+                  upperBound: jackpotEntry.upperBound ?? jackpotEntry.probability,
+                  method: jackpotEntry.method
+              };
 
         return {
             method: 'Exato quando o bilhete é a própria combinação; limites de Bonferroni nas demais faixas',
@@ -635,8 +646,9 @@ export class FutureProjectionEngine {
                 method: anyTier.method
             },
             tiers: perTier,
-            note: 'A poda de combinações "improváveis" NÃO altera estas probabilidades: cada combinação '
-                + 'tem exatamente a mesma chance. Aumentar a carteira aumenta a cobertura de forma linear.'
+            note:
+                'A poda de combinações "improváveis" NÃO altera estas probabilidades: cada combinação ' +
+                'tem exatamente a mesma chance. Aumentar a carteira aumenta a cobertura de forma linear.'
         };
     }
 
@@ -645,7 +657,15 @@ export class FutureProjectionEngine {
     /**
      * Pacote completo de projeções para a interface.
      */
-    static project({ config, ticketCount = 10, draws = 52, numbers = null, history = null, bolaoShares = 1, tickets = null }) {
+    static project({
+        config,
+        ticketCount = 10,
+        draws = 52,
+        numbers = null,
+        history = null,
+        bolaoShares = 1,
+        tickets = null
+    }) {
         if (!config || !config.total) return null;
         const effectiveTickets = Array.isArray(tickets) && tickets.length > 0 ? tickets.length : ticketCount;
         return {
@@ -654,7 +674,9 @@ export class FutureProjectionEngine {
             horizon: this.jackpotHorizon(config, effectiveTickets),
             waitingTime: this.numberWaitingTime(config, numbers, 10),
             financial: this.financialProjection(config, effectiveTickets, draws, { bolaoShares }),
-            accumulation: history ? this.accumulationForecast(history) : { available: false, reason: 'Histórico não informado.' },
+            accumulation: history
+                ? this.accumulationForecast(history)
+                : { available: false, reason: 'Histórico não informado.' },
             coverage: this.portfolioCoverage({ ...config, ticketCount: effectiveTickets }, tickets)
         };
     }

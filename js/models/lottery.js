@@ -12,10 +12,58 @@ import { GaussianFilterEngine } from '../engine/gaussianFilterEngine.js';
  */
 export class LotteryModel {
     static CONFIG = {
-        lotofacil: { name: 'Lotofácil', total: 25, pick: 15, drawn: 15, color: 'lotofacil', icon: '🟣', apiName: 'lotofacil', minPar: 6, maxPar: 9, minSum: 165, maxSum: 220 },
-        mega: { name: 'Mega Sena', total: 60, pick: 6, drawn: 6, color: 'mega', icon: '🟢', apiName: 'megasena', minPar: 2, maxPar: 4, minSum: 135, maxSum: 235 },
-        lotomania: { name: 'Lotomania', total: 100, pick: 50, drawn: 20, color: 'lotomania', icon: '🔴', apiName: 'lotomania', minPar: 22, maxPar: 28, minSum: 2380, maxSum: 2670 },
-        quina: { name: 'Quina', total: 80, pick: 5, drawn: 5, color: 'quina', icon: '🔵', apiName: 'quina', minPar: 2, maxPar: 3, minSum: 140, maxSum: 265 }
+        lotofacil: {
+            name: 'Lotofácil',
+            total: 25,
+            pick: 15,
+            drawn: 15,
+            color: 'lotofacil',
+            icon: '🟣',
+            apiName: 'lotofacil',
+            minPar: 6,
+            maxPar: 9,
+            minSum: 165,
+            maxSum: 220
+        },
+        mega: {
+            name: 'Mega Sena',
+            total: 60,
+            pick: 6,
+            drawn: 6,
+            color: 'mega',
+            icon: '🟢',
+            apiName: 'megasena',
+            minPar: 2,
+            maxPar: 4,
+            minSum: 135,
+            maxSum: 235
+        },
+        lotomania: {
+            name: 'Lotomania',
+            total: 100,
+            pick: 50,
+            drawn: 20,
+            color: 'lotomania',
+            icon: '🔴',
+            apiName: 'lotomania',
+            minPar: 22,
+            maxPar: 28,
+            minSum: 2380,
+            maxSum: 2670
+        },
+        quina: {
+            name: 'Quina',
+            total: 80,
+            pick: 5,
+            drawn: 5,
+            color: 'quina',
+            icon: '🔵',
+            apiName: 'quina',
+            minPar: 2,
+            maxPar: 3,
+            minSum: 140,
+            maxSum: 265
+        }
     };
 
     static PRIMES = PRIMES;
@@ -73,7 +121,16 @@ export class LotteryModel {
     /**
      * Gera jogos inteligentes via GameGenerator com semente determinística
      */
-    static generateSmartGames(type, fullHistory, strategy = 'weighted', fixed = [], excluded = [], count = 10, timeWindow = 'full', seed = 123456) {
+    static generateSmartGames(
+        type,
+        fullHistory,
+        strategy = 'weighted',
+        fixed = [],
+        excluded = [],
+        count = 10,
+        timeWindow = 'full',
+        seed = 123456
+    ) {
         const cfg = this.CONFIG[type];
         if (!cfg) return [];
 
@@ -106,14 +163,31 @@ export class LotteryModel {
         // 30 concursos só detectariam vantagens absurdas (~50%+). Usa a janela
         // disponível, limitada para manter o tempo de resposta do worker.
         const backtestWindow = Math.max(30, Math.min(200, windowData.length - 10));
-        const backtestSummary = BacktestEngine.runBacktest(windowData, cfg, generatorFn, { windowSize: backtestWindow, seed });
+        const backtestSummary = BacktestEngine.runBacktest(windowData, cfg, generatorFn, {
+            windowSize: backtestWindow,
+            seed
+        });
 
-        const games = GameGenerator.generateBatch(type, analysis, strategy, fixed, excluded, count, cfg, activeWeights, backtestSummary, seed);
+        const games = GameGenerator.generateBatch(
+            type,
+            analysis,
+            strategy,
+            fixed,
+            excluded,
+            count,
+            cfg,
+            activeWeights,
+            backtestSummary,
+            seed
+        );
 
         // Monte Carlo determinístico para o melhor jogo
         const topGame = games[0];
         if (topGame) {
-            const mcResult = MonteCarloEngine.simulateCandidate(topGame.numbers, cfg, 10000, { seed, history: windowData });
+            const mcResult = MonteCarloEngine.simulateCandidate(topGame.numbers, cfg, 10000, {
+                seed,
+                history: windowData
+            });
             topGame.monteCarlo = mcResult;
         }
 
@@ -130,12 +204,10 @@ export class LotteryModel {
             history: fullHistory
         });
 
-        const divScore = games[0]?.diversificationScore || games.modelPipeline?.diversificationScore || 75;
         const portfolioProjection = ProbabilityEngine.calculatePortfolioProjection(
             config,
             games.length || 10,
-            games[0]?.numbers?.length || config.pick,
-            divScore
+            games[0]?.numbers?.length || config.pick
         );
 
         games.forEach(game => {

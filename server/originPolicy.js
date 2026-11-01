@@ -48,8 +48,7 @@ export const MUTATING_METHODS = Object.freeze(['POST', 'PUT', 'PATCH', 'DELETE']
 /** Content-Type exigido nas mutações (bloqueia formulário HTML simples). */
 export const REQUIRED_CONTENT_TYPE = 'application/json';
 
-export const isMutatingMethod = (method) =>
-    MUTATING_METHODS.includes(String(method || '').toUpperCase());
+export const isMutatingMethod = method => MUTATING_METHODS.includes(String(method || '').toUpperCase());
 
 /**
  * Hosts aceitáveis para a requisição, vindos dos cabeçalhos de proxy.
@@ -62,7 +61,7 @@ export const isMutatingMethod = (method) =>
 export function requestHosts(req) {
     const headers = req?.headers || {};
     const hosts = new Set();
-    const add = (value) => {
+    const add = value => {
         if (!value) return;
         for (const part of String(value).split(',')) {
             const host = part.trim().toLowerCase();
@@ -97,8 +96,8 @@ export function parseAllowedOrigins(value) {
     return [...out];
 }
 
-const allow = (reason) => ({ allowed: true, checked: true, reason });
-const deny = (reason) => ({ allowed: false, checked: true, reason });
+const allow = reason => ({ allowed: true, checked: true, reason });
+const deny = reason => ({ allowed: false, checked: true, reason });
 
 /**
  * Avalia se a requisição pode mudar estado.
@@ -118,7 +117,9 @@ export function evaluateSameSiteRequest(req, options = {}) {
     const allowedOrigins = (options.allowedOrigins || []).map(o => String(o).toLowerCase());
 
     // 1. Cabeçalho que a página não consegue forjar.
-    const secFetchSite = String(headers['sec-fetch-site'] || '').trim().toLowerCase();
+    const secFetchSite = String(headers['sec-fetch-site'] || '')
+        .trim()
+        .toLowerCase();
     if (secFetchSite === 'cross-site') {
         return deny('Sec-Fetch-Site: cross-site');
     }

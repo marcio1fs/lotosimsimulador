@@ -8,11 +8,26 @@ import { GameGenerator } from '../js/engine/gameGenerator.js';
 import { StatisticalAnalyzer } from '../js/engine/statisticalAnalyzer.js';
 
 const mockHistory = [
-    { concurso: 3200, dezenas: ['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15'] },
-    { concurso: 3199, dezenas: ['03','04','05','06','07','08','09','10','11','12','13','14','15','16','17'] },
-    { concurso: 3198, dezenas: ['05','06','07','08','09','10','11','12','13','14','15','16','17','18','19'] },
-    { concurso: 3197, dezenas: ['01','02','04','06','08','10','12','14','16','18','20','22','24','25','03'] },
-    { concurso: 3196, dezenas: ['02','04','06','08','10','12','14','16','18','20','22','24','25','01','03'] }
+    {
+        concurso: 3200,
+        dezenas: ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15']
+    },
+    {
+        concurso: 3199,
+        dezenas: ['03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17']
+    },
+    {
+        concurso: 3198,
+        dezenas: ['05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19']
+    },
+    {
+        concurso: 3197,
+        dezenas: ['01', '02', '04', '06', '08', '10', '12', '14', '16', '18', '20', '22', '24', '25', '03']
+    },
+    {
+        concurso: 3196,
+        dezenas: ['02', '04', '06', '08', '10', '12', '14', '16', '18', '20', '22', '24', '25', '01', '03']
+    }
 ];
 
 const lotofacilConfig = {
@@ -56,8 +71,10 @@ describe('GameGenerator - Ausência de probability', () => {
         const games = GameGenerator.generateBatch('lotofacil', analysis, 'weighted', [], [], 5, lotofacilConfig);
 
         games.forEach((g, i) => {
-            assert.ok(!('probability' in g) || g.probability === undefined, 
-                `Jogo ${i+1} NÃO deve ter campo "probability". Use "modelScore" em vez disso.`);
+            assert.ok(
+                !('probability' in g) || g.probability === undefined,
+                `Jogo ${i + 1} NÃO deve ter campo "probability". Use "modelScore" em vez disso.`
+            );
         });
     });
 
@@ -66,9 +83,11 @@ describe('GameGenerator - Ausência de probability', () => {
         const games = GameGenerator.generateBatch('lotofacil', analysis, 'weighted', [], [], 5, lotofacilConfig);
 
         games.forEach((g, i) => {
-            assert.ok(typeof g.modelScore === 'number', `Jogo ${i+1} deve ter modelScore numérico`);
-            assert.ok(g.modelScore >= 0 && g.modelScore <= 100, 
-                `modelScore ${g.modelScore} fora do intervalo [0, 100]`);
+            assert.ok(typeof g.modelScore === 'number', `Jogo ${i + 1} deve ter modelScore numérico`);
+            assert.ok(
+                g.modelScore >= 0 && g.modelScore <= 100,
+                `modelScore ${g.modelScore} fora do intervalo [0, 100]`
+            );
         });
     });
 });
@@ -91,8 +110,10 @@ describe('GameGenerator - Portfolio Coverage', () => {
         const games = GameGenerator.generateBatch('lotofacil', analysis, 'weighted', [], [], 10, lotofacilConfig);
 
         if (games[0].portfolioCoverage !== undefined) {
-            assert.ok(games[0].portfolioCoverage > 0 && games[0].portfolioCoverage <= 100, 
-                `Coverage ${games[0].portfolioCoverage} deve estar em (0, 100]`);
+            assert.ok(
+                games[0].portfolioCoverage > 0 && games[0].portfolioCoverage <= 100,
+                `Coverage ${games[0].portfolioCoverage} deve estar em (0, 100]`
+            );
         }
     });
 });
@@ -105,7 +126,7 @@ describe('GameGenerator - Números fixos e excluídos', () => {
 
         games.forEach((g, i) => {
             fixed.forEach(f => {
-                assert.ok(g.numbers.includes(f), `Jogo ${i+1} deve incluir número fixo ${f}`);
+                assert.ok(g.numbers.includes(f), `Jogo ${i + 1} deve incluir número fixo ${f}`);
             });
         });
     });
@@ -117,7 +138,7 @@ describe('GameGenerator - Números fixos e excluídos', () => {
 
         games.forEach((g, i) => {
             excluded.forEach(ex => {
-                assert.ok(!g.numbers.includes(ex), `Jogo ${i+1} NÃO deve incluir número excluído ${ex}`);
+                assert.ok(!g.numbers.includes(ex), `Jogo ${i + 1} NÃO deve incluir número excluído ${ex}`);
             });
         });
     });
@@ -126,7 +147,14 @@ describe('GameGenerator - Números fixos e excluídos', () => {
 describe('GameGenerator.generateSingleCandidate', () => {
     it('deve gerar jogo com números válidos', () => {
         const analysis = StatisticalAnalyzer.analyze(mockHistory, lotofacilConfig);
-        const result = GameGenerator.generateSingleCandidate('lotofacil', analysis, 'weighted', [], [], lotofacilConfig);
+        const result = GameGenerator.generateSingleCandidate(
+            'lotofacil',
+            analysis,
+            'weighted',
+            [],
+            [],
+            lotofacilConfig
+        );
 
         // result pode ser { numbers, scoreObj } ou array direto
         const numbers = Array.isArray(result) ? result : result.numbers;

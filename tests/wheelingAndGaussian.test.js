@@ -50,7 +50,10 @@ describe('GaussianFilterEngine - Poda de Espaço Amostral por Curva de Gauss', (
         const evalRes = GaussianFilterEngine.evaluateCandidate(balancedTicket, megaConfig, analysis);
 
         assert.equal(evalRes.passed, true, 'Combinação central equilibrada deve ser aprovada');
-        assert.ok(evalRes.gaussianQualityIndex >= 80, `Quality Index deve ser alto (>=80), obteve ${evalRes.gaussianQualityIndex}`);
+        assert.ok(
+            evalRes.gaussianQualityIndex >= 80,
+            `Quality Index deve ser alto (>=80), obteve ${evalRes.gaussianQualityIndex}`
+        );
     });
 
     it('deve rejeitar jogos idênticos a sorteios já ocorridos no histórico', () => {
@@ -73,8 +76,14 @@ describe('WheelingEngine - Matriz de Fechamento e Desdobramento Combinatório', 
         const wheel = WheelingEngine.generateWheelingMatrix(config, analysis, [], [], 10, null, null, 123456);
 
         assert.equal(wheel.tickets.length, 10, 'Deve gerar exatamente 10 bilhetes na matriz');
-        assert.ok(wheel.wheelMetadata.elitePoolSize >= 18, 'Grupo de elite para Lotofácil deve ter ao menos 18 dezenas');
-        assert.ok(wheel.wheelMetadata.pairCoverageGuaranteePct > 75, `Cobertura de pares no grupo de elite deve ser > 75%, obteve ${wheel.wheelMetadata.pairCoverageGuaranteePct}%`);
+        assert.ok(
+            wheel.wheelMetadata.elitePoolSize >= 18,
+            'Grupo de elite para Lotofácil deve ter ao menos 18 dezenas'
+        );
+        assert.ok(
+            wheel.wheelMetadata.pairCoverageGuaranteePct > 75,
+            `Cobertura de pares no grupo de elite deve ser > 75%, obteve ${wheel.wheelMetadata.pairCoverageGuaranteePct}%`
+        );
 
         // Verifica que todos os bilhetes são distintos
         const signatures = new Set(wheel.tickets.map(t => t.numbers.join(',')));
@@ -90,7 +99,9 @@ describe('ProbabilityEngine.calculatePortfolioProjection - Projeção de Carteir
 
         assert.equal(proj10.rawSingleOdds, '1 em 50.063.860');
         assert.equal(proj10.portfolioDirectOdds, '1 em 5.006.386');
-        assert.ok(proj35.anyPrizePortfolioProbability > proj10.anyPrizePortfolioProbability,
-            'Carteira de 35 jogos deve ter maior probabilidade acumulada de premiação que 10 jogos');
+        assert.ok(
+            proj35.anyPrizePortfolioProbability > proj10.anyPrizePortfolioProbability,
+            'Carteira de 35 jogos deve ter maior probabilidade acumulada de premiação que 10 jogos'
+        );
     });
 });

@@ -6,12 +6,13 @@
  * custo, retorno esperado), nunca previsão de dezenas.
  */
 
-import { FutureProjectionEngine, DRAW_FREQUENCY_PER_WEEK } from '../engine/futureProjectionEngine.js';
+import { FutureProjectionEngine } from '../engine/futureProjectionEngine.js';
 
-const fmtBRL = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const fmtNum = (v, d = 0) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmtBRL = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const fmtNum = (v, d = 0) =>
+    Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmtPct = (v, d = 2) => `${(Number(v || 0) * 100).toFixed(d)}%`;
-const fmtBig = (v) => {
+const fmtBig = v => {
     const n = Number(v);
     if (!Number.isFinite(n)) return '—';
     if (n >= 1e12) return `${(n / 1e12).toFixed(1)} trilhões`;
@@ -36,9 +37,10 @@ export class ProjectionsView {
         const emptyState = document.getElementById('projectionsEmpty');
         if (!container || !config) return;
 
-        const tickets = Array.isArray(games) && games.length > 0
-            ? games.map(g => g.numbers).filter(n => Array.isArray(n) && n.length === config.pick)
-            : null;
+        const tickets =
+            Array.isArray(games) && games.length > 0
+                ? games.map(g => g.numbers).filter(n => Array.isArray(n) && n.length === config.pick)
+                : null;
         const effectiveTickets = ticketCount || (tickets ? tickets.length : 1);
 
         const projection = FutureProjectionEngine.project({
@@ -54,46 +56,61 @@ export class ProjectionsView {
         if (emptyState) emptyState.style.display = 'none';
         container.style.display = 'block';
 
-        const drawsPerWeek = DRAW_FREQUENCY_PER_WEEK[config.total] || 3;
         const h = projection.horizon;
         const fin = projection.financial;
         const wait = projection.waitingTime;
         const cov = projection.coverage;
         const acc = projection.accumulation;
 
-        const milestoneCards = h.milestones.map(m => `
+        const milestoneCards = h.milestones
+            .map(
+                m => `
             <div style="flex:1; min-width:150px; background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:0.7rem;">
                 <div style="font-size:0.65rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Chance acumulada de ${m.confidenceLabel}</div>
                 <div style="font-size:1.05rem; font-weight:800; color:var(--text-main); margin:0.2rem 0;">${m.humanized}</div>
                 <div style="font-size:0.7rem; color:var(--text-muted);">${fmtBig(m.draws)} concursos</div>
-            </div>`).join('');
+            </div>`
+            )
+            .join('');
 
         const tierRows = Object.entries(cov.tiers)
             .sort((a, b) => Number(b[0]) - Number(a[0]))
-            .map(([k, t]) => `
+            .map(
+                ([k, t]) => `
                 <tr>
                     <td><strong>${k} acerto${Number(k) > 1 ? 's' : ''}</strong></td>
                     <td>${t.exactlyOdds || '—'}</td>
                     <td>${t.exact ? 'exato' : `entre ${fmtPct(t.lowerBound, 3)} e ${fmtPct(t.upperBound, 3)}`}</td>
                     <td style="color:var(--text-muted); font-size:0.7rem;">${t.method || ''}${t.monteCarlo ? ` (${fmtNum(t.monteCarlo.iterations)} sim.)` : ''}</td>
-                </tr>`).join('');
+                </tr>`
+            )
+            .join('');
 
-        const survivalRows = h.survival.map(s => `
+        const survivalRows = h.survival
+            .map(
+                s => `
             <tr>
                 <td>${fmtNum(s.draws)} concursos <span style="color:var(--text-muted);">(~${fmtNum(s.weeks, 0)} semanas)</span></td>
                 <td>${fmtPct(s.probabilityNoWin, 6)}</td>
                 <td>${fmtPct(s.probabilityAtLeastOneWin, 6)}</td>
-            </tr>`).join('');
+            </tr>`
+            )
+            .join('');
 
-        const finRows = fin.tiers.map(t => `
+        const finRows = fin.tiers
+            .map(
+                t => `
             <tr>
                 <td><strong>${t.hits} acertos</strong></td>
                 <td>${t.odds}</td>
                 <td>${fmtBRL(t.prize)}</td>
                 <td>${fmtBRL(t.expectedReturn)}</td>
-            </tr>`).join('');
+            </tr>`
+            )
+            .join('');
 
-        const accBlock = acc.available ? `
+        const accBlock = acc.available
+            ? `
             <div style="display:flex; flex-wrap:wrap; gap:1rem;">
                 <div style="flex:1; min-width:140px;">
                     <div style="font-size:0.65rem; color:var(--text-muted); text-transform:uppercase;">Taxa de acúmulo</div>
@@ -113,7 +130,8 @@ export class ProjectionsView {
                 </div>
             </div>
             <div style="margin-top:0.6rem; font-size:0.68rem; color:var(--text-muted);">${acc.caveat}</div>
-        ` : `
+        `
+            : `
             <div style="font-size:0.78rem; color:var(--text-muted);">${acc.reason || 'Dados de acúmulo indisponíveis.'}</div>
         `;
 

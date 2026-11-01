@@ -4,15 +4,30 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { StatisticalAnalyzer, PRIMES } from '../js/engine/statisticalAnalyzer.js';
+import { StatisticalAnalyzer } from '../js/engine/statisticalAnalyzer.js';
 import { ScoringEngine, DEFAULT_WEIGHTS } from '../js/engine/scoringEngine.js';
 
 const mockHistory = [
-    { concurso: 3200, dezenas: ['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15'] },
-    { concurso: 3199, dezenas: ['03','04','05','06','07','08','09','10','11','12','13','14','15','16','17'] },
-    { concurso: 3198, dezenas: ['05','06','07','08','09','10','11','12','13','14','15','16','17','18','19'] },
-    { concurso: 3197, dezenas: ['01','02','04','06','08','10','12','14','16','18','20','22','24','25','03'] },
-    { concurso: 3196, dezenas: ['02','04','06','08','10','12','14','16','18','20','22','24','25','01','03'] }
+    {
+        concurso: 3200,
+        dezenas: ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15']
+    },
+    {
+        concurso: 3199,
+        dezenas: ['03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17']
+    },
+    {
+        concurso: 3198,
+        dezenas: ['05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19']
+    },
+    {
+        concurso: 3197,
+        dezenas: ['01', '02', '04', '06', '08', '10', '12', '14', '16', '18', '20', '22', '24', '25', '03']
+    },
+    {
+        concurso: 3196,
+        dezenas: ['02', '04', '06', '08', '10', '12', '14', '16', '18', '20', '22', '24', '25', '01', '03']
+    }
 ];
 
 const lotofacilConfig = {
@@ -75,8 +90,10 @@ describe('StatisticalAnalyzer.analyze', () => {
         const analysis = StatisticalAnalyzer.analyze(mockHistory, lotofacilConfig);
         if (analysis.chiSquare) {
             assert.ok(analysis.chiSquare.chiSquare >= 0, 'chiSquare deve ser >= 0');
-            assert.ok(analysis.chiSquare.pValue >= 0 && analysis.chiSquare.pValue <= 1, 
-                'p-value do chi-square deve estar em [0, 1]');
+            assert.ok(
+                analysis.chiSquare.pValue >= 0 && analysis.chiSquare.pValue <= 1,
+                'p-value do chi-square deve estar em [0, 1]'
+            );
             assert.ok(typeof analysis.chiSquare.isUniform === 'boolean', 'isUniform deve ser boolean');
         }
     });
@@ -108,7 +125,7 @@ describe('StatisticalAnalyzer.calculateDistributionStats', () => {
 describe('StatisticalAnalyzer.chiSquareUniformity', () => {
     it('deve aceitar distribuição perfeitamente uniforme', () => {
         if (typeof StatisticalAnalyzer.chiSquareUniformity !== 'function') return; // Skip se não implementado
-        
+
         const freq = {};
         for (let i = 1; i <= 25; i++) freq[i] = 60; // Perfeitamente uniforme
         const result = StatisticalAnalyzer.chiSquareUniformity(freq, 25, 100, 15);
@@ -124,8 +141,10 @@ describe('ScoringEngine.evaluateGame', () => {
         const result = ScoringEngine.evaluateGame(game, lotofacilConfig, analysis);
 
         assert.ok(typeof result.modelScore === 'number', 'modelScore deve ser numérico');
-        assert.ok(result.modelScore >= 0 && result.modelScore <= 100, 
-            `modelScore ${result.modelScore} fora do intervalo [0, 100]`);
+        assert.ok(
+            result.modelScore >= 0 && result.modelScore <= 100,
+            `modelScore ${result.modelScore} fora do intervalo [0, 100]`
+        );
     });
 
     it('probabilityType NUNCA deve indicar garantia de acerto', () => {
@@ -133,8 +152,7 @@ describe('ScoringEngine.evaluateGame', () => {
         const game = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
         const result = ScoringEngine.evaluateGame(game, lotofacilConfig, analysis);
 
-        assert.ok(result.probabilityType.includes('Não é garantia'), 
-            'probabilityType deve conter disclaimer');
+        assert.ok(result.probabilityType.includes('Não é garantia'), 'probabilityType deve conter disclaimer');
     });
 
     it('deve retornar explanations como array', () => {
@@ -148,21 +166,20 @@ describe('ScoringEngine.evaluateGame', () => {
     it('deve calcular repetição real quando lastDrawNumbers está disponível', () => {
         const analysis = StatisticalAnalyzer.analyze(mockHistory, lotofacilConfig);
         analysis.lastDrawNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-        
+
         const sameGame = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
         const result = ScoringEngine.evaluateGame(sameGame, lotofacilConfig, analysis);
-        
+
         assert.ok(typeof result.modelScore === 'number', 'Deve funcionar com lastDrawNumbers');
     });
 
     it('deve aceitar pesos customizados', () => {
         const analysis = StatisticalAnalyzer.analyze(mockHistory, lotofacilConfig);
         const game = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-        
+
         const customWeights = { ...DEFAULT_WEIGHTS, frequency: 0.5, recency: 0.3 };
         const result = ScoringEngine.evaluateGame(game, lotofacilConfig, analysis, customWeights);
-        
-        assert.ok(result.modelScore >= 0 && result.modelScore <= 100, 
-            'Score com pesos custom deve estar em [0, 100]');
+
+        assert.ok(result.modelScore >= 0 && result.modelScore <= 100, 'Score com pesos custom deve estar em [0, 100]');
     });
 });

@@ -223,11 +223,7 @@ describe('analyze() — mesmos números, menos memória', () => {
 
 describe('Memória retida (processo separado, com --expose-gc)', () => {
     it('analyze + analyzeFast da Lotomania retêm menos de 3 MB', () => {
-        const out = execFileSync(
-            process.execPath,
-            ['--expose-gc', PROBE, '100', '20', '300'],
-            { encoding: 'utf8' }
-        );
+        const out = execFileSync(process.execPath, ['--expose-gc', PROBE, '100', '20', '300'], { encoding: 'utf8' });
         const probe = JSON.parse(out);
         assert.ok(probe.retainedMb < 3, `memória retida ${probe.retainedMb} MB acima do limite`);
         assert.equal(probe.pairMatrixBytes, probe.expectedBytes);
@@ -259,7 +255,10 @@ describe('Memoização por (último concurso, janela)', () => {
         assert.equal(stats.hits, 1);
         assert.deepEqual(second.topPairs, first.topPairs);
         assert.equal(second.pairStats.examined, first.pairStats.examined);
-        assert.ok(warm < Math.max(5, cold), `chamada memoizada (${warm} ms) deveria ser mais rápida que a fria (${cold} ms)`);
+        assert.ok(
+            warm < Math.max(5, cold),
+            `chamada memoizada (${warm} ms) deveria ser mais rápida que a fria (${cold} ms)`
+        );
     });
 
     it('mudar o concurso mais recente invalida a chave', () => {

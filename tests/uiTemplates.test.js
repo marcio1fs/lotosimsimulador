@@ -25,14 +25,14 @@ import { buildIndexHtml, DOCUMENT_SECTIONS } from '../js/views/templates/documen
 import { LotteryModel } from '../js/models/lottery.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const read = (rel) => readFile(new URL(rel, import.meta.url), 'utf8');
+const read = rel => readFile(new URL(rel, import.meta.url), 'utf8');
 
 /** Percorre `js/` coletando arquivos .js. */
 async function jsFiles(dir = new URL('../js/', import.meta.url)) {
     const out = [];
     for (const entry of await readdir(dir, { withFileTypes: true })) {
         const child = new URL(entry.name + (entry.isDirectory() ? '/' : ''), dir);
-        if (entry.isDirectory()) out.push(...await jsFiles(child));
+        if (entry.isDirectory()) out.push(...(await jsFiles(child)));
         else if (entry.name.endsWith('.js')) out.push(fileURLToPath(child));
     }
     return out;
@@ -48,7 +48,7 @@ describe('Montagem do documento', () => {
             onDisk,
             HTML,
             'index.html divergiu dos templates. Ele é GERADO: edite js/views/templates/*.js ' +
-            'e rode `node scripts/build-html.mjs`.'
+                'e rode `node scripts/build-html.mjs`.'
         );
     });
 
@@ -134,8 +134,16 @@ describe('Integridade estrutural do HTML', () => {
             ...[...main.matchAll(/\[data-action="([^"]+)"\]/g)].map(m => m[1])
         ]);
 
-        assert.deepEqual([...htmlActions].filter(a => !handled.has(a)), [], 'ações sem handler em main.js');
-        assert.deepEqual([...handled].filter(a => !htmlActions.has(a)), [], 'handlers sem elemento correspondente');
+        assert.deepEqual(
+            [...htmlActions].filter(a => !handled.has(a)),
+            [],
+            'ações sem handler em main.js'
+        );
+        assert.deepEqual(
+            [...handled].filter(a => !htmlActions.has(a)),
+            [],
+            'handlers sem elemento correspondente'
+        );
     });
 
     it('toda navegação aponta para uma tela que existe', () => {
@@ -154,8 +162,17 @@ describe('Integridade estrutural do HTML', () => {
 
     it('toda estratégia da tela existe no motor', async () => {
         const strategies = [...HTML.matchAll(/data-strategy="([^"]+)"/g)].map(m => m[1]);
-        const expected = ['wheeling', 'maximum_precision', 'anti_crowd', 'markov', 'best_game',
-            'adaptive', 'weighted', 'hot', 'cold'];
+        const expected = [
+            'wheeling',
+            'maximum_precision',
+            'anti_crowd',
+            'markov',
+            'best_game',
+            'adaptive',
+            'weighted',
+            'hot',
+            'cold'
+        ];
         assert.deepEqual([...strategies].sort(), [...expected].sort());
 
         const engine = await read('../js/engine/gameGenerator.js');
@@ -184,9 +201,7 @@ describe('Integridade estrutural do HTML', () => {
 describe('Acessibilidade e higiene do markup', () => {
     it('todo label aponta para um id existente', () => {
         const ids = new Set(htmlIds);
-        const orphans = [...HTML.matchAll(/<label[^>]*\sfor="([^"]+)"/g)]
-            .map(m => m[1])
-            .filter(id => !ids.has(id));
+        const orphans = [...HTML.matchAll(/<label[^>]*\sfor="([^"]+)"/g)].map(m => m[1]).filter(id => !ids.has(id));
         assert.deepEqual(orphans, []);
     });
 
@@ -204,19 +219,29 @@ describe('Acessibilidade e higiene do markup', () => {
             const text = b[2].replace(/<[^>]*>/g, '').trim();
             return text === '' && !/aria-label=/.test(b[1]);
         });
-        assert.deepEqual(empty.map(b => b[0].slice(0, 60)), []);
+        assert.deepEqual(
+            empty.map(b => b[0].slice(0, 60)),
+            []
+        );
     });
 
     it('todo canvas tem id, para o Chart.js achar o alvo', () => {
         const canvases = [...HTML.matchAll(/<canvas([^>]*)>/g)];
         assert.ok(canvases.length >= 6);
-        assert.deepEqual(canvases.filter(c => !/\sid="/.test(c[1])).map(c => c[0]), []);
+        assert.deepEqual(
+            canvases.filter(c => !/\sid="/.test(c[1])).map(c => c[0]),
+            []
+        );
     });
 
     it('há um único script de aplicação, e ele é um módulo', () => {
         const scripts = [...HTML.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/g)];
         const inline = scripts.filter(s => !/\ssrc=/.test(s[1]) && s[2].trim() !== '');
-        assert.deepEqual(inline.map(s => s[0]), [], 'markup não deve carregar lógica inline');
+        assert.deepEqual(
+            inline.map(s => s[0]),
+            [],
+            'markup não deve carregar lógica inline'
+        );
 
         const app = scripts.filter(s => /js\/main\.js/.test(s[1]));
         assert.equal(app.length, 1);

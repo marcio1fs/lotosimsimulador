@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    legacyHash, isLegacyHash, isPbkdf2Hash, hashPassword, verifyPassword, hashToken, parseCookies, buildCookie, isValidEmail
+    legacyHash,
+    isLegacyHash,
+    isPbkdf2Hash,
+    hashPassword,
+    verifyPassword,
+    hashToken,
+    parseCookies,
+    buildCookie,
+    isValidEmail
 } from '../server/security.js';
 import { UserModel } from '../js/models/user.js';
 import { sanitizePayload, toSnake, rowToCamel, TABLES } from '../server/tables.js';
@@ -51,7 +59,10 @@ test('token é salvo como sha256 determinístico', () => {
 test('cookies: parse e flags de segurança', () => {
     assert.deepEqual(parseCookies('a=1; lm_session=xyz'), { a: '1', lm_session: 'xyz' });
     const c = buildCookie('t', { remember: true, secure: true });
-    assert.match(c, /HttpOnly/); assert.match(c, /SameSite=Lax/); assert.match(c, /Secure/); assert.match(c, /Max-Age=/);
+    assert.match(c, /HttpOnly/);
+    assert.match(c, /SameSite=Lax/);
+    assert.match(c, /Secure/);
+    assert.match(c, /Max-Age=/);
     assert.doesNotMatch(buildCookie('t', { remember: false, secure: false }), /Max-Age|Secure/);
 });
 
@@ -63,7 +74,13 @@ test('validação de e-mail', () => {
 
 test('sanitizePayload descarta colunas não permitidas e normaliza JSON', () => {
     const p = sanitizePayload('games', {
-        userId: 99, lotteryType: 'mega', numbers: '[1,2]', stats: { a: 1 }, 'x"; DROP': 1, id: 5, role: 'admin'
+        userId: 99,
+        lotteryType: 'mega',
+        numbers: '[1,2]',
+        stats: { a: 1 },
+        'x"; DROP': 1,
+        id: 5,
+        role: 'admin'
     });
     assert.deepEqual(Object.keys(p).sort(), ['lottery_type', 'numbers', 'stats']);
     assert.equal(p.numbers, '[1,2]');
@@ -82,7 +99,14 @@ test('conversões de nome e linhas', () => {
 });
 
 test('apenas tabelas do Loto Mais são expostas', () => {
-    assert.deepEqual(Object.keys(TABLES).sort(), ['auto_log', 'auto_settings', 'games', 'lottery_results', 'simulations', 'user_stats']);
+    assert.deepEqual(Object.keys(TABLES).sort(), [
+        'auto_log',
+        'auto_settings',
+        'games',
+        'lottery_results',
+        'simulations',
+        'user_stats'
+    ]);
     for (const [name, t] of Object.entries(TABLES)) if (!t.shared) assert.ok(t.owner, `${name} precisa de dono`);
 });
 
@@ -94,13 +118,16 @@ test('escapeHtml neutraliza tags e atributos XSS', () => {
 test('lotterySync: parseMoneyValue e normalizeDrawPayload validam dezenas e valores', () => {
     assert.equal(parseMoneyValue('R$ 3.500.000,50'), 3500000.5);
     assert.equal(parseMoneyValue(1200000), 1200000);
-    const valid = normalizeDrawPayload({
-        numero: 2800,
-        dataApuracao: '10/10/2026',
-        listaDezenas: ['05', '12', '23', '34', '45', '60'],
-        acumulado: true,
-        valorEstimadoProximoConcurso: 45000000
-    }, 'mega');
+    const valid = normalizeDrawPayload(
+        {
+            numero: 2800,
+            dataApuracao: '10/10/2026',
+            listaDezenas: ['05', '12', '23', '34', '45', '60'],
+            acumulado: true,
+            valorEstimadoProximoConcurso: 45000000
+        },
+        'mega'
+    );
     assert.ok(valid);
     assert.equal(valid.concurso, 2800);
     assert.deepEqual(valid.dezenas, ['05', '12', '23', '34', '45', '60']);
@@ -114,8 +141,8 @@ test('applyHolmBonferroni controla múltiplos testes de significância', () => {
     const items = [
         { strategyId: 'adaptive', diff: 0.4, pValue: 0.02, isSignificant: true },
         { strategyId: 'weighted', diff: 0.2, pValue: 0.04, isSignificant: true },
-        { strategyId: 'hot', diff: 0.1, pValue: 0.20, isSignificant: false },
-        { strategyId: 'cold', diff: -0.1, pValue: 0.80, isSignificant: false },
+        { strategyId: 'hot', diff: 0.1, pValue: 0.2, isSignificant: false },
+        { strategyId: 'cold', diff: -0.1, pValue: 0.8, isSignificant: false },
         { strategyId: 'random', diff: 0, pValue: 1, isSignificant: false }
     ];
     applyHolmBonferroni(items, 0.05);

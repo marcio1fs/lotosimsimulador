@@ -1,16 +1,24 @@
 import { neon } from '@neondatabase/serverless';
 import { TABLES, sanitizePayload, rowToCamel, toSnake } from './tables.js';
 import {
-    COOKIE_NAME, SESSION_DAYS, hashPassword, verifyPassword, generateToken, hashToken,
-    parseCookies, buildCookie, clearCookie, isValidEmail
+    COOKIE_NAME,
+    SESSION_DAYS,
+    hashPassword,
+    verifyPassword,
+    generateToken,
+    hashToken,
+    parseCookies,
+    buildCookie,
+    clearCookie,
+    isValidEmail
 } from './security.js';
 import { syncLotteries } from './lotterySync.js';
 import { evaluateSameSiteRequest, parseAllowedOrigins, hasJsonContentType } from './originPolicy.js';
 import { LEGACY_HASH_SUNSET_LABEL } from '../shared/passwordPolicy.js';
 
 const MAX_BODY = 512 * 1024;
-const MAX_FAILS = 5;              // tentativas de login falhas...
-const FAIL_WINDOW_MIN = 15;       // ...dentro desta janela bloqueiam novas tentativas
+const MAX_FAILS = 5; // tentativas de login falhas...
+const FAIL_WINDOW_MIN = 15; // ...dentro desta janela bloqueiam novas tentativas
 
 let _sql = null;
 export function getSql() {
@@ -23,7 +31,11 @@ export function getSql() {
 }
 
 class HttpError extends Error {
-    constructor(status, message, extra = {}) { super(message); this.status = status; this.extra = extra; }
+    constructor(status, message, extra = {}) {
+        super(message);
+        this.status = status;
+        this.extra = extra;
+    }
 }
 
 function send(res, status, body, headers = {}) {
@@ -51,13 +63,14 @@ async function readBody(req) {
     return raw ? JSON.parse(raw) : {};
 }
 
-const isSecure = (req) =>
-    req.headers['x-forwarded-proto'] === 'https' || process.env.NODE_ENV === 'production';
+const isSecure = req => req.headers['x-forwarded-proto'] === 'https' || process.env.NODE_ENV === 'production';
 
-const clientIp = (req) =>
-    String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown').split(',')[0].trim();
+const clientIp = req =>
+    String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown')
+        .split(',')[0]
+        .trim();
 
-const publicUser = (u) => ({ id: Number(u.id), name: u.name, email: u.email, role: u.role, createdAt: u.created_at });
+const publicUser = u => ({ id: Number(u.id), name: u.name, email: u.email, role: u.role, createdAt: u.created_at });
 
 // ---------------------------------------------------------------- sessão
 async function getSession(req) {
@@ -67,7 +80,9 @@ async function getSession(req) {
     const rows = await sql.query(
         `SELECT s.id AS session_id, s.expires_at, u.id, u.name, u.email, u.role, u.created_at
            FROM sessions s JOIN users u ON u.id = s.user_id
-          WHERE s.token = $1 LIMIT 1`, [hashToken(token)]);
+          WHERE s.token = $1 LIMIT 1`,
+        [hashToken(token)]
+    );
     const row = rows[0];
     if (!row) return null;
     if (new Date(row.expires_at) < new Date()) {
@@ -87,9 +102,11 @@ async function createSession(req, res, userId, remember) {
     const sql = getSql();
     const token = generateToken();
     const expires = new Date(Date.now() + SESSION_DAYS * 86400000);
-    const rows = await sql.query(
-        'INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, $2, $3) RETURNING id',
-        [userId, hashToken(token), expires.toISOString()]);
+    const rows = await sql.query('INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, $2, $3) RETURNING id', [
+        userId,
+        hashToken(token),
+        expires.toISOString()
+    ]);
     // limpeza oportunista de sessões e tentativas expiradas
     sql.query('DELETE FROM sessions WHERE expires_at < NOW()').catch(() => {});
     sql.query(`DELETE FROM login_attempts WHERE at < NOW() - INTERVAL '1 day'`).catch(() => {});
@@ -102,15 +119,14 @@ async function assertNotLocked(ip, email) {
     const rows = await getSql().query(
         `SELECT COUNT(*)::int AS n FROM login_attempts
           WHERE at > NOW() - ($3 || ' minutes')::interval AND (ip = $1 OR email = $2)`,
-        [ip, email, String(FAIL_WINDOW_MIN)]);
+        [ip, email, String(FAIL_WINDOW_MIN)]
+    );
     if (rows[0].n >= MAX_FAILS) {
         throw new HttpError(429, `Muitas tentativas. Tente novamente em ${FAIL_WINDOW_MIN} minutos.`);
     }
 }
-const recordFail = (ip, email) =>
-    getSql().query('INSERT INTO login_attempts (ip, email) VALUES ($1, $2)', [ip, email]);
-const clearFails = (email) =>
-    getSql().query('DELETE FROM login_attempts WHERE email = $1', [email]);
+const recordFail = (ip, email) => getSql().query('INSERT INTO login_attempts (ip, email) VALUES ($1, $2)', [ip, email]);
+const clearFails = email => getSql().query('DELETE FROM login_attempts WHERE email = $1', [email]);
 
 // ---------------------------------------------------------------- auth
 const GENERIC_LOGIN_ERROR = 'E-mail ou senha incorretos';
@@ -122,17 +138,22 @@ const LEGACY_EXPIRED_MESSAGE =
 const auth = {
     async register(req, res, body) {
         const name = String(body.name || '').trim();
-        const email = String(body.email || '').trim().toLowerCase();
+        const email = String(body.email || '')
+            .trim()
+            .toLowerCase();
         const password = String(body.password || '');
         if (name.length < 3 || name.length > 100) throw new HttpError(400, 'Nome deve ter entre 3 e 100 caracteres');
         if (!isValidEmail(email)) throw new HttpError(400, 'E-mail inválido');
-        if (password.length < 8 || password.length > 128) throw new HttpError(400, 'Senha deve ter entre 8 e 128 caracteres');
+        if (password.length < 8 || password.length > 128)
+            throw new HttpError(400, 'Senha deve ter entre 8 e 128 caracteres');
 
         const sql = getSql();
         const hash = await hashPassword(password);
         const rows = await sql.query(
             `INSERT INTO users (name, email, password) VALUES ($1, $2, $3)
-             ON CONFLICT (email) DO NOTHING RETURNING id`, [name, email, hash]);
+             ON CONFLICT (email) DO NOTHING RETURNING id`,
+            [name, email, hash]
+        );
         if (!rows[0]) throw new HttpError(409, 'E-mail já cadastrado');
         const userId = rows[0].id;
         await sql.transaction([
@@ -143,7 +164,9 @@ const auth = {
     },
 
     async login(req, res, body) {
-        const email = String(body.email || '').trim().toLowerCase();
+        const email = String(body.email || '')
+            .trim()
+            .toLowerCase();
         const password = String(body.password || '');
         const ip = clientIp(req);
         if (!email || !password) throw new HttpError(400, GENERIC_LOGIN_ERROR);
@@ -157,7 +180,9 @@ const auth = {
             // Item 6.12: o formato `h_…` deixou de ser aceito em LEGACY_HASH_SUNSET_LABEL.
             // A resposta é a MESMA de senha errada: dizer "sua conta é antiga"
             // transformaria qualquer senha num oráculo de existência de conta.
-            console.warn(`[auth] login recusado: conta ${user.id} ainda tem hash legado (formato desativado em ${LEGACY_HASH_SUNSET_LABEL})`);
+            console.warn(
+                `[auth] login recusado: conta ${user.id} ainda tem hash legado (formato desativado em ${LEGACY_HASH_SUNSET_LABEL})`
+            );
             await recordFail(ip, email);
             throw new HttpError(401, GENERIC_LOGIN_ERROR, { field: 'password' });
         }
@@ -166,7 +191,10 @@ const auth = {
             throw new HttpError(401, GENERIC_LOGIN_ERROR, { field: 'password' });
         }
         if (check.upgradedHash) {
-            await sql.query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [check.upgradedHash, user.id]);
+            await sql.query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [
+                check.upgradedHash,
+                user.id
+            ]);
         }
         if (check.legacy) {
             console.warn(`[auth] conta ${user.id}: hash legado convertido para bcrypt; peça uma senha nova ao usuário`);
@@ -204,7 +232,10 @@ const auth = {
         const check = await verifyPassword(current, rows[0]?.password);
         if (check.legacyExpired) throw new HttpError(400, LEGACY_EXPIRED_MESSAGE);
         if (!check.ok) throw new HttpError(400, 'Senha atual incorreta');
-        await sql.query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [await hashPassword(next), s.user.id]);
+        await sql.query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [
+            await hashPassword(next),
+            s.user.id
+        ]);
         await sql.query('DELETE FROM sessions WHERE user_id = $1 AND id <> $2', [s.user.id, s.sessionId]);
         return { success: true };
     },
@@ -249,17 +280,26 @@ const dbOps = {
         if (cfg.owner) payload[cfg.owner] = session.user.id;
         const cols = Object.keys(payload);
         if (!cols.length) throw new HttpError(400, 'Dados vazios');
-        const names = cols.map((c) => `"${c}"`).join(', ');
+        const names = cols.map(c => `"${c}"`).join(', ');
         const ph = cols.map((_, i) => `$${i + 1}`).join(', ');
         let conflict = '';
         if (cfg.conflict) {
-            const upd = cols.filter((c) => !['lottery_type', 'concurso'].includes(c)).map((c) => `"${c}" = EXCLUDED."${c}"`);
-            conflict = upd.length ? ` ON CONFLICT ${cfg.conflict} DO UPDATE SET ${upd.join(', ')}` : ` ON CONFLICT ${cfg.conflict} DO NOTHING`;
+            const upd = cols
+                .filter(c => !['lottery_type', 'concurso'].includes(c))
+                .map(c => `"${c}" = EXCLUDED."${c}"`);
+            conflict = upd.length
+                ? ` ON CONFLICT ${cfg.conflict} DO UPDATE SET ${upd.join(', ')}`
+                : ` ON CONFLICT ${cfg.conflict} DO NOTHING`;
         } else if (cfg.pk === cfg.owner) {
-            const upd = cols.filter((c) => c !== cfg.pk).map((c) => `"${c}" = EXCLUDED."${c}"`);
-            conflict = upd.length ? ` ON CONFLICT ("${cfg.pk}") DO UPDATE SET ${upd.join(', ')}` : ` ON CONFLICT ("${cfg.pk}") DO NOTHING`;
+            const upd = cols.filter(c => c !== cfg.pk).map(c => `"${c}" = EXCLUDED."${c}"`);
+            conflict = upd.length
+                ? ` ON CONFLICT ("${cfg.pk}") DO UPDATE SET ${upd.join(', ')}`
+                : ` ON CONFLICT ("${cfg.pk}") DO NOTHING`;
         }
-        const rows = await getSql().query(`INSERT INTO "${store}" (${names}) VALUES (${ph})${conflict} RETURNING *`, cols.map((c) => payload[c]));
+        const rows = await getSql().query(
+            `INSERT INTO "${store}" (${names}) VALUES (${ph})${conflict} RETURNING *`,
+            cols.map(c => payload[c])
+        );
         const r = rowToCamel(rows[0] || {});
         return { result: r.id ?? r.userId ?? 0 };
     },
@@ -270,7 +310,7 @@ const dbOps = {
         if (items.length > 200) throw new HttpError(400, 'Lote muito grande');
         const cfg = assertTable(store);
 
-        const payloads = items.map((d) => {
+        const payloads = items.map(d => {
             const p = sanitizePayload(store, d);
             if (cfg.owner) p[cfg.owner] = session.user.id;
             return p;
@@ -282,7 +322,7 @@ const dbOps = {
         const cols = [...colSet];
         if (!cols.length) throw new HttpError(400, 'Dados vazios');
 
-        const names = cols.map((c) => `"${c}"`).join(', ');
+        const names = cols.map(c => `"${c}"`).join(', ');
         const values = [];
         const tuples = payloads.map((p, rowIdx) => {
             const base = rowIdx * cols.length;
@@ -295,15 +335,19 @@ const dbOps = {
 
         let conflict = '';
         if (cfg.conflict) {
-            const upd = cols.filter((c) => !['lottery_type', 'concurso'].includes(c)).map((c) => `"${c}" = EXCLUDED."${c}"`);
-            conflict = upd.length ? ` ON CONFLICT ${cfg.conflict} DO UPDATE SET ${upd.join(', ')}` : ` ON CONFLICT ${cfg.conflict} DO NOTHING`;
+            const upd = cols
+                .filter(c => !['lottery_type', 'concurso'].includes(c))
+                .map(c => `"${c}" = EXCLUDED."${c}"`);
+            conflict = upd.length
+                ? ` ON CONFLICT ${cfg.conflict} DO UPDATE SET ${upd.join(', ')}`
+                : ` ON CONFLICT ${cfg.conflict} DO NOTHING`;
         }
 
         const rows = await getSql().query(
             `INSERT INTO "${store}" (${names}) VALUES ${tuples.join(', ')}${conflict} RETURNING "${cfg.pk}"`,
             values
         );
-        return { result: rows.map((r) => Number(r[cfg.pk])) };
+        return { result: rows.map(r => Number(r[cfg.pk])) };
     },
 
     /** Atualização atômica de contadores do usuário (sem race condition read-modify-write). */
@@ -331,7 +375,10 @@ const dbOps = {
         const cfg = assertTable(store);
         const params = [id];
         const sc = scope(cfg, session.user.id, params, 2);
-        const rows = await getSql().query(`SELECT * FROM "${store}" WHERE "${cfg.pk}" = $1${sc.sql} LIMIT 1`, sc.params);
+        const rows = await getSql().query(
+            `SELECT * FROM "${store}" WHERE "${cfg.pk}" = $1${sc.sql} LIMIT 1`,
+            sc.params
+        );
         return { result: rows[0] ? rowToCamel(rows[0]) : null };
     },
 
@@ -340,7 +387,10 @@ const dbOps = {
         const col = indexColumn(cfg, index);
         const params = [value];
         const sc = scope(cfg, session.user.id, params, 2);
-        const rows = await getSql().query(`SELECT * FROM "${store}" WHERE "${col}" = $1${sc.sql} ORDER BY ${cfg.order}`, sc.params);
+        const rows = await getSql().query(
+            `SELECT * FROM "${store}" WHERE "${col}" = $1${sc.sql} ORDER BY ${cfg.order}`,
+            sc.params
+        );
         return { result: rows.map(rowToCamel) };
     },
 
@@ -355,13 +405,16 @@ const dbOps = {
         const payload = sanitizePayload(store, data);
         const id = cfg.pk === cfg.owner ? session.user.id : data?.id;
         if (!id) return dbOps.add(session, { store, data });
-        const cols = Object.keys(payload).filter((c) => c !== cfg.pk && c !== cfg.owner);
+        const cols = Object.keys(payload).filter(c => c !== cfg.pk && c !== cfg.owner);
         if (!cols.length) return { result: null };
-        const params = cols.map((c) => payload[c]);
+        const params = cols.map(c => payload[c]);
         params.push(id);
         const sc = scope(cfg, session.user.id, params, params.length + 1);
         const set = cols.map((c, i) => `"${c}" = $${i + 1}`).join(', ');
-        const rows = await getSql().query(`UPDATE "${store}" SET ${set} WHERE "${cfg.pk}" = $${cols.length + 1}${sc.sql} RETURNING *`, sc.params);
+        const rows = await getSql().query(
+            `UPDATE "${store}" SET ${set} WHERE "${cfg.pk}" = $${cols.length + 1}${sc.sql} RETURNING *`,
+            sc.params
+        );
         return { result: rows[0] ? rowToCamel(rows[0]) : null };
     },
 
@@ -383,7 +436,10 @@ const dbOps = {
         const cfg = assertTable(store);
         const params = [];
         let where = '';
-        if (cfg.owner) { params.push(session.user.id); where = ` WHERE "${cfg.owner}" = $1`; }
+        if (cfg.owner) {
+            params.push(session.user.id);
+            where = ` WHERE "${cfg.owner}" = $1`;
+        }
         const rows = await getSql().query(`SELECT COUNT(*)::int AS count FROM "${store}"${where}`, params);
         return { result: rows[0].count };
     }
@@ -420,7 +476,9 @@ export async function handler(req, res) {
 
         let body = {};
         if (method === 'POST') {
-            try { body = await readBody(req); } catch (e) {
+            try {
+                body = await readBody(req);
+            } catch (e) {
                 if (e instanceof HttpError) throw e;
                 throw new HttpError(400, 'JSON inválido');
             }

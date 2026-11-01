@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
-import { isLegacyHash, legacyDeadlineReached, LEGACY_HASH_SUNSET_LABEL } from '../shared/passwordPolicy.js';
+import { isLegacyHash, legacyDeadlineReached } from '../shared/passwordPolicy.js';
 
 export { isLegacyHash };
 
@@ -16,13 +16,13 @@ export const SESSION_DAYS = 30;
 export function legacyHash(password) {
     let hash = 0;
     for (let i = 0; i < password.length; i++) {
-        hash = ((hash << 5) - hash) + password.charCodeAt(i);
+        hash = (hash << 5) - hash + password.charCodeAt(i);
         hash = hash & hash;
     }
     return 'h_' + Math.abs(hash).toString(36) + '_' + Buffer.from(password).toString('base64').substring(0, 12);
 }
 
-export const isPbkdf2Hash = (stored) => typeof stored === 'string' && stored.startsWith('pbkdf2$');
+export const isPbkdf2Hash = stored => typeof stored === 'string' && stored.startsWith('pbkdf2$');
 
 export async function hashPassword(password) {
     return bcrypt.hash(password, 12);
@@ -68,7 +68,7 @@ export async function verifyPassword(password, stored, { now = Date.now() } = {}
 
 export const generateToken = () => crypto.randomBytes(32).toString('hex');
 /** Apenas o hash do token é salvo no banco. */
-export const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+export const hashToken = token => crypto.createHash('sha256').update(token).digest('hex');
 
 export function parseCookies(header = '') {
     const out = {};
@@ -86,7 +86,7 @@ export function buildCookie(token, { remember, secure }) {
     return parts.join('; ');
 }
 
-export const clearCookie = (secure) =>
+export const clearCookie = secure =>
     `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? '; Secure' : ''}`;
 
-export const isValidEmail = (e) => typeof e === 'string' && e.length <= 255 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+export const isValidEmail = e => typeof e === 'string' && e.length <= 255 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
