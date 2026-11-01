@@ -44,7 +44,7 @@ suíte de 4 casos sustentava afirmações grandes. O que mudou:
 `AUDITORIA_PRECISAO.md` carrega o marcador:
 
 ```html
-<!-- suite: arquivos=27 testes=389 -->
+<!-- suite: arquivos=28 testes=411 -->
 ```
 
 e a **seção 11 (Estado atual)** lista cada item do roadmap com status e onde ele
@@ -62,7 +62,7 @@ se fossem estado presente.
 | [INFERENCIA_SEQUENCIAL.md](./INFERENCIA_SEQUENCIAL.md) | p-valores always-valid e orçamento de α | 6.2 |
 | [DESEMPENHO_ANALISE.md](./DESEMPENHO_ANALISE.md) | memória e custo da análise | 6.10 |
 | [INTERFACE.md](./INTERFACE.md) | templates e testes da camada visual | 6.11 |
-| [SECURITY.md](./SECURITY.md) | postura de segurança | — |
+| [SECURITY.md](./SECURITY.md) | postura de segurança (borda CSRF em `server/originPolicy.js`) | 6.13 |
 | [DOCUMENTACAO.md](./DOCUMENTACAO.md) | este arquivo | 6.14 |
 
 ## 4. O que o teste verifica
