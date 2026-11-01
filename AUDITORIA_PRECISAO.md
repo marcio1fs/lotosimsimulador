@@ -221,8 +221,39 @@ além do que o histórico sustenta. Os cartões 🔥/🧊 agora mostram
 quantas dezenas sobrevivem à correção. Documentação e números em
 [FREQUENCIAS.md](./FREQUENCIAS.md).
 
-**6.4 Reduzir o peso dos fatores sem evidência — 📋 recomendado.**
+**6.4 Reduzir o peso dos fatores sem evidência — ✅ implementado.**
 `markov` carrega 0,10 do score e `cooccurrence` 0,11 — mas a auditoria demonstrou que **nenhuma** transição de Markov sobrevive ao FDR em dados aleatórios, e que a co-ocorrência de pares é indistinguível de independência. Fatores que não podem ser distinguidos de ruído não deveriam somar 21% da decisão. *Correção:* encolher cada peso na proporção da evidência disponível (`peso_i ∝ força da evidência_i`), zerando-os quando o teste não rejeita H0.
+
+*Implementado* em `js/engine/evidenceWeightingEngine.js`. O portão é aplicado tanto no
+**score** (`ScoringEngine.evaluateGame`) quanto na **amostragem de dezenas**
+(`GameGenerator.generateSingleCandidate`) — de nada adiantaria tirar o fator do score e
+deixá-lo guiando a geração. Depois do corte, os pesos restantes são renormalizados para
+somar 1. Há uma distinção preservada de propósito: **ausência de teste não é evidência de
+ausência** — com histórico curto o teste não roda, o fator mantém o peso e o relatório
+registra `assessed: false`. Zerar nesse caso só trocaria um erro por outro.
+
+O relatório estatístico (painel de transparência) passou a exibir:
+`Ponderação por Evidência: markov + cooccurrence zerado(s) · 26% do score redistribuído`.
+
+**Medição antes/depois** — Lotofácil, janela de 150 concursos, 2 sementes
+(os `optimizedWeights` do otimizador atribuíam **26%** aos dois fatores: markov 8,9%,
+co-ocorrência 17,2%):
+
+| Condição | Média acertos | Baseline | Melhoria relativa | p-valor | Acertos ≥ 11 |
+|---|---|---|---|---|---|
+| Sem ponderação | 9,0667 | 8,9900 | +0,95% | 0,194 | 17 |
+| Com ponderação | 8,8933 | 8,9900 | −0,98% | 0,799 | 17 |
+
+**Como ler esta tabela:** nenhuma das duas condições é estatisticamente distinguível da
+baseline aleatória — que é exatamente o que a teoria prevê. O MDE do experimento é de
+0,2486 acertos (2,8% com 80% de poder), e a diferença entre as condições (0,173 acertos)
+está **abaixo** desse limite: o backtest não tem poder para dizer que uma é melhor que a
+outra. A conclusão honesta é que **a mudança não melhora nem piora o desempenho** — ela
+remove uma afirmação que não se sustentava. Os jogos gerados mudaram (0 de 10 idênticos),
+todos estruturalmente válidos (15 dezenas únicas, paridade e soma dentro da faixa).
+
+O que se ganha, portanto, não é vantagem: é que 26% do peso deixe de ser decidido por
+sinal que não passou no próprio teste do sistema.
 
 ### Prioridade alta — dados e validação
 
@@ -258,7 +289,7 @@ exigem uma passada de formatação sobre todo o código, que merece commit próp
 
 **6.13 CSRF/Origin.** `SameSite=Lax` já bloqueia POST cross-site; adicionar verificação de `Origin`/`Sec-Fetch-Site` nos endpoints de mutação fecha a borda.
 
-**6.14 Atualizar a documentação.** `AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 19 arquivos de teste e 225 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
+**6.14 Atualizar a documentação.** `AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 20 arquivos de teste e 246 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
 
 ---
 

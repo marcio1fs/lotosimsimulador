@@ -685,6 +685,13 @@ export class StatisticalAnalyzer {
             markovStats,
             rangeDistributions,
             topPairs: topPairsSliced,
+            // Resumo da família de pares testada: usado pela ponderação por
+            // evidência, que zera o fator quando nenhum par sobrevive ao FDR.
+            pairStats: {
+                examined: totalPairsExamined,
+                tested: topPairsSliced.length,
+                significant: topPairsSliced.filter(p => p.significant === true).length
+            },
             pairMatrix,
             topTriples,
             chiSquare

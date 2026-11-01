@@ -9,6 +9,7 @@ import { StatisticalAnalyzer, PRIMES, FIBONACCI } from './statisticalAnalyzer.js
 import { GaussianFilterEngine } from './gaussianFilterEngine.js';
 import { AntiCrowdEngine } from './antiCrowdEngine.js';
 import { SeededRandom } from './prng.js';
+import { EvidenceWeightingEngine } from './evidenceWeightingEngine.js';
 
 export const DEFAULT_WEIGHTS = {
     frequency: 0.14,
@@ -35,8 +36,17 @@ export class ScoringEngine {
      * @param {Object} customWeights - Pesos dos fatores (opcional)
      * @param {Object} backtestSummary - Resumo de backtesting pré-calculado (opcional)
      */
-    static evaluateGame(numbers, config, analysis, customWeights = null, backtestSummary = null) {
-        const weights = { ...DEFAULT_WEIGHTS, ...(customWeights || {}) };
+    static evaluateGame(numbers, config, analysis, customWeights = null, backtestSummary = null, options = {}) {
+        // Ponderação por evidência: fatores cuja afirmação estatística foi
+        // testada e refutada (Markov e co-ocorrência, 21% do score) deixam de
+        // pesar. Fatores sem teste disponível mantêm o peso — ausência de teste
+        // não é evidência de ausência.
+        const evidence = EvidenceWeightingEngine.applyWeights(
+            { ...DEFAULT_WEIGHTS, ...(customWeights || {}) },
+            analysis,
+            { enabled: options.evidenceWeighting !== false }
+        );
+        const weights = evidence.weights;
         const sortedNumbers = [...numbers].sort((a, b) => a - b);
         const len = sortedNumbers.length;
 
@@ -296,6 +306,7 @@ export class ScoringEngine {
             statisticallySignificant: backtestSummary?.isStatisticallySignificant ?? null,
             probabilityType: 'Score Relativo do Modelo (Não é garantia matemática de acerto)',
             backtestMetrics: backtestSummary || null,
+            evidenceAdjustment: EvidenceWeightingEngine.summarize(evidence.report),
             explanations,
             stats: {
                 evens,
