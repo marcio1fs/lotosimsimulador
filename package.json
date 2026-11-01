@@ -3,6 +3,9 @@
   "version": "1.1.0",
   "description": "Inteligência Artificial, Pesquisa Operacional e Teoria dos Jogos para Loterias",
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "main": "index.html",
   "scripts": {
     "dev": "vite --host",

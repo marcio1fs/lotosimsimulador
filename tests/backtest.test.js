@@ -7,15 +7,22 @@ import assert from 'node:assert/strict';
 import { BacktestEngine } from '../js/engine/backtestEngine.js';
 import { StatisticalAnalyzer } from '../js/engine/statisticalAnalyzer.js';
 import { GameGenerator } from '../js/engine/gameGenerator.js';
+import { SeededRandom } from '../js/engine/prng.js';
 
-// Dados mock - 40 concursos para lotofacil
-function generateMockHistory(count = 40) {
+// Dados mock - 40 concursos para lotofacil.
+// Seed fixa: o histórico precisa ser idêntico em toda execução, senão o
+// resultado do teste varia entre rodadas (flaky) e uma falha deixa de indicar
+// regressão. Mesma semente do restante da suíte.
+const MOCK_SEED = 20260101;
+
+function generateMockHistory(count = 40, seed = MOCK_SEED) {
+    const rng = new SeededRandom(seed);
     const history = [];
     for (let i = 0; i < count; i++) {
         const dezenas = [];
         const used = new Set();
         while (dezenas.length < 15) {
-            const n = Math.floor(Math.random() * 25) + 1;
+            const n = rng.nextInt(1, 25);
             if (!used.has(n)) { used.add(n); dezenas.push(String(n).padStart(2, '0')); }
         }
         history.push({ concurso: 3200 - i, dezenas, data: `2025-01-${String(count - i).padStart(2, '0')}` });
