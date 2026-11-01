@@ -178,5 +178,5 @@ em vez de passar despercebido. Cobrem:
 ## 11. Status
 
 Item **concluído** (01/11/2026): rotas, políticas, tokens, transporte, telas e testes acima.
-Permanece pendente da mesma lista original: Chart.js com SRI/bundle, migrações versionadas,
-rate limit nas rotas restantes e observabilidade.
+Permanece pendente da mesma lista original: migrações versionadas, rate limit nas rotas
+restantes e observabilidade. (O Chart.js já saiu do CDN — ver [INTERFACE.md](./INTERFACE.md).)

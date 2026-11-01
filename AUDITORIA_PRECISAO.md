@@ -2,8 +2,8 @@
 
 **Data:** 01/11/2026
 **Escopo:** 61 arquivos · ~8.700 linhas de JavaScript · 12 módulos de motor estatístico · API serverless (Neon) · interface SPA
-**Suíte de testes:** 113 → **488 testes em 32 arquivos** (100% passando), `npm run build` OK
-<!-- suite: arquivos=32 testes=488 -->
+**Suíte de testes:** 113 → **496 testes em 33 arquivos** (100% passando), `npm run build` OK
+<!-- suite: arquivos=33 testes=496 -->
 **Pergunta que guiou a auditoria:** *onde este projeto perde precisão — e como recuperá-la?*
 
 ---
@@ -605,7 +605,7 @@ falsa, sem tocar no banco. A defesa em camadas está descrita em
 
 
 **6.14 Atualizar a documentação — ✅ implementado.**
-`AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 32 arquivos de teste e 488 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
+`AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 33 arquivos de teste e 496 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
 
 *Implementado:* o `AUDIT_REPORT.md` foi **mantido como registro histórico e corrigido**
 (ver [DOCUMENTACAO.md](./DOCUMENTACAO.md)). Três decisões:
@@ -656,7 +656,7 @@ O valor real deste software é o que ele já faz bem: **demonstrar com rigor que
 
 ```bash
 npm install
-npm test            # 488 testes em 32 arquivos, incluindo tests/precisionAudit.test.js (38)
+npm test            # 496 testes em 33 arquivos, incluindo tests/precisionAudit.test.js (38)
 npm run build       # build de produção
 ```
 
@@ -753,7 +753,7 @@ links internos precisam apontar para arquivos que existem.
 | — | Módulo de projeções futuras | ✅ | [PROJECOES.md](./PROJECOES.md) |
 | — | Recuperação de conta (reset de senha + verificação de e-mail) | ✅ | [RECUPERACAO_CONTA.md](./RECUPERACAO_CONTA.md) |
 
-**Contagem atual:** 32 arquivos de teste, 488 testes, `npm audit` 0, build
+**Contagem atual:** 33 arquivos de teste, 496 testes, `npm audit` 0, build
 limpo, CI com 6 verificações.
 
 A calibração brasileira do Anti-Crowd **foi encerrada com veredito** em
@@ -769,8 +769,10 @@ Fora do roadmap da auditoria, a lista de "o que falta para produção pública" 
 fechada: **recuperação de conta** (redefinição de senha e verificação de e-mail) entrou com
 tokens de uso único, resposta idêntica para conta existente/inexistente, encerramento de
 sessões na troca de senha e 30 testes novos ([RECUPERACAO_CONTA.md](./RECUPERACAO_CONTA.md)).
-Continuam pendentes: Chart.js com SRI/bundle, migrações versionadas, rate limit nas rotas
-restantes e observabilidade.
+**Chart.js saiu do CDN** (item 2 da lista): agora é dependência do projeto com import
+dinâmico, e o CSP passou a `script-src 'self'` — sem `https://cdn.jsdelivr.net`, sem script
+de terceiro no documento (`tests/csp.test.js`, 8 casos). Continuam pendentes: migrações
+versionadas, rate limit nas rotas restantes e observabilidade.
 
 O único prazo correndo é o do hash legado: em **31/01/2027** o verificador precisa
 sair do código, e há um teste que falha nesse dia se ele ainda estiver lá. Nenhum

@@ -248,10 +248,18 @@ describe('Acessibilidade e higiene do markup', () => {
         assert.match(app[0][1], /type="module"/);
     });
 
-    it('dependência de terceiro vem por HTTPS de CDN', () => {
-        const cdn = [...HTML.matchAll(/<script[^>]*src="([^"]+)"/g)].map(m => m[1]).filter(u => !u.startsWith('js/'));
-        assert.ok(cdn.length >= 1);
-        for (const url of cdn) assert.match(url, /^https:\/\//, `script externo sem HTTPS: ${url}`);
+    it('nenhum script de terceiro no documento', () => {
+        // Antes existia um `<script src="https://cdn.jsdelivr.net/...">` sem
+        // `integrity`, dentro do documento e com acesso ao cookie de sessão.
+        // Agora toda dependência entra pelo bundle (`package.json`), então o único
+        // script é o entrypoint da aplicação — e o CSP pode ser `script-src 'self'`.
+        const externos = [...HTML.matchAll(/<script[^>]*src="([^"]+)"/g)]
+            .map(m => m[1])
+            .filter(url => !url.startsWith('js/'));
+        assert.deepEqual(externos, [], `script de terceiro no documento: ${externos.join(', ')}`);
+
+        const scriptsSrc = [...HTML.matchAll(/<script[^>]*src="([^"]+)"/g)].map(m => m[1]);
+        assert.deepEqual(scriptsSrc, ['js/main.js'], 'só o entrypoint da aplicação pode ser carregado');
     });
 
     it('nenhum handler inline (onclick, onchange, onsubmit)', () => {
