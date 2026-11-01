@@ -237,7 +237,7 @@ requisições por minuto, então o teto só incomoda quem abusa.
 - **Não testa o envio de e-mail.** Verifica configuração; se a chave estiver revogada, o
   health não sabe.
 - **Não prova que o app funciona.** Banco respondendo, migração aplicada e e-mail
-  configurado não impedem um bug de lógica — isso é o que os 574 testes cobrem.
+  configurado não impedem um bug de lógica — isso é o que os 577 testes cobrem.
 
 ---
 
