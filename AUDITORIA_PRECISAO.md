@@ -328,7 +328,41 @@ servidor. Corrigido, com aviso de degradação no console quando todas as fontes
 
 ### Prioridade média — anti-crowd com base empírica
 
-**6.8 Substituir as constantes do `AntiCrowdEngine` por dados.** As afirmações ("~65% das apostas concentram-se em…", penalidade de 0,25 para dezenas > 31) são plausíveis na literatura (Ziemba, Haigh, Cook & Clotfelter) mas estão **hardcoded sem fonte e sem calibração**. Duas saídas possíveis: (a) citar as fontes no código e nos comentários, mantendo os pesos como *priors* declarados; (b) calibrar com dados reais de popularidade (volumes de aposta por dezena, quando disponíveis em transparência da Caixa). A opção (a) é barata e já elimina a aparência de precisão fabricada.
+**6.8 Substituir as constantes do `AntiCrowdEngine` por dados — ✅ implementado (opção a + suporte à opção b).** As afirmações ("~65% das apostas concentram-se em…", penalidade de 0,25 para dezenas > 31) são plausíveis na literatura (Ziemba, Haigh, Cook & Clotfelter) mas estão **hardcoded sem fonte e sem calibração**. Duas saídas possíveis: (a) citar as fontes no código e nos comentários, mantendo os pesos como *priors* declarados; (b) calibrar com dados reais de popularidade (volumes de aposta por dezena, quando disponíveis em transparência da Caixa). A opção (a) é barata e já elimina a aparência de precisão fabricada.
+
+*Implementado:* todas as constantes foram extraídas para `CROWD_PRIORS`, cada uma com
+`basis` (`literatura` / `arbitrário` / `sem fonte`), `source` e `note`. O saldo é
+desconfortável e agora está visível: **7 direções têm suporte publicado, 20 magnitudes não
+têm** nenhum. As fontes citadas (registro `CROWD_SOURCES`) são Cook & Clotfelter (1993),
+Clotfelter & Cook (1993), Haigh (1997), Simon (1998) e Ziemba et al. (1986) — todas sobre
+loterias do Reino Unido e da América do Norte, **nenhuma sobre o Brasil**.
+
+Duas afirmações foram **removidas** por não terem fonte:
+
+- *"~65% das apostas humanas concentram-se em…"* — número sem origem verificável; saiu do
+  cabeçalho e virou declaração de que a direção dos vieses é documentada.
+- *"combinações com score alto têm até 2,4x menos divisões esperadas"* — não verificado e
+  provavelmente falso na magnitude. O multiplicador de EV agora é descrito como o que é:
+  uma escala para **ordenar** bilhetes por popularidade estimada, não uma promessa de
+  valor esperado.
+
+**Calibração pronta para uso (`AntiCrowdEngine.setCalibration`)**: recebe popularidade
+observada por dezena + tamanho da amostra e passa a encolher o prior em direção ao dado,
+com `λ = n/(n + 100.000)`. Com `n = 0` o prior é tudo; com `n = 10⁸`, 99,9% vem do dado.
+`clearCalibration()` restaura exatamente o comportamento anterior.
+
+**Por que não calibrei agora:** as fontes públicas consultadas neste projeto não expõem
+volume de apostas por dezena. Inventar popularidade sintética e chamar de calibração seria
+repetir o problema que este item existe para corrigir. Até existir dado real, o motor
+reporta `calibrated: false`, e o relatório estatístico exibe:
+
+```
+Prêmio Sozinho (Anti-Crowd): prior de literatura —
+7 direções documentadas, 20 magnitudes sem verificação
+```
+
+19 testes novos, incluindo um que impede um prior de `basis: 'literatura'` de existir sem
+fonte citável.
 
 ### Prioridade média — engenharia
 
@@ -352,7 +386,7 @@ exigem uma passada de formatação sobre todo o código, que merece commit próp
 
 **6.13 CSRF/Origin.** `SameSite=Lax` já bloqueia POST cross-site; adicionar verificação de `Origin`/`Sec-Fetch-Site` nos endpoints de mutação fecha a borda.
 
-**6.14 Atualizar a documentação.** `AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 22 arquivos de teste e 296 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
+**6.14 Atualizar a documentação.** `AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 23 arquivos de teste e 315 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
 
 ---
 
