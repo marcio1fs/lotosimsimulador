@@ -10,9 +10,23 @@ import { AppView } from './views/app.js';
 import { StatisticsView } from './views/statistics.js';
 import { ProjectionsView } from './views/projections.js';
 import { StatisticalAnalyzer } from './engine/statisticalAnalyzer.js';
+import {
+    RESET_LINK_PARAM,
+    VERIFY_LINK_PARAM,
+    isValidRecoveryToken,
+    passwordProblem
+} from '../shared/accountRecovery.js';
 
 let currentUser = null;
 let currentSession = null;
+/**
+ * Token do link de redefinição, guardado em memória.
+ *
+ * Ele é retirado da URL assim que a página carrega (ver `handleRecoveryLink`) e
+ * nunca é escrito no DOM: link com credencial na barra de endereço vaza por print
+ * de tela, histórico compartilhado e sincronização de navegador.
+ */
+let pendingResetToken = null;
 const appState = {
     currentLottery: 'lotofacil',
     currentStrategy: 'wheeling',
@@ -41,6 +55,10 @@ class AppController {
             return;
         }
 
+        // Antes de qualquer outra coisa: um link de recuperação tem prioridade sobre
+        // a sessão existente. Quem clicou "redefinir senha" quer redefinir a senha.
+        await this.handleRecoveryLink();
+
         const sessionResult = await AuthController.validateSession();
         if (sessionResult) {
             this.afterLogin(sessionResult.user, sessionResult.session);
@@ -49,6 +67,46 @@ class AppController {
         this.bindEvents();
         AppView.renderConferenceInputs(appState.currentLottery);
         AppView.renderNumberSelectors(appState.currentLottery, appState.fixedNumbers, appState.excludedNumbers);
+    }
+
+    /**
+     * Lê `?reset=<token>` e `?verify=<token>` da URL.
+     *
+     * Um GET em `/?verify=…` confirma o e-mail sem exigir login: o link chegou na
+     * caixa postal, e é isso que a verificação precisa provar. O POST que ele
+     * dispara é de mesma origem (a página está aberta nela), então passa pela
+     * borda CSRF sem tratamento especial.
+     */
+    static async handleRecoveryLink() {
+        if (typeof window === 'undefined' || !window.location) return;
+        const params = new URLSearchParams(window.location.search);
+        const resetToken = params.get(RESET_LINK_PARAM);
+        const verifyToken = params.get(VERIFY_LINK_PARAM);
+        if (!resetToken && !verifyToken) return;
+
+        // Tira o token da URL e do histórico antes de qualquer outra coisa.
+        window.history.replaceState({}, document.title, window.location.pathname);
+
+        if (verifyToken) {
+            const result = await AuthController.verifyEmail(verifyToken);
+            AppView.showToast(
+                result.success ? '✅ E-mail confirmado! Sua conta pode ser recuperada.' : `⚠️ ${result.error}`,
+                result.success ? 'success' : 'error'
+            );
+        }
+
+        if (resetToken) {
+            pendingResetToken = isValidRecoveryToken(resetToken) ? resetToken : null;
+            AuthView.clearErrors();
+            AuthView.showForm('reset');
+            if (!pendingResetToken) {
+                AuthView.showNotice(
+                    'resetNotice',
+                    'Este link está incompleto. Peça um novo em "Esqueci minha senha".',
+                    'danger'
+                );
+            }
+        }
     }
 
     static async afterLogin(user, session) {
@@ -221,6 +279,97 @@ class AppController {
                 AuthView.showError('regEmail', 'Erro no servidor: ' + (err.message || 'Falha ao conectar'));
             }
         });
+
+        document.querySelectorAll('[data-action="switch-forgot"]').forEach(l =>
+            l.addEventListener('click', e => {
+                e.preventDefault();
+                AuthView.clearErrors();
+                AuthView.showForm('forgot');
+            })
+        );
+
+        document.getElementById('forgotForm').addEventListener('submit', async e => {
+            e.preventDefault();
+            AuthView.clearErrors();
+            AuthView.clearNotices();
+            const email = document.getElementById('forgotEmail').value.trim().toLowerCase();
+
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                AuthView.showError('forgotEmail', 'E-mail inválido');
+                return;
+            }
+
+            AuthView.setLoading(true, 'forgotBtn');
+            const result = await AuthController.requestPasswordReset(email);
+            AuthView.setLoading(false, 'forgotBtn');
+
+            // Sucesso e "conta não existe" chegam aqui com o MESMO texto: é o
+            // servidor que decide o que contar, e ele decidiu não contar nada.
+            AuthView.showNotice(
+                'forgotNotice',
+                result.success
+                    ? result.message || 'Se este e-mail estiver cadastrado, enviamos um link para redefinir a senha.'
+                    : result.error || 'Não foi possível enviar o link agora.',
+                result.success ? 'info' : 'danger'
+            );
+        });
+
+        document.getElementById('resetForm').addEventListener('submit', async e => {
+            e.preventDefault();
+            AuthView.clearErrors();
+            AuthView.clearNotices();
+            const password = document.getElementById('recoveryPassword').value;
+            const confirm = document.getElementById('recoveryPasswordConfirm').value;
+
+            const problem = passwordProblem(password);
+            if (problem) {
+                AuthView.showError('recoveryPassword', problem);
+                return;
+            }
+            if (password !== confirm) {
+                AuthView.showError('recoveryPasswordConfirm', 'Senhas não coincidem');
+                return;
+            }
+            if (!pendingResetToken) {
+                AuthView.showNotice(
+                    'resetNotice',
+                    'Este link está incompleto ou já foi usado. Peça um novo em "Esqueci minha senha".',
+                    'danger'
+                );
+                return;
+            }
+
+            AuthView.setLoading(true, 'resetBtn');
+            const result = await AuthController.resetPassword(pendingResetToken, password);
+            AuthView.setLoading(false, 'resetBtn');
+
+            if (result.success) {
+                pendingResetToken = null;
+                document.getElementById('recoveryPassword').value = '';
+                document.getElementById('recoveryPasswordConfirm').value = '';
+                AppView.showToast('✅ Senha redefinida! Entre com a senha nova.', 'success');
+                AuthView.showForm('login');
+            } else {
+                AuthView.showNotice('resetNotice', result.error || 'Não foi possível salvar a senha.', 'danger');
+            }
+        });
+
+        document.querySelectorAll('[data-action="resend-verification"]').forEach(btn =>
+            btn.addEventListener('click', async () => {
+                btn.disabled = true;
+                const result = await AuthController.resendVerification();
+                btn.disabled = false;
+
+                if (result.success && result.alreadyVerified) {
+                    document.getElementById('verifyBanner').style.display = 'none';
+                    AppView.showToast('✅ Seu e-mail já estava confirmado.', 'success');
+                } else if (result.success) {
+                    AppView.showToast('📧 Link reenviado. Confira sua caixa de entrada e o spam.', 'success');
+                } else {
+                    AppView.showToast(`⚠️ ${result.error}`, 'error');
+                }
+            })
+        );
 
         document.querySelectorAll('.password-toggle').forEach(btn =>
             btn.addEventListener('click', () => {
@@ -405,8 +554,8 @@ class AppController {
         document.getElementById('changePassBtn')?.addEventListener('click', async () => {
             if (!currentUser) return;
             const currentPass = document.getElementById('currentPassword').value;
-            const newPass = document.getElementById('newPassword').value;
-            const confirmPass = document.getElementById('newPasswordConfirm').value;
+            const newPass = document.getElementById('recoveryPassword').value;
+            const confirmPass = document.getElementById('recoveryPasswordConfirm').value;
 
             if (!currentPass || !newPass || !confirmPass) {
                 AppView.showToast('⚠️ Preencha todos os campos de senha!', 'error');
@@ -424,8 +573,8 @@ class AppController {
             const res = await AuthController.changePassword(currentUser.id, currentPass, newPass);
             if (res.success) {
                 document.getElementById('currentPassword').value = '';
-                document.getElementById('newPassword').value = '';
-                document.getElementById('newPasswordConfirm').value = '';
+                document.getElementById('recoveryPassword').value = '';
+                document.getElementById('recoveryPasswordConfirm').value = '';
                 AppView.showToast('🔒 Senha atualizada com segurança!', 'success');
             } else {
                 AppView.showToast(`❌ ${res.error}`, 'error');

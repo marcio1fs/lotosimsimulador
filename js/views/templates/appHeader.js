@@ -55,6 +55,17 @@ export function appHeader() {
         </div>
     </header>
 
+    <!-- Aviso de e-mail não confirmado: só aparece quando o servidor responde
+         que a conta ainda nao tem o e-mail verificado. -->
+    <div class="verify-banner" id="verifyBanner" style="display:none;">
+        <span class="verify-banner-text">
+            ✉️ Confirme seu e-mail para garantir a recuperação da conta se você esquecer a senha.
+        </span>
+        <button class="verify-banner-btn" id="resendVerificationBtn" data-action="resend-verification">
+            Reenviar e-mail
+        </button>
+    </div>
+
     <nav class="nav-tabs">
         <div class="nav-tab active" data-screen="simulation">🎲 Simulação</div>
         <div class="nav-tab" data-screen="conference">🔍 Conferência</div>

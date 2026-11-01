@@ -15,12 +15,45 @@ import {
 import { syncLotteries } from './lotterySync.js';
 import { evaluateSameSiteRequest, parseAllowedOrigins, hasJsonContentType } from './originPolicy.js';
 import { LEGACY_HASH_SUNSET_LABEL } from '../shared/passwordPolicy.js';
+import {
+    RESET_REQUESTS_PER_HOUR_PER_EMAIL,
+    RESET_REQUESTS_PER_HOUR_PER_IP,
+    VERIFY_RESENDS_PER_HOUR,
+    buildResetLink,
+    buildVerifyLink,
+    isTokenExpired,
+    isValidRecoveryToken,
+    passwordProblem,
+    redactEmail,
+    resetTokenExpiry,
+    verifyTokenExpiry
+} from '../shared/accountRecovery.js';
+import {
+    EMAIL_NOT_CONFIGURED_MESSAGE,
+    isEmailConfigured,
+    resetPasswordMessage,
+    sendEmail,
+    verifyEmailMessage
+} from './email.js';
 
 const MAX_BODY = 512 * 1024;
 const MAX_FAILS = 5; // tentativas de login falhas...
 const FAIL_WINDOW_MIN = 15; // ...dentro desta janela bloqueiam novas tentativas
 
 let _sql = null;
+
+/**
+ * Injeta uma implementação de SQL (usada só pelos testes).
+ *
+ * A conexão vive em variável de módulo para não reconectar a cada requisição fria.
+ * O efeito colateral é que a suíte não teria como testar as rotas de recuperação
+ * sem um banco de verdade. Este gancho resolve isso; `null` restaura o normal.
+ * Nada em produção chama esta função.
+ */
+export function _setSqlForTests(fake) {
+    _sql = fake || null;
+}
+
 export function getSql() {
     if (!_sql) {
         const url = process.env.DATABASE_URL;
@@ -70,7 +103,40 @@ const clientIp = req =>
         .split(',')[0]
         .trim();
 
-const publicUser = u => ({ id: Number(u.id), name: u.name, email: u.email, role: u.role, createdAt: u.created_at });
+const normalizeEmail = value =>
+    String(value || '')
+        .trim()
+        .toLowerCase();
+
+/**
+ * Usuário exposto para o cliente.
+ *
+ * `emailVerified` indefinido (coluna ausente porque o schema novo ainda não rodou)
+ * conta como verificado: sem a migração não existe verificação, e mostrar aviso
+ * permanente para todo mundo por causa disso seria pior que o aviso em si.
+ */
+const publicUser = u => ({
+    id: Number(u.id),
+    name: u.name,
+    email: u.email,
+    role: u.role,
+    createdAt: u.created_at,
+    emailVerified: u.email_verified === undefined ? true : Boolean(u.email_verified),
+    emailVerifiedAt: u.email_verified_at || null
+});
+
+/** Base pública para montar os links que vão no e-mail. */
+function publicBaseUrl(req) {
+    const configured = process.env.APP_BASE_URL;
+    if (configured) return String(configured).replace(/\/+$/, '');
+    const host = String(req.headers['x-forwarded-host'] || req.headers.host || '')
+        .split(',')[0]
+        .trim();
+    const proto = String(req.headers['x-forwarded-proto'] || (process.env.NODE_ENV === 'production' ? 'https' : 'http'))
+        .split(',')[0]
+        .trim();
+    return `${proto}://${host || 'localhost'}`;
+}
 
 // ---------------------------------------------------------------- sessão
 async function getSession(req) {
@@ -78,7 +144,8 @@ async function getSession(req) {
     if (!token) return null;
     const sql = getSql();
     const rows = await sql.query(
-        `SELECT s.id AS session_id, s.expires_at, u.id, u.name, u.email, u.role, u.created_at
+        `SELECT s.id AS session_id, s.expires_at, u.id, u.name, u.email, u.role, u.created_at,
+                u.email_verified, u.email_verified_at
            FROM sessions s JOIN users u ON u.id = s.user_id
           WHERE s.token = $1 LIMIT 1`,
         [hashToken(token)]
@@ -128,8 +195,76 @@ async function assertNotLocked(ip, email) {
 const recordFail = (ip, email) => getSql().query('INSERT INTO login_attempts (ip, email) VALUES ($1, $2)', [ip, email]);
 const clearFails = email => getSql().query('DELETE FROM login_attempts WHERE email = $1', [email]);
 
+// ------------------------------------------------- recuperação de conta
+/**
+ * Limite por e-mail **e** por IP.
+ *
+ * Por e-mail: o alvo é a caixa de entrada de uma pessoa específica — três
+ * mensagens por hora já é mais do que o suficiente para recuperar a senha.
+ * Por IP: sem isso, um script com 10 mil endereços diferentes inundaria 10 mil
+ * caixas passando pelo limite de e-mail de cada uma.
+ *
+ * O erro é 429 nas duas contagens, sem dizer qual estourou.
+ */
+async function assertRecoveryAllowed({ ip, email, kind, maxEmail, maxIp }) {
+    const rows = await getSql().query(
+        `SELECT COUNT(*) FILTER (WHERE email = $1)::int AS by_email,
+                COUNT(*) FILTER (WHERE ip = $2)::int AS by_ip
+           FROM recovery_requests
+          WHERE kind = $3 AND at > NOW() - INTERVAL '1 hour'`,
+        [email, ip, kind]
+    );
+    const row = rows[0] || {};
+    if (Number(row.by_email) >= maxEmail || Number(row.by_ip) >= maxIp) {
+        throw new HttpError(429, 'Muitos pedidos em pouco tempo. Tente novamente em 1 hora.');
+    }
+}
+
+const recordRecoveryRequest = ({ ip, email, kind }) =>
+    getSql().query('INSERT INTO recovery_requests (ip, email, kind) VALUES ($1, $2, $3)', [ip, email, kind]);
+
+/** Emite (e grava o hash de) um token de verificação, invalidando os anteriores. */
+async function issueVerificationToken(sql, user) {
+    const token = generateToken();
+    await sql.transaction([
+        sql.query('DELETE FROM email_verifications WHERE user_id = $1', [user.id]),
+        sql.query('INSERT INTO email_verifications (user_id, token, expires_at) VALUES ($1, $2, $3)', [
+            user.id,
+            hashToken(token),
+            verifyTokenExpiry().toISOString()
+        ])
+    ]);
+    return token;
+}
+
+/**
+ * Enfileira o e-mail sem esperar a entrega.
+ *
+ * O `void` é a parte importante: se a resposta esperasse o provedor, quem pede a
+ * redefinição de um e-mail cadastrado demoraria centenas de milissegundos e quem
+ * pede de um e-mail qualquer responderia na hora — diferença de tempo que diz
+ * "esta conta existe". Com o envio fora do caminho da resposta, os dois casos
+ * respondem igual e em tempo igual.
+ */
+function queueEmail(build, context) {
+    try {
+        const message = build();
+        void sendEmail(message).catch(error => console.error(`[email] ${context}:`, error?.message || error));
+    } catch (error) {
+        console.error(`[email] falha ao montar a mensagem (${context}):`, error?.message || error);
+    }
+}
+
 // ---------------------------------------------------------------- auth
 const GENERIC_LOGIN_ERROR = 'E-mail ou senha incorretos';
+
+/** Resposta do pedido de redefinição — idêntica exista ou não a conta. */
+const GENERIC_RESET_SENT =
+    'Se este e-mail estiver cadastrado, enviamos um link para redefinir a senha. Confira também a caixa de spam.';
+
+/** Mesma mensagem para token inexistente, expirado, usado ou malformado. */
+const INVALID_RESET_MESSAGE = 'Link de redefinição inválido ou expirado. Peça um novo.';
+const INVALID_VERIFY_MESSAGE = 'Link de confirmação inválido ou expirado. Peça um novo pela tela inicial.';
 /** Só aparece para quem já tem sessão válida — não é oráculo de existência de conta. */
 const LEGACY_EXPIRED_MESSAGE =
     `Sua senha está no formato antigo, desativado em ${LEGACY_HASH_SUNSET_LABEL}. ` +
@@ -160,7 +295,25 @@ const auth = {
             sql.query('INSERT INTO user_stats (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [userId]),
             sql.query('INSERT INTO auto_settings (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [userId])
         ]);
-        return { success: true };
+
+        // Verificação de e-mail: a conta já existe e funciona, mas o endereço
+        // ainda não foi provado. Falha aqui não derruba o cadastro — só informa
+        // que o e-mail não saiu (`verificationSent: false`), e a tela pede para
+        // reenviar depois. Fingir que enviou seria pior.
+        let verificationSent = false;
+        if (isEmailConfigured()) {
+            try {
+                const token = await issueVerificationToken(sql, { id: userId });
+                queueEmail(
+                    () => verifyEmailMessage({ to: email, name, link: buildVerifyLink(publicBaseUrl(req), token) }),
+                    `verificação user=${userId}`
+                );
+                verificationSent = true;
+            } catch (error) {
+                console.error(`[auth] não foi possível emitir a verificação para user=${userId}:`, error);
+            }
+        }
+        return { success: true, verificationSent, emailConfigured: isEmailConfigured() };
     },
 
     async login(req, res, body) {
@@ -252,6 +405,177 @@ const auth = {
         await sql.query('DELETE FROM users WHERE id = $1', [s.user.id]);
         res.setHeader('Set-Cookie', clearCookie(isSecure(req)));
         return { success: true };
+    },
+
+    /**
+     * Pedido de redefinição de senha.
+     *
+     * A resposta é **sempre a mesma** — exista a conta ou não. É a única forma de
+     * o formulário não virar um verificador de e-mails cadastrados, que é dado
+     * pessoal de terceiro. O limite de pedidos também é aplicado antes de olhar
+     * o banco: assim o 429 não depende de a conta existir.
+     *
+     * A ordem importa: configuração → limite → grava o pedido → consulta o banco.
+     * Se o 503 de "não configurado" aparecesse só para contas reais, ele mesmo
+     * seria o oráculo.
+     */
+    async forgotPassword(req, res, body) {
+        const email = normalizeEmail(body.email);
+        const ip = clientIp(req);
+        if (!isValidEmail(email)) throw new HttpError(400, 'E-mail inválido');
+        if (!isEmailConfigured()) throw new HttpError(503, EMAIL_NOT_CONFIGURED_MESSAGE);
+
+        await assertRecoveryAllowed({
+            ip,
+            email,
+            kind: 'reset',
+            maxEmail: RESET_REQUESTS_PER_HOUR_PER_EMAIL,
+            maxIp: RESET_REQUESTS_PER_HOUR_PER_IP
+        });
+        await recordRecoveryRequest({ ip, email, kind: 'reset' });
+
+        const sql = getSql();
+        const rows = await sql.query('SELECT id, name, email FROM users WHERE LOWER(email) = $1 LIMIT 1', [email]);
+        const user = rows[0];
+
+        if (user) {
+            try {
+                const token = generateToken();
+                await sql.transaction([
+                    // Pedir de novo invalida o link anterior: dois links válidos ao
+                    // mesmo tempo dobram o que um atacante com a caixa postal pode usar.
+                    sql.query('DELETE FROM password_resets WHERE user_id = $1 AND used_at IS NULL', [user.id]),
+                    sql.query('INSERT INTO password_resets (user_id, token, expires_at) VALUES ($1, $2, $3)', [
+                        user.id,
+                        hashToken(token),
+                        resetTokenExpiry().toISOString()
+                    ])
+                ]);
+                queueEmail(
+                    () =>
+                        resetPasswordMessage({
+                            to: user.email,
+                            name: user.name,
+                            link: buildResetLink(publicBaseUrl(req), token)
+                        }),
+                    `reset user=${user.id}`
+                );
+                console.warn(`[auth] pedido de redefinição emitido para ${redactEmail(email)}`);
+            } catch (error) {
+                // Falha ao gravar/enviar não pode virar resposta diferente: seria
+                // o mesmo oráculo pela porta dos fundos.
+                console.error('[auth] falha ao emitir redefinição:', error);
+            }
+        }
+
+        return { success: true, message: GENERIC_RESET_SENT };
+    },
+
+    /**
+     * Consome o token e troca a senha.
+     *
+     * Token inválido, expirado, já usado ou de formato errado devolvem **a mesma**
+     * mensagem: distinguir "não existe" de "expirou" contaria ao atacante qual
+     * palpite chegou perto. Tudo é 400 com o mesmo texto.
+     */
+    async resetPassword(req, res, body) {
+        const token = String(body.token || '').trim();
+        const password = String(body.password || '');
+        if (!isValidRecoveryToken(token)) throw new HttpError(400, INVALID_RESET_MESSAGE);
+
+        const problem = passwordProblem(password);
+        if (problem) throw new HttpError(400, problem);
+
+        const sql = getSql();
+        // O e-mail vem junto só para limpar o bloqueio de força bruta da conta:
+        // quem provou posse da caixa postal provou que não é um atacante de fora.
+        const rows = await sql.query(
+            `SELECT r.id, r.user_id, r.expires_at, r.used_at, u.email
+               FROM password_resets r JOIN users u ON u.id = r.user_id
+              WHERE r.token = $1 LIMIT 1`,
+            [hashToken(token)]
+        );
+        const row = rows[0];
+        if (!row || row.used_at || isTokenExpired(row.expires_at)) throw new HttpError(400, INVALID_RESET_MESSAGE);
+
+        await sql.transaction([
+            sql.query(
+                `UPDATE users
+                    SET password = $1,
+                        email_verified = TRUE,
+                        email_verified_at = COALESCE(email_verified_at, NOW()),
+                        updated_at = NOW()
+                  WHERE id = $2`,
+                [await hashPassword(password), row.user_id]
+            ),
+            sql.query('UPDATE password_resets SET used_at = NOW() WHERE id = $1', [row.id]),
+            sql.query('DELETE FROM password_resets WHERE user_id = $1 AND id <> $2', [row.user_id, row.id]),
+            // Senha trocada encerra as sessões: se o motivo do reset foi invasão,
+            // deixar a sessão do invasor viva anularia a troca.
+            sql.query('DELETE FROM sessions WHERE user_id = $1', [row.user_id]),
+            sql.query('DELETE FROM email_verifications WHERE user_id = $1', [row.user_id])
+        ]);
+        await clearFails(normalizeEmail(row.email || ''));
+
+        res.setHeader('Set-Cookie', clearCookie(isSecure(req)));
+        return { success: true, message: 'Senha redefinida. Entre com a senha nova.' };
+    },
+
+    /** Confirma a posse do e-mail a partir do link. */
+    async verifyEmail(req, res, body) {
+        const token = String(body.token || '').trim();
+        if (!isValidRecoveryToken(token)) throw new HttpError(400, INVALID_VERIFY_MESSAGE);
+
+        const sql = getSql();
+        const rows = await sql.query(
+            'SELECT id, user_id, expires_at FROM email_verifications WHERE token = $1 LIMIT 1',
+            [hashToken(token)]
+        );
+        const row = rows[0];
+        if (!row || isTokenExpired(row.expires_at)) throw new HttpError(400, INVALID_VERIFY_MESSAGE);
+
+        await sql.transaction([
+            sql.query(
+                `UPDATE users
+                    SET email_verified = TRUE,
+                        email_verified_at = COALESCE(email_verified_at, NOW()),
+                        updated_at = NOW()
+                  WHERE id = $1`,
+                [row.user_id]
+            ),
+            sql.query('DELETE FROM email_verifications WHERE user_id = $1', [row.user_id])
+        ]);
+        return { success: true, message: 'E-mail confirmado.' };
+    },
+
+    /** Reenvia o link de verificação para quem já está logado. */
+    async resendVerification(req, _res, _body) {
+        const s = await requireSession(req);
+        if (!isEmailConfigured()) throw new HttpError(503, EMAIL_NOT_CONFIGURED_MESSAGE);
+        if (s.user.emailVerified) return { success: true, alreadyVerified: true, verificationSent: false };
+
+        const ip = clientIp(req);
+        await assertRecoveryAllowed({
+            ip,
+            email: normalizeEmail(s.user.email),
+            kind: 'verify',
+            maxEmail: VERIFY_RESENDS_PER_HOUR,
+            maxIp: RESET_REQUESTS_PER_HOUR_PER_IP
+        });
+        await recordRecoveryRequest({ ip, email: normalizeEmail(s.user.email), kind: 'verify' });
+
+        const sql = getSql();
+        const token = await issueVerificationToken(sql, { id: s.user.id });
+        queueEmail(
+            () =>
+                verifyEmailMessage({
+                    to: s.user.email,
+                    name: s.user.name,
+                    link: buildVerifyLink(publicBaseUrl(req), token)
+                }),
+            `reenvio verificação user=${s.user.id}`
+        );
+        return { success: true, verificationSent: true };
     }
 };
 
@@ -490,7 +814,11 @@ export async function handler(req, res) {
             '/api/auth/me': () => auth.me(req),
             '/api/auth/logout': () => auth.logout(req, res),
             '/api/auth/change-password': () => auth.changePassword(req, res, body),
-            '/api/auth/delete-account': () => auth.deleteAccount(req, res, body)
+            '/api/auth/delete-account': () => auth.deleteAccount(req, res, body),
+            '/api/auth/forgot-password': () => auth.forgotPassword(req, res, body),
+            '/api/auth/reset-password': () => auth.resetPassword(req, res, body),
+            '/api/auth/verify-email': () => auth.verifyEmail(req, res, body),
+            '/api/auth/resend-verification': () => auth.resendVerification(req, res, body)
         };
         if (Object.hasOwn(routes, path)) return send(res, 200, await routes[path]());
 

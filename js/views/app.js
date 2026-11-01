@@ -23,6 +23,13 @@ export class AppView {
         document.getElementById('profileEmail').textContent = user.email;
         document.getElementById('profileJoined').textContent =
             `Membro desde: ${new Date(user.createdAt).toLocaleDateString('pt-BR')}`;
+
+        // Aviso de e-mail não confirmado: `false` é resposta explícita do servidor.
+        // Qualquer outro valor (incluindo `undefined`, do modo offline ou de um
+        // banco sem a migração) mantém o aviso escondido — aviso que aparece sem
+        // saber se deve aparecer treina o usuário a ignorá-lo.
+        const banner = document.getElementById('verifyBanner');
+        if (banner) banner.style.display = user.emailVerified === false ? 'flex' : 'none';
     }
 
     static updateStats(stats) {

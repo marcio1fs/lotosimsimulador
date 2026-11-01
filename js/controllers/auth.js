@@ -45,4 +45,20 @@ export class AuthController {
     static async deleteAccount(userId, password) {
         return await UserModel.deleteAccount(userId, password);
     }
+
+    static async requestPasswordReset(email) {
+        return await UserModel.requestPasswordReset(email);
+    }
+
+    static async resetPassword(token, password) {
+        return await UserModel.resetPassword(token, password);
+    }
+
+    static async verifyEmail(token) {
+        return await UserModel.verifyEmail(token);
+    }
+
+    static async resendVerification() {
+        return await UserModel.resendVerification();
+    }
 }

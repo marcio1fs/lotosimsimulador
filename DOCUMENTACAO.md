@@ -44,7 +44,7 @@ suíte de 4 casos sustentava afirmações grandes. O que mudou:
 `AUDITORIA_PRECISAO.md` carrega o marcador:
 
 ```html
-<!-- suite: arquivos=31 testes=458 -->
+<!-- suite: arquivos=32 testes=488 -->
 ```
 
 e a **seção 11 (Estado atual)** lista cada item do roadmap com status e onde ele
@@ -64,6 +64,7 @@ se fossem estado presente.
 | [INTERFACE.md](./INTERFACE.md) | templates e testes da camada visual | 6.11 |
 | [SECURITY.md](./SECURITY.md) | postura de segurança (borda CSRF em `server/originPolicy.js`, prazo do hash legado em `shared/passwordPolicy.js`) | 6.13, 6.12 |
 | [ANTICROWD_CALIBRACAO.md](./ANTICROWD_CALIBRACAO.md) | veredito da calibração do Anti-Crowd: por que não há dado brasileiro, sensibilidade dos priors, pipeline de ingestão | 6.8 |
+| [RECUPERACAO_CONTA.md](./RECUPERACAO_CONTA.md) | redefinição de senha e verificação de e-mail: tokens, anti-enumeração, transporte de e-mail, limites | produção |
 | [DOCUMENTACAO.md](./DOCUMENTACAO.md) | este arquivo | 6.14 |
 
 ## 4. O que o teste verifica

@@ -2,8 +2,8 @@
 
 **Data:** 01/11/2026
 **Escopo:** 61 arquivos · ~8.700 linhas de JavaScript · 12 módulos de motor estatístico · API serverless (Neon) · interface SPA
-**Suíte de testes:** 113 → **458 testes em 31 arquivos** (100% passando), `npm run build` OK
-<!-- suite: arquivos=31 testes=458 -->
+**Suíte de testes:** 113 → **488 testes em 32 arquivos** (100% passando), `npm run build` OK
+<!-- suite: arquivos=32 testes=488 -->
 **Pergunta que guiou a auditoria:** *onde este projeto perde precisão — e como recuperá-la?*
 
 ---
@@ -605,7 +605,7 @@ falsa, sem tocar no banco. A defesa em camadas está descrita em
 
 
 **6.14 Atualizar a documentação — ✅ implementado.**
-`AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 31 arquivos de teste e 458 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
+`AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 32 arquivos de teste e 488 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
 
 *Implementado:* o `AUDIT_REPORT.md` foi **mantido como registro histórico e corrigido**
 (ver [DOCUMENTACAO.md](./DOCUMENTACAO.md)). Três decisões:
@@ -656,7 +656,7 @@ O valor real deste software é o que ele já faz bem: **demonstrar com rigor que
 
 ```bash
 npm install
-npm test            # 458 testes em 31 arquivos, incluindo tests/precisionAudit.test.js (38)
+npm test            # 488 testes em 32 arquivos, incluindo tests/precisionAudit.test.js (38)
 npm run build       # build de produção
 ```
 
@@ -751,8 +751,9 @@ links internos precisam apontar para arquivos que existem.
 | 6.13 | CSRF / Origin | ✅ | [SECURITY.md](./SECURITY.md) |
 | 6.14 | Documentação atualizada | ✅ | [DOCUMENTACAO.md](./DOCUMENTACAO.md) |
 | — | Módulo de projeções futuras | ✅ | [PROJECOES.md](./PROJECOES.md) |
+| — | Recuperação de conta (reset de senha + verificação de e-mail) | ✅ | [RECUPERACAO_CONTA.md](./RECUPERACAO_CONTA.md) |
 
-**Contagem atual:** 31 arquivos de teste, 458 testes, `npm audit` 0, build
+**Contagem atual:** 32 arquivos de teste, 488 testes, `npm audit` 0, build
 limpo, CI com 6 verificações.
 
 A calibração brasileira do Anti-Crowd **foi encerrada com veredito** em
@@ -763,6 +764,13 @@ o dado — sensibilidade da ordem e do EV aos priors — foi medido: a ordem é 
 (ρ mediano 0,99), o **nível do multiplicador de EV não** (0,5x a 2,1x para o mesmo
 bilhete). Por isso o EV passou a aparecer como `EV ≈ Nx`, ordinal. O pipeline de
 ingestão (`npm run calibrar -- --file`) fica pronto para quando a tabela existir.
+
+Fora do roadmap da auditoria, a lista de "o que falta para produção pública" começou a ser
+fechada: **recuperação de conta** (redefinição de senha e verificação de e-mail) entrou com
+tokens de uso único, resposta idêntica para conta existente/inexistente, encerramento de
+sessões na troca de senha e 30 testes novos ([RECUPERACAO_CONTA.md](./RECUPERACAO_CONTA.md)).
+Continuam pendentes: Chart.js com SRI/bundle, migrações versionadas, rate limit nas rotas
+restantes e observabilidade.
 
 O único prazo correndo é o do hash legado: em **31/01/2027** o verificador precisa
 sair do código, e há um teste que falha nesse dia se ele ainda estiver lá. Nenhum

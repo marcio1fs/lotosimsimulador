@@ -15,8 +15,30 @@ export class AuthView {
     static showForm(form) {
         document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
         document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
-        document.getElementById(form + 'Form').classList.add('active');
-        document.querySelector(`.auth-tab[data-view="${form}"]`).classList.add('active');
+        const target = document.getElementById(form + 'Form');
+        if (target) target.classList.add('active');
+        // `forgot` e `reset` não têm aba: quando elas aparecem, nenhuma aba fica ativa
+        // (o `?.` evita o TypeError que existiria ao buscar aba inexistente).
+        document.querySelector(`.auth-tab[data-view="${form}"]`)?.classList.add('active');
+        this.clearNotices();
+    }
+
+    /** Zera as caixas de aviso (não são erro — são resposta do servidor). */
+    static clearNotices() {
+        document.querySelectorAll('.form-notice').forEach(n => {
+            n.textContent = '';
+            n.classList.remove('show');
+        });
+    }
+
+    /** Mostra uma resposta informativa abaixo do formulário. */
+    static showNotice(id, message, type = 'info') {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = message;
+        el.classList.remove('show', 'danger');
+        if (type === 'danger') el.classList.add('danger');
+        el.classList.add('show');
     }
 
     static clearErrors() {
@@ -40,14 +62,16 @@ export class AuthView {
 
     static setLoading(loading, btnId) {
         const btn = document.getElementById(btnId);
+        if (!btn) return;
+        const labels = {
+            loginBtn: ['Verificando...', 'Entrar'],
+            regBtn: ['Criando conta...', 'Criar Conta'],
+            forgotBtn: ['Enviando...', 'Enviar link'],
+            resetBtn: ['Salvando...', 'Salvar senha nova']
+        };
+        const [busy, idle] = labels[btnId] || ['Aguarde...', 'Enviar'];
         btn.disabled = loading;
-        btn.textContent = loading
-            ? btnId === 'loginBtn'
-                ? 'Verificando...'
-                : 'Criando conta...'
-            : btnId === 'loginBtn'
-              ? 'Entrar'
-              : 'Criar Conta';
+        btn.textContent = loading ? busy : idle;
     }
 
     static updateDbStatus(connected, message) {
