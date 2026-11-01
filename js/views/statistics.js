@@ -244,6 +244,20 @@ export class StatisticsView {
         const chi2 = sig.chiSquare || null;
         const paresSig = sig.pairs?.significantPairs ?? 0;
 
+        // Fatores cuja afirmação estatística foi testada e refutada deixam de
+        // pesar. Ausência de teste (histórico curto) NÃO zera nada.
+        const ev = pipeline.evidenceWeighting || null;
+        const evidenceText = ev
+            ? (ev.applied
+                ? `${ev.gatedFactors.join(' + ')} zerado(s) · ${(ev.removedWeight * 100).toFixed(0)}% do score redistribuído`
+                : 'nenhum fator zerado por falta de evidência')
+            : '-';
+        const evidenceDetail = ev && Array.isArray(ev.factors) && ev.factors.length > 0
+            ? ` <span style="color:var(--text-muted);">(${ev.factors
+                .map(f => `${f.factor} ${(f.defaultWeight * 100).toFixed(0)}%→${(f.effectiveWeight * 100).toFixed(0)}%`)
+                .join(' · ')})</span>`
+            : '';
+
         const ciText = bt.confidenceInterval && typeof bt.confidenceInterval.lower === 'number'
             ? `[${bt.confidenceInterval.lower} — ${bt.confidenceInterval.upper}] (${bt.confidenceInterval.method || 'Student-t'})`
             : 'Dados Insuficientes';
@@ -279,6 +293,7 @@ export class StatisticsView {
                 <div>Sinal de Markov (FDR 5%): <strong>${markovSig > 0 ? `${markovSig} transição(ões) real(is) de ${mkvTested}` : `nenhuma de ${mkvTested} testadas`}</strong></div>
                 <div>Uniformidade (χ² exato): <strong>${chi2 ? `p=${Number(chi2.pValue).toExponential(2)} · V de Cramér ${chi2.cramersV} (${chi2.effectDescriptor})` : '-'}</strong></div>
                 <div>Pares com Co-ocorrência Real (FDR 5%): <strong>${sig.pairs ? `${paresSig} par(es)` : '-'}</strong></div>
+                <div>Ponderação por Evidência: <strong>${evidenceText}</strong>${evidenceDetail}</div>
                 <div>Reprodutibilidade: <strong>APROVADA (Seed: ${pipeline.seed || 123456})</strong></div>
                 <div>Monte Carlo Simulações: <strong>${mc.iterations || 10000} iterações</strong></div>
                 <div style="margin-top:0.6rem; color:var(--text-muted); font-size:0.7rem; border-top:1px dashed rgba(255,255,255,0.1); padding-top:0.4rem;">

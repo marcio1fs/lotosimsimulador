@@ -5,6 +5,7 @@
 
 import { StatisticalAnalyzer } from './statisticalAnalyzer.js';
 import { ScoringEngine, DEFAULT_WEIGHTS } from './scoringEngine.js';
+import { EvidenceWeightingEngine } from './evidenceWeightingEngine.js';
 import { BacktestEngine } from './backtestEngine.js';
 import { BaselineEngine } from './baselineEngine.js';
 import { SeededRandom } from './prng.js';
@@ -14,6 +15,13 @@ import { WheelingEngine } from './wheelingEngine.js';
 import { AntiCrowdEngine } from './antiCrowdEngine.js';
 
 export class GameGenerator {
+    /**
+     * Ponderação por evidência ligada por padrão: fatores testados e refutados
+     * (Markov, co-ocorrência) não influenciam a amostragem de dezenas.
+     * Desligue apenas para reproduzir o comportamento anterior em comparações.
+     */
+    static evidenceWeightingEnabled = true;
+
     /**
      * Distância de Similaridade Jaccard entre dois jogos
      * J(A, B) = |A ∩ B| / |A ∪ B| (0 = totalmente diferentes, 1 = idênticos)
@@ -179,7 +187,13 @@ export class GameGenerator {
         const total = config.total;
         const pick = config.pick;
         const { freqAbsolute = {}, freqWeighted = {}, currentDelay = {}, avgDelay = {}, cycleStats = {}, markovStats = {} } = analysis || {};
-        const weights = { ...DEFAULT_WEIGHTS, ...(customWeights || {}) };
+        // Mesmo portão de evidência aplicado no score: se Markov não tem
+        // evidência, ela não deve influenciar a amostragem das dezenas tampouco.
+        const weights = EvidenceWeightingEngine.applyWeights(
+            { ...DEFAULT_WEIGHTS, ...(customWeights || {}) },
+            analysis,
+            { enabled: this.evidenceWeightingEnabled !== false }
+        ).weights;
 
         const freqs = Object.values(freqAbsolute);
         const maxFreq = Math.max(1, ...freqs);
@@ -446,6 +460,12 @@ export class GameGenerator {
             selectedWindow: bestWindow,
             selectionCorrection,
             signalSummary: StatisticalAnalyzer.summarizeSignals(optimalAnalysis),
+            evidenceWeighting: EvidenceWeightingEngine.summarize(
+                EvidenceWeightingEngine.applyWeights(
+                    optWeights?.optimizedWeights || DEFAULT_WEIGHTS,
+                    optimalAnalysis
+                ).report
+            ),
             seed
         };
         return games;
