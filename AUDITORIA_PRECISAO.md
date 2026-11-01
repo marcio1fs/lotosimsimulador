@@ -208,8 +208,18 @@ O relatório exibia "Data Leakage: NÃO DETECTADO (✅)" como se fosse o resulta
 **6.2 Inferência sequencial (always-valid p-values) — 📋 recomendado.**
 O usuário pode clicar em "gerar" repetidamente e trocar a janela até gostar do resultado. Com testes clássicos, olhar repetidamente infla o erro tipo I indefinidamente. *Correção:* mSPRT / testes sequenciais com correção de α sobre o número de gerações, ou um "orçamento de α" por sessão.
 
-**6.3 Encolhimento bayesiano (empirical Bayes / James-Stein) das frequências — 📋 recomendado.**
+**6.3 Encolhimento bayesiano (empirical Bayes / James-Stein) das frequências — ✅ implementado.**
 As dezenas são ranqueadas por frequência bruta, mas a diferença entre "a mais quente" e "a mais fria" em 100 concursos está quase toda dentro do erro amostral. *Correção:* estimar `p_i = (count_i + α·p0) / (n + α)` com `α` calibrado pelo histórico (equivalente a um prior Dirichlet-multinomial). Isso substitui "quente/frio" por **posterior com intervalo de credibilidade** — a única forma honesta de mostrar esse tipo de métrica. O cartão "🔥 Quentes" deveria exibir a incerteza, não só 5 números.
+
+*Implementado* em `js/engine/bayesFrequencyEngine.js`: modelo Beta-Binomial com
+`κ` estimado por método dos momentos (sem constante calibrada à mão), intervalo
+de credibilidade corrigido por Bonferroni para as 25/60/80/100 dezenas testadas
+ao mesmo tempo, e — decisão importante — o intervalo **exibido** é a união do
+credível com o de Wilson, para que o encolhimento nunca estreite um intervalo
+além do que o histórico sustenta. Os cartões 🔥/🧊 agora mostram
+`bruto → estimativa · IC 95%` e há um cartão novo, 🎯 Frequência × Ruído, com
+quantas dezenas sobrevivem à correção. Documentação e números em
+[FREQUENCIAS.md](./FREQUENCIAS.md).
 
 **6.4 Reduzir o peso dos fatores sem evidência — 📋 recomendado.**
 `markov` carrega 0,10 do score e `cooccurrence` 0,11 — mas a auditoria demonstrou que **nenhuma** transição de Markov sobrevive ao FDR em dados aleatórios, e que a co-ocorrência de pares é indistinguível de independência. Fatores que não podem ser distinguidos de ruído não deveriam somar 21% da decisão. *Correção:* encolher cada peso na proporção da evidência disponível (`peso_i ∝ força da evidência_i`), zerando-os quando o teste não rejeita H0.
@@ -228,7 +238,15 @@ As dezenas são ranqueadas por frequência bruta, mas a diferença entre "a mais
 
 ### Prioridade média — engenharia
 
-**6.9 CI + lint.** Não há workflow. Um `.github/workflows/ci.yml` de 15 linhas (`npm ci`, `npm test`, `npm run build`) impede regressões como o bug de intervalo, além de ativar Dependabot. Adicionar ESLint + Prettier (o código é consistente, a adoção tende a ser indolor).
+**6.9 CI + lint — ✅ implementado (CI).** Não havia workflow. Um `.github/workflows/ci.yml` de 15 linhas (`npm ci`, `npm test`, `npm run build`) impede regressões como o bug de intervalo, além de ativar Dependabot. Adicionar ESLint + Prettier (o código é consistente, a adoção tende a ser indolor).
+
+*Implementado parcialmente:* `.github/workflows/ci.yml` com matriz Node 20/22
+(`npm ci` + `npm test` + `npm run build`) e um job de guardas (`npm audit
+--audit-level=high`, `node --check` em `js/`, `api/` e `server/`, e proibição de
+`Math.random` no código de produção para preservar a reprodutibilidade).
+O guarda de `Math.random` já reprovou um defeito real: `tests/backtest.test.js`
+gerava histórico mock sem semente. **ESLint + Prettier seguem pendentes** —
+exigem uma passada de formatação sobre todo o código, que merece commit próprio.
 
 **6.10 Performance de memória.** `analyze()` monta matrizes O(N²) de objetos (`pairMatrix` = 4.950 objetos na Mega, 4.950 na Quina, 10.000 na Lotomania) mais um array de todos os pares ordenado. *Correção:* `Int32Array(total*total)` triangular + memoização por `(últimoConcurso, janela)`.
 
@@ -240,7 +258,7 @@ As dezenas são ranqueadas por frequência bruta, mas a diferença entre "a mais
 
 **6.13 CSRF/Origin.** `SameSite=Lax` já bloqueia POST cross-site; adicionar verificação de `Origin`/`Sec-Fetch-Site` nos endpoints de mutação fecha a borda.
 
-**6.14 Atualizar a documentação.** `AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 17 arquivos de teste e 151 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
+**6.14 Atualizar a documentação.** `AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 19 arquivos de teste e 225 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
 
 ---
 
