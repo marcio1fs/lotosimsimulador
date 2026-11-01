@@ -440,7 +440,36 @@ Um backtest de 200 concursos da Lotomania alocava ~2,99 milhões de objetos desc
 agora aloca 200 buffers. Os resultados **não** mudaram: os testes comparam contagens,
 top-30 e probabilidades de Markov contra implementações de referência escritas à parte.
 
-**6.11 Decompor a interface.** `index.html` tem 32 KB com markup e lógica de apresentação embutidos. Separar em componentes (ou ao menos templates) facilita auditar e testar a camada visual, hoje sem cobertura.
+**6.11 Decompor a interface — ✅ implementado.**
+`index.html` tem 32 KB com markup e lógica de apresentação embutidos. Separar em componentes (ou ao menos templates) facilita auditar e testar a camada visual, hoje sem cobertura.
+
+*Correção do diagnóstico:* o arquivo tem **34 KB / 555 linhas** e **não** contém lógica de
+apresentação embutida no sentido literal — zero `onclick`, zero `<script>` inline, um único
+módulo no fim do documento. O problema era outro e maior: **116 ids**, 44 botões, 6 canvas e
+17 campos num único blob, sem nenhuma forma de verificar se o JS ainda encontra o que procura.
+Testar "este botão existe" era impossível, porque não há como importar um `.html` em Node.
+
+*Implementado* em `js/views/templates/` + `scripts/build-html.mjs` (20 testes; detalhes em
+[INTERFACE.md](./INTERFACE.md)). O markup virou **9 módulos puros** (cabeçalho, login, overlay,
+casca, três telas, modais, fechamento), `document.js` monta o documento e o `index.html` passou
+a ser **saída de build** — byte a byte idêntica ao arquivo anterior, então a divisão não mudou
+nada do que o navegador recebe.
+
+O ganho real está nos testes, que antes não existiam:
+
+- o `index.html` versionado é exatamente o que os templates geram (deriva entre fonte e saída
+  é o jeito mais silencioso de perder uma tela);
+- **89 ids procurados pelo JS conferidos contra os 116 do documento** — a única exceção é
+  `printNowBtn`, que pertence à janela de impressão criada em runtime (`win.document`);
+- todo `data-action` tem handler e nenhum handler ficou órfão (as duas direções);
+- `data-screen` ↔ `id="screen-*"`, `data-tab` ↔ `id="stat-*"`, as 9 estratégias contra o
+  despacho do motor, e as loterias contra `LotteryModel.CONFIG`;
+- acessibilidade mínima (label ↔ id, campo com id, botão com texto, canvas com id) e higiene
+  (sem `onclick` inline, um único script de aplicação, dependência externa só por HTTPS).
+
+Deliberadamente **não** troquei o HTML estático por renderização em runtime: a tela ficaria em
+branco até o módulo executar e, sem JS, sumiria até o aviso de responsabilidade — justamente o
+texto que precisa existir sempre.
 
 ### Prioridade baixa
 
@@ -448,7 +477,7 @@ top-30 e probabilidades de Markov contra implementações de referência escrita
 
 **6.13 CSRF/Origin.** `SameSite=Lax` já bloqueia POST cross-site; adicionar verificação de `Origin`/`Sec-Fetch-Site` nos endpoints de mutação fecha a borda.
 
-**6.14 Atualizar a documentação.** `AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 25 arquivos de teste e 362 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
+**6.14 Atualizar a documentação.** `AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 26 arquivos de teste e 382 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
 
 ---
 
