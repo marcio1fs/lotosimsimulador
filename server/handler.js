@@ -37,6 +37,7 @@ import {
 } from './email.js';
 import { clientIp } from './clientIp.js';
 import { consumeRateLimit, limitForRequest, rateLimitMessage } from './rateLimit.js';
+import { buildHealthReport, healthStatusCode } from './health.js';
 
 const MAX_BODY = 512 * 1024;
 const MAX_FAILS = 5; // tentativas de login falhas...
@@ -802,8 +803,18 @@ export async function handler(req, res) {
         }
 
         if (path === '/api/health' && method === 'GET') {
-            await getSql().query('SELECT 1');
-            return send(res, 200, { ok: true });
+            // Item 5: a rota deixou de ser `SELECT 1` e passou a relatar banco,
+            // migrações e envio de e-mail. `getSql()` lança quando falta
+            // `DATABASE_URL`; aqui isso é um veredito (`db_not_configured` + 503),
+            // não o 500 genérico que escondia a causa.
+            let sql = null;
+            try {
+                sql = getSql();
+            } catch (error) {
+                if (!(error instanceof HttpError)) throw error;
+            }
+            const report = await buildHealthReport({ sql });
+            return send(res, healthStatusCode(report), report);
         }
         if (method !== 'POST' && !(method === 'GET' && path === '/api/auth/me')) {
             throw new HttpError(405, 'Método não permitido');

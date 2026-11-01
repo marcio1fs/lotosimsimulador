@@ -21,7 +21,9 @@
     "migrate": "node scripts/migrate.mjs",
     "migrate:status": "node scripts/migrate.mjs --status",
     "build:schema": "node scripts/build-schema.mjs",
-    "check:schema": "node scripts/build-schema.mjs --check"
+    "check:schema": "node scripts/build-schema.mjs --check",
+    "build:manifest": "node scripts/build-migrations-manifest.mjs",
+    "check:manifest": "node scripts/build-migrations-manifest.mjs --check"
   },
   "keywords": [
     "lottery",

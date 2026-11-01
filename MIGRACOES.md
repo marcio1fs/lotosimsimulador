@@ -45,6 +45,8 @@ npm run migrate:status     # mostra o estado; não altera nada
 npm run migrate -- --dry-run   # lista o que faria (não precisa de DATABASE_URL)
 npm run build:schema       # regenera schema.sql a partir das migrações
 npm run check:schema       # sai com 1 se schema.sql divergir (roda na CI)
+npm run build:manifest     # regenera server/migrationsManifest.js (usado pelo /api/health)
+npm run check:manifest     # sai com 1 se o manifesto divergir (roda na CI)
 ```
 
 Saída de `migrate:status`:
@@ -75,6 +77,12 @@ se cria um banco do zero. Mas ele agora é **gerado**:
 Editar a foto sem editar a fonte é inútil: `npm run build:schema` sobrescreve, e `npm run
 check:schema` (passo da CI em *Guardas de integridade*) falha com a posição da primeira
 diferença. É a mesma disciplina do `index.html`, que já era saída de build.
+
+Existe uma segunda foto gerada, `server/migrationsManifest.js`: a lista de migrações com os
+respectivos checksums. Ela é o que permite o `/api/health` comparar banco e código sem ler
+`migrations/` do disco em tempo de requisição — na Vercel a função é empacotada a partir das
+importações, e arquivo `.sql` não é importação. Detalhe em
+[OBSERVABILIDADE.md](./OBSERVABILIDADE.md); o comando é `npm run build:manifest`.
 
 ## 5. Banco que já está rodando
 
@@ -111,8 +119,9 @@ cat > migrations/003_adicionar_indice.sql <<'SQL'
 CREATE INDEX IF NOT EXISTS idx_games_concurso ON games (lottery_id);
 SQL
 
-npm run build:schema   # regenera a foto
-npm test               # 24 testes de migração + o resto da suíte
+npm run build:schema     # regenera a foto
+npm run build:manifest   # e o manifesto que o /api/health consulta
+npm test                 # 24 testes de migração + o resto da suíte
 ```
 
 Regras que os testes cobrem:
