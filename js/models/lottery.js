@@ -139,6 +139,27 @@ export class LotteryModel {
             return this.attachForecastPolicy(games, fullHistory, strategy, cfg);
         }
 
+        if (strategy === 'diversified') {
+            // Sem backtest e sem otimização de pesos de propósito: a carteira não
+            // usa histórico, então "otimizar" aqui só introduziria aleatoriedade.
+            const windowData = StatisticalAnalyzer.getWindow(fullHistory, timeWindow);
+            const analysis = StatisticalAnalyzer.analyzeCached(windowData, cfg);
+            analysis.lastDrawNumbers = fullHistory[0]?.dezenas?.map(Number) || [];
+            const games = GameGenerator.generateBatch(
+                type,
+                analysis,
+                'diversified',
+                fixed,
+                excluded,
+                count,
+                cfg,
+                null,
+                null,
+                seed
+            );
+            return this.attachForecastPolicy(games, fullHistory, strategy, cfg);
+        }
+
         if (strategy === 'maximum_precision') {
             const games = GameGenerator.runMaximumPrecisionMode(fullHistory, cfg, fixed, excluded, count, seed);
             return this.attachForecastPolicy(games, fullHistory, strategy, cfg);

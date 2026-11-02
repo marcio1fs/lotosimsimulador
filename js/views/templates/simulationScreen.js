@@ -84,6 +84,10 @@ export function simulationScreen() {
                         <div class="strategy-option-name">🎯 FECHAMENTO + ANNEALING</div>
                         <div class="strategy-option-desc">Matriz Schoenheim + Poda Gauss</div>
                     </div>
+                    <div class="strategy-option" data-strategy="diversified">
+                        <div class="strategy-option-name">🧩 MÁXIMA DIVERSIFICAÇÃO</div>
+                        <div class="strategy-option-desc">Carteira espalhada (sem previsão)</div>
+                    </div>
                     <div class="strategy-option" data-strategy="maximum_precision">
                         <div class="strategy-option-name">🛡️ MÁXIMA PRECISÃO</div>
                         <div class="strategy-option-desc">Walk-Forward + Markov + Fechamento</div>

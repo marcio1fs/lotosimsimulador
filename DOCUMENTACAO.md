@@ -68,6 +68,7 @@ se fossem estado presente.
 | [MIGRACOES.md](./MIGRACOES.md) | migrações versionadas do banco, `npm run migrate`, detecção de deriva e `schema.sql` gerado | produção |
 | [LIMITES_DE_REQUISICAO.md](./LIMITES_DE_REQUISICAO.md) | limite por rota: chave de IP não forjável, janela fixa, 429 com `Retry-After` | produção |
 | [OBSERVABILIDADE.md](./OBSERVABILIDADE.md) | `/api/health` com estado real: banco, migrações e e-mail, com `200`/`503` e códigos estáveis | produção |
+| [DIVERSIFICACAO.md](./DIVERSIFICACAO.md) | estratégia de máxima diversificação: por que ela vence as outras sem prever nada, e os números medidos | motor |
 | [DOCUMENTACAO.md](./DOCUMENTACAO.md) | este arquivo | 6.14 |
 
 ## 4. O que o teste verifica

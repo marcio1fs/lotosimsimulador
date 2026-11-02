@@ -2,8 +2,8 @@
 
 **Data:** 01/11/2026
 **Escopo:** 61 arquivos · ~8.700 linhas de JavaScript · 12 módulos de motor estatístico · API serverless (Neon) · interface SPA
-**Suíte de testes:** 113 → **578 testes em 36 arquivos** (100% passando), `npm run build` OK
-<!-- suite: arquivos=36 testes=578 -->
+**Suíte de testes:** 113 → **592 testes em 37 arquivos** (100% passando), `npm run build` OK
+<!-- suite: arquivos=37 testes=592 -->
 **Pergunta que guiou a auditoria:** *onde este projeto perde precisão — e como recuperá-la?*
 
 ---
@@ -605,7 +605,7 @@ falsa, sem tocar no banco. A defesa em camadas está descrita em
 
 
 **6.14 Atualizar a documentação — ✅ implementado.**
-`AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 36 arquivos de teste e 578 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
+`AUDIT_REPORT.md` afirma "4 suítes passando" e "12 de 12 problemas resolvidos". Hoje são 37 arquivos de teste e 592 testes — e a auditoria atual encontrou 11 defeitos adicionais. Um relatório desatualizado é pior que nenhum.
 
 *Implementado:* o `AUDIT_REPORT.md` foi **mantido como registro histórico e corrigido**
 (ver [DOCUMENTACAO.md](./DOCUMENTACAO.md)). Três decisões:
@@ -656,7 +656,7 @@ O valor real deste software é o que ele já faz bem: **demonstrar com rigor que
 
 ```bash
 npm install
-npm test            # 578 testes em 36 arquivos, incluindo tests/precisionAudit.test.js (38)
+npm test            # 592 testes em 37 arquivos, incluindo tests/precisionAudit.test.js (38)
 npm run build       # build de produção
 ```
 
@@ -753,7 +753,7 @@ links internos precisam apontar para arquivos que existem.
 | — | Módulo de projeções futuras | ✅ | [PROJECOES.md](./PROJECOES.md) |
 | — | Recuperação de conta (reset de senha + verificação de e-mail) | ✅ | [RECUPERACAO_CONTA.md](./RECUPERACAO_CONTA.md) |
 
-**Contagem atual:** 36 arquivos de teste, 578 testes, `npm audit` 0, build
+**Contagem atual:** 37 arquivos de teste, 592 testes, `npm audit` 0, build
 limpo, CI com 6 verificações.
 
 A calibração brasileira do Anti-Crowd **foi encerrada com veredito** em
@@ -791,6 +791,14 @@ estados — `ok` (200), `degraded` (200, serve com capacidade a menos) e `down` 
 ganho concreto: uma migração pendente, que antes deixava o limite por rota **desligado em
 silêncio**, agora aparece na resposta. 33 testes em
 [OBSERVABILIDADE.md](./OBSERVABILIDADE.md). A lista de produção está fechada.
+
+**Depois da lista fechada**, uma medição mudou uma premissa do produto. Comparando as nove
+estratégias da tela com o mesmo orçamento (10 jogos, 300 mil sorteios simulados), todas
+ficaram **abaixo** de um lote aleatório na chance de conter algum jogo premiado: 44,3%
+(fechamento) a 50,6% (máxima precisão), contra 64,8% do aleatório. A causa é correlação —
+carteiras que restringem o pool a 19–23 dezenas falham juntas. Entrou a estratégia `diversified`
+(**78,0%**), que não prevê nada: equilibra frequência e minimiza sobreposição entre os jogos,
+com recozimento simulado determinístico. 14 testes em [DIVERSIFICACAO.md](./DIVERSIFICACAO.md).
 
 O único prazo correndo é o do hash legado: em **31/01/2027** o verificador precisa
 sair do código, e há um teste que falha nesse dia se ele ainda estiver lá. Nenhum

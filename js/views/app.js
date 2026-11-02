@@ -275,6 +275,7 @@ export class AppView {
         const policy = games.forecastPolicy || games[0]?.forecastPolicy;
         const portfolioProj = games.portfolioProjection || games[0]?.futureProjection?.portfolioProjection;
         const wheelMeta = games.wheelMetadata || games[0]?.wheelMetadata;
+        const diversificationMeta = games.diversificationMetadata || games[0]?.diversificationMetadata;
         const fin = portfolioProj?.financial;
         const guarantees = wheelMeta?.conditionalGuarantees || [];
 
@@ -342,6 +343,17 @@ export class AppView {
                         ? `
                 <div style="margin-top:0.65rem; font-size:0.73rem; color:var(--text-muted); padding-top:0.55rem; border-top:1px dashed rgba(255,255,255,0.12);">
                     🎯 <strong>Matriz de Fechamento (${wheelMeta.elitePoolSize} dezenas de elite):</strong> [${wheelMeta.elitePool.map(n => String(n).padStart(2, '0')).join(', ')}] · Cobertura de Pares: <strong>${wheelMeta.pairCoverageGuaranteePct}%</strong> (${wheelMeta.coveredPairsCount}/${wheelMeta.totalPoolPairs} pares · Limite Schoenheim: ${wheelMeta.schoenheimLowerBound || '-'} jgs)
+                </div>`
+                        : ''
+                }
+                ${
+                    diversificationMeta
+                        ? `
+                <div style="margin-top:0.65rem; font-size:0.73rem; color:var(--text-muted); padding-top:0.55rem; border-top:1px dashed rgba(255,255,255,0.12);">
+                    🧩 <strong>Carteira diversificada:</strong> ${diversificationMeta.distinctNumbers} dezenas · cada uma aparece ${diversificationMeta.frequencyMin === diversificationMeta.frequencyMax ? diversificationMeta.frequencyMin : `${diversificationMeta.frequencyMin}–${diversificationMeta.frequencyMax}`}x ·
+                    sobreposição média ${diversificationMeta.meanOverlap} dezenas (máx. ${diversificationMeta.maxOverlap}) ·
+                    cobertura de pares <strong>${diversificationMeta.pairCoveragePct}%</strong>
+                    <div style="margin-top:0.35rem;">Nenhum histórico foi usado: o ganho dessa carteira é correlação baixa entre os jogos, não previsão. O prêmio principal continua igual por jogo.</div>
                 </div>`
                         : ''
                 }
