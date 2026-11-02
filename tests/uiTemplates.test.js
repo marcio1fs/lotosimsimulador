@@ -162,8 +162,13 @@ describe('Integridade estrutural do HTML', () => {
 
     it('toda estratégia da tela existe no motor', async () => {
         const strategies = [...HTML.matchAll(/data-strategy="([^"]+)"/g)].map(m => m[1]);
+        // A tela e o motor precisam concordar: cada botão aqui tem de existir no
+        // `gameGenerator`. `diversified` é a estratégia de carteira espalhada
+        // (ver DIVERSIFICACAO.md) — ela também não usa histórico, e é justamente
+        // por isso que o teste não pode deixá-la cair num limbo.
         const expected = [
             'wheeling',
+            'diversified',
             'maximum_precision',
             'anti_crowd',
             'markov',

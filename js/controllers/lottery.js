@@ -47,10 +47,18 @@ export class LotteryController {
     static async _runGenerationInWorkerOrFallback(payload) {
         try {
             const res = await this._postWorkerTask('GENERATE_GAMES', payload, 25000);
-            const { games, forecastPolicy, portfolioProjection, wheelMetadata, modelPipeline } = res;
+            const {
+                games,
+                forecastPolicy,
+                portfolioProjection,
+                wheelMetadata,
+                modelPipeline,
+                diversificationMetadata
+            } = res;
             if (forecastPolicy) games.forecastPolicy = forecastPolicy;
             if (portfolioProjection) games.portfolioProjection = portfolioProjection;
             if (wheelMetadata) games.wheelMetadata = wheelMetadata;
+            if (diversificationMetadata) games.diversificationMetadata = diversificationMetadata;
             if (modelPipeline) games.modelPipeline = modelPipeline;
             return games;
         } catch (_) {

@@ -135,6 +135,7 @@ if (typeof self !== 'undefined' && typeof self.postMessage === 'function') {
                         forecastPolicy: games.forecastPolicy || null,
                         portfolioProjection: games.portfolioProjection || null,
                         wheelMetadata: games.wheelMetadata || null,
+                        diversificationMetadata: games.diversificationMetadata || null,
                         modelPipeline: games.modelPipeline || null
                     }
                 });

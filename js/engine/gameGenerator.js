@@ -14,6 +14,7 @@ import { MonteCarloEngine } from './monteCarloEngine.js';
 import { GaussianFilterEngine } from './gaussianFilterEngine.js';
 import { WheelingEngine } from './wheelingEngine.js';
 import { AntiCrowdEngine } from './antiCrowdEngine.js';
+import { DiversificationEngine } from './diversificationEngine.js';
 
 export class GameGenerator {
     /**
@@ -56,6 +57,7 @@ export class GameGenerator {
         const rng = new SeededRandom(seed);
         let selectedGames = [];
         let wheelMetadata = null;
+        let diversificationMetadata = null;
 
         if (strategy === 'wheeling') {
             const wheelResult = WheelingEngine.generateWheelingMatrix(
@@ -70,6 +72,17 @@ export class GameGenerator {
             );
             selectedGames = wheelResult.tickets;
             wheelMetadata = wheelResult.wheelMetadata;
+        } else if (strategy === 'diversified') {
+            // Carteira espalhada: o objetivo aqui não é prever, é reduzir a
+            // correlação entre os jogos. O histórico não entra na conta — só os
+            // filtros da modalidade. Ver DIVERSIFICACAO.md.
+            const diversificacao = DiversificationEngine.generate({ config, count, fixed, excluded, seed });
+            selectedGames = diversificacao.games.map(numbers => ({
+                numbers,
+                scoreObj: ScoringEngine.evaluateGame(numbers, config, analysis, customWeights, backtestSummary),
+                gaussianEval: GaussianFilterEngine.evaluateCandidate(numbers, config, analysis, fixed)
+            }));
+            diversificationMetadata = diversificacao.metadata;
         } else {
             const candidatesPool = [];
             const gaussianPassedPool = [];
@@ -206,6 +219,9 @@ export class GameGenerator {
 
         if (wheelMetadata) {
             mappedGames.wheelMetadata = wheelMetadata;
+        }
+        if (diversificationMetadata) {
+            mappedGames.diversificationMetadata = diversificationMetadata;
         }
         return mappedGames;
     }
